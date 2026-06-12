@@ -1,0 +1,35 @@
+{
+    "name": "ate/oer-manager",
+    "description": "Omeka S module to manage a catalog of Open Educational Resources (items of class lrmi:LearningResource): curation, curricular alignment, integrity checks and statistics.",
+    "type": "library",
+    "require": {
+        "php": ">=8.4"
+    },
+    "require-dev": {
+        "squizlabs/php_codesniffer": "^3.13",
+        "zerocrates/extract-tagged-strings": "dev-master"
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/zerocrates/extract-tagged-strings.git"
+        }
+    ],
+    "archive": {
+        "exclude": [
+            "/vendor",
+            "/test",
+            "/docs",
+            "/.claude",
+            "/.gitignore",
+            "/Makefile",
+            "/composer.lock",
+            "/prompt_fase0.md",
+            "/prompt_fase1.md",
+            "/CLAUDE.md"
+        ]
+    }
+}

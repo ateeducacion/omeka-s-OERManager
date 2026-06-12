@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "Gobierno FASE 0 - hooks y guardrails del desarrollo del modulo OERManager (ver ADR-0001 y docs/requirements.md).",
+    "RECORDATORIO: un hook que devuelve 'allow'/exit 0 NO relaja las reglas de permisos de Claude Code; los hooks solo endurecen (pueden bloquear con exit 2, nunca autorizar de mas).",
+    "Lint (PEND-004 resuelto 2026-06-12): make lint = PHPCS PSR-12 ejecutado en el HOST, sin docker compose exec. SIN analisis estatico: no introducir PHPStan/Psalm.",
+    "PostToolUse Write|Edit: ejecuta make lint tras editar ficheros .php, como AVISO no bloqueante (exit 2 en PostToolUse informa a Claude, no revierte la edicion). Si falta Makefile o vendor/bin/phpcs, deja nota y sale con exit 0 para no generar falsas alarmas antes de instalar dependencias.",
+    "Stop hook ACTIVO desde 2026-06-12: el propietario autorizo composer install y make lint paso en limpio sobre el andamiaje, cumpliendose su condicion de activacion. No cierra turno si make lint falla (exit 2). Si faltara la herramienta (p. ej. vendor/ sin instalar en un clon nuevo), sale con exit 0 para no bloquear; reinstalar con composer install.",
+    "Hook de TEST preparado pero NO activo (decision del propietario, FASE 0): make test (= vendor/bin/phpunit -c test/phpunit.xml --colors=always --testdox); test/phpunit.xml no existe todavia y phpunit no esta aun en require-dev (su version depende del PHP minimo, PEND-002). Anadirlo al Stop hook junto al lint cuando ambos existan.",
+    "Guardrail PreToolUse Write|Edit: protege el core de Omeka (extender, no parchear - NFR-001) bloqueando con exit 2 toda escritura fuera de este repo (omeka-s-OERManager, que ES la carpeta del modulo).",
+    "Guardrail PreToolUse Bash: bloquea con exit 2 comandos destructivos (rm -rf, DROP/TRUNCATE, git push --force, git reset --hard)."
+  ],
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/database.ini)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fp=$(jq -r '.tool_input.file_path // empty'); [ -z \"$fp\" ] && exit 0; case \"$fp\" in *../*) echo \"BLOQUEADO (guardrail core, NFR-001): ruta con '..' no permitida: $fp\" >&2; exit 2 ;; \"$CLAUDE_PROJECT_DIR\"/*) exit 0 ;; /*) echo \"BLOQUEADO (guardrail core, NFR-001): escritura fuera del repo del modulo: $fp. El core de Omeka se extiende, no se parchea.\" >&2; exit 2 ;; *) exit 0 ;; esac"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if printf '%s' \"$cmd\" | grep -qiE 'rm[[:space:]]+-[a-z]*r[a-z]*f|rm[[:space:]]+-[a-z]*f[a-z]*r|DROP[[:space:]]+(TABLE|DATABASE|SCHEMA)|TRUNCATE[[:space:]]+TABLE|git[[:space:]]+push[[:space:]]+.*(--force|-f)([[:space:]]|$)|git[[:space:]]+reset[[:space:]]+--hard|mkfs'; then echo 'BLOQUEADO (guardrail Bash): comando potencialmente destructivo. Si es imprescindible, pide confirmacion explicita al propietario en el chat.' >&2; exit 2; fi; exit 0"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fp=$(jq -r '.tool_input.file_path // empty'); case \"$fp\" in *.php) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then echo 'NOTA: make lint no ejecutado (falta Makefile o vendor/bin/phpcs; ver TASK-008)' >&2; exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'AVISO (make lint, PSR-12) tras editar %s:\\n%s\\n' \"$fp\" \"$out\" >&2; exit 2; fi; exit 0"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make lint (PSR-12) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$out\" >&2; exit 2; fi; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
