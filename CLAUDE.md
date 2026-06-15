@@ -22,15 +22,14 @@ Módulo de gestión de un catálogo de REA (items `lrmi:LearningResource`). Gobi
 ## Gotchas de Omeka (IMPORTANTE)
 
 - **Extender el core, NUNCA parchearlo**: integración solo vía `attachListeners`, `module.config.php` y mecanismos nativos. Un hook PreToolUse bloquea escrituras fuera del repo.
-- **Sin tablas Doctrine propias** (decisión del propietario, NFR-002). Única excepción evaluable: auditoría (PEND-006), y exigiría ADR.
-- Visibilidad público/privado: usar el campo nativo del recurso, no inventar un flag propio.
+- **Sin tablas Doctrine propias** (decisión del propietario, NFR-002). La auditoría (PEND-006) se resolvió **sin** excepción: usa value annotations `dcterms`, no tablas (ADR-0002).
+- Visibilidad público/privado: usar el campo nativo del recurso, no inventar un flag propio; queda fuera de la auditoría RDF (ADR-0002).
 - El currículo ya existe como items enlazados en Omeka: el módulo lo **consume**, no lo posee ni lo modifica.
 
 ## Skills
 
-- `omeka-module` — úsala ante cualquier código del módulo (convenciones, eventos, ACL, columnas, REST API). Stub: contenido por destilar.
-- `recatalogador` — úsala ante todo lo que toque alineamiento curricular, tags o escritura RDF (componente de ALTO RIESGO). Stub.
-- `rea-validacion-legal` (licencias/copyright REA) y `spreadsheet-analyzer` (QA de exports): preexistentes según el contexto, **no localizadas en el repo a fecha de FASE 0** (PEND-008) — confirmar con el propietario antes de necesitarlas.
+- `omeka-module` — úsala ante cualquier código del módulo (convenciones, eventos, ACL, columnas, REST API). Destilada (2026-06-12) desde el Omeka 4.2 real.
+- `recatalogador` — úsala ante todo lo que toque alineamiento curricular, tags o escritura RDF (componente de ALTO RIESGO). Invariantes RDF y auditoría (ADR-0002) destilados; reglas de negocio pendientes de PEND-005/PEND-007.
 
 ## Seguridad y límites
 
