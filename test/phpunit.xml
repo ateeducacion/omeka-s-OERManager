@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuración PHPUnit del módulo OERManager (TASK-008).
+  Los tests corren en el HOST (sin docker compose exec), por eso el bootstrap
+  usa el vendor/ del propio módulo, no el de Omeka. Los tests unitarios de
+  FASE 1 validan el contrato del scaffold (config array) sin arrancar Omeka;
+  los tests de integración que instancien clases del core llegarán en fases
+  posteriores y correrán dentro del contenedor.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="../vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnDeprecation="true">
+    <testsuites>
+        <testsuite name="OERManager">
+            <directory>.</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory suffix=".php">../src</directory>
+        </include>
+    </source>
+</phpunit>

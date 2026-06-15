@@ -1,15 +1,18 @@
 {
-  "_comment": [
-    "Gobierno FASE 0 - hooks y guardrails del desarrollo del modulo OERManager (ver ADR-0001 y docs/requirements.md).",
-    "RECORDATORIO: un hook que devuelve 'allow'/exit 0 NO relaja las reglas de permisos de Claude Code; los hooks solo endurecen (pueden bloquear con exit 2, nunca autorizar de mas).",
-    "Lint (PEND-004 resuelto 2026-06-12): make lint = PHPCS PSR-12 ejecutado en el HOST, sin docker compose exec. SIN analisis estatico: no introducir PHPStan/Psalm.",
-    "PostToolUse Write|Edit: ejecuta make lint tras editar ficheros .php, como AVISO no bloqueante (exit 2 en PostToolUse informa a Claude, no revierte la edicion). Si falta Makefile o vendor/bin/phpcs, deja nota y sale con exit 0 para no generar falsas alarmas antes de instalar dependencias.",
-    "Stop hook ACTIVO desde 2026-06-12: el propietario autorizo composer install y make lint paso en limpio sobre el andamiaje, cumpliendose su condicion de activacion. No cierra turno si make lint falla (exit 2). Si faltara la herramienta (p. ej. vendor/ sin instalar en un clon nuevo), sale con exit 0 para no bloquear; reinstalar con composer install.",
-    "Hook de TEST preparado pero NO activo (decision del propietario, FASE 0): make test (= vendor/bin/phpunit -c test/phpunit.xml --colors=always --testdox); test/phpunit.xml no existe todavia y phpunit no esta aun en require-dev (su version depende del PHP minimo, PEND-002). Anadirlo al Stop hook junto al lint cuando ambos existan.",
-    "Guardrail PreToolUse Write|Edit: protege el core de Omeka (extender, no parchear - NFR-001) bloqueando con exit 2 toda escritura fuera de este repo (omeka-s-OERManager, que ES la carpeta del modulo).",
-    "Guardrail PreToolUse Bash: bloquea con exit 2 comandos destructivos (rm -rf, DROP/TRUNCATE, git push --force, git reset --hard)."
-  ],
   "permissions": {
+    "allow": [
+      "Bash(timeout 90 npx -y skills find omeka)",
+      "Bash(echo \"=== EXIT $? ===\")",
+      "Bash(timeout 90 npx -y skills find php)",
+      "Bash(docker exec omeka-s-moduletemplate-omekas-1 sh -c ' *)",
+      "Edit(/.claude/skills/omeka-module/**)",
+      "Bash(composer update *)",
+      "Bash(vendor/bin/phpunit --version)",
+      "Bash(make lint *)",
+      "Bash(echo \"make lint exit=$?\")",
+      "Bash(make test *)",
+      "Bash(echo \"make test exit=$?\")"
+    ],
     "deny": [
       "Read(./.env)",
       "Read(./.env.*)",
@@ -54,10 +57,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make lint (PSR-12) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$out\" >&2; exit 2; fi; exit 0"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make lint (PSR-12) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$out\" >&2; exit 2; fi; if [ -x vendor/bin/phpunit ] && [ -f test/phpunit.xml ]; then tout=$(make test 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make test (PHPUnit) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$tout\" >&2; exit 2; fi; fi; exit 0"
           }
         ]
       }
     ]
-  }
+  },
+  "_comment": [
+    "Gobierno FASE 0 - hooks y guardrails del desarrollo del modulo OERManager (ver ADR-0001 y docs/requirements.md).",
+    "RECORDATORIO: un hook que devuelve 'allow'/exit 0 NO relaja las reglas de permisos de Claude Code; los hooks solo endurecen (pueden bloquear con exit 2, nunca autorizar de mas).",
+    "Lint (PEND-004 resuelto 2026-06-12): make lint = PHPCS PSR-12 ejecutado en el HOST, sin docker compose exec. SIN analisis estatico: no introducir PHPStan/Psalm.",
+    "PostToolUse Write|Edit: ejecuta make lint tras editar ficheros .php, como AVISO no bloqueante (exit 2 en PostToolUse informa a Claude, no revierte la edicion). Si falta Makefile o vendor/bin/phpcs, deja nota y sale con exit 0 para no generar falsas alarmas antes de instalar dependencias.",
+    "Stop hook ACTIVO desde 2026-06-12: gate de make lint + make test al cerrar turno. No cierra turno si lint (PSR-12) o los tests (PHPUnit) fallan (exit 2). Si falta la herramienta (vendor/ sin instalar, o sin test/phpunit.xml) salta ese gate con exit 0 para no bloquear; reinstalar con composer install.",
+    "Hook de TEST ACTIVO desde 2026-06-12 (TASK-008): make test = vendor/bin/phpunit -c test/phpunit.xml. PHPUnit ^11.5 en require-dev; test/phpunit.xml y test/ModuleConfigTest.php creados. Los tests corren en el HOST sin arrancar Omeka (validan el array de config; ::class no autocarga). Tests de integracion que instancien clases del core: en fases posteriores, dentro del contenedor.",
+    "Guardrail PreToolUse Write|Edit: protege el core de Omeka (extender, no parchear - NFR-001) bloqueando con exit 2 toda escritura fuera de este repo (omeka-s-OERManager, que ES la carpeta del modulo).",
+    "Guardrail PreToolUse Bash: bloquea con exit 2 comandos destructivos (rm -rf, DROP/TRUNCATE, git push --force, git reset --hard)."
+  ]
 }

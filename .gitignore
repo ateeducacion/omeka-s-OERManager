@@ -1,3 +1,4 @@
 /vendor/
+/test/.phpunit.cache/
 .claude/settings.local.json
 .DS_Store
