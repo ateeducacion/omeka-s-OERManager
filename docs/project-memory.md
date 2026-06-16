@@ -1,6 +1,6 @@
 # Memoria del proyecto — OERManager
 
-> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-16 (PEND-007 punto 1 resuelto con ADR-0005; TASK-003 en curso).
+> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-16 (PEND-007 resuelto: punto 1 con ADR-0005, ya implementado en TASK-003; resto con ADR-0006 y `requirements.md`; **TASK-001 cerrada, no quedan PEND abiertos**; TASK-004/005/006 desbloqueadas).
 
 ## Estado actual
 
@@ -11,7 +11,7 @@
 - **FASE 1 (scaffolding del módulo): ejecutada el 2026-06-12.** Estructura completa (`Module.php`, `config/module.ini` + `module.config.php`, controlador stub, `ConfigForm` vacío, vista de aterrizaje, carpetas de extensión con `.gitkeep`). Verificado contra el contenedor real (`omeka-s-moduletemplate-omekas-1`, montado en `modules/OERManager`): PHP 8.4.15, Omeka 4.2.0, `php -l` limpio, `getConfig()` carga, `module.ini` parsea y la constraint `^4.2.0` satisface 4.2.0. **Instalación y activación verificadas por el propietario en el admin (2026-06-12) — TASK-002 cerrada.** Patrones de ruta/navegación copiados de módulos reales instalados (Log, CSVImport): ruta hija de `admin`, navegación `AdminModule`, controllers por FQCN.
 - **Nota de entorno:** el healthcheck del contenedor MariaDB marca *unhealthy* aunque el sitio responde HTTP 200; revisar el healthcheck (fuera del alcance del módulo).
 - **Hallazgos de la instalación real (2026-06-12, relevantes para decisiones):** el módulo **Log** instalado es el de **Daniel Berthereau (Daniel-KM)** → la opción A/C de auditoría (PEND-006) era viable sin dependencia nueva, aunque PEND-006 se resolvió finalmente con **auditoría RDF nativa** (value annotations `dcterms`), no con el módulo Log (ADR-0002). El módulo **LearningObjectAdapter** es de la propia **ATE** (mismo ecosistema del propietario). Consulta directa a la BD del contenedor bloqueada por el clasificador de auto mode (acceso a credenciales del MariaDB compartido): para PEND-005 hay que confirmar vocabularios/properties por otra vía (panel admin o autorización explícita).
-- **Preguntas de decisión abiertas redactadas en [docs/open-questions.md](open-questions.md)**; quedan **PEND-005 y PEND-007** por resolver (PEND-006/008/009 cerrados el 2026-06-15). Cada respuesta se formaliza como ADR.
+- **Preguntas de decisión abiertas redactadas en [docs/open-questions.md](open-questions.md)**; todas resueltas (PEND-001…009). **TASK-001 cerrada (2026-06-16)** — siguiente trabajo: TASK-003 (vista maestra), TASK-004 (re-catalogador, alto riesgo), TASK-005 (integridad) o TASK-006 (estadísticas), todas desbloqueadas y dependientes solo de TASK-002 (ya hecha).
 - No existe todavía código del módulo ni instalación de Omeka vinculada a este repo.
 
 ## Decisiones ya tomadas (no reabrir sin motivo)
@@ -29,22 +29,19 @@ Formalizadas:
 - **ADR-0002 (2026-06-15)** — estrategia RDF: vocabularios permitidos (solo `dcterms`/`lrmi`/`schema`) y auditoría de curación RDF nativa vía value annotations `dcterms`, sin módulo Log ni tablas; visibilidad fuera del alcance ([decisions/0002-estrategia-rdf-vocabularios-y-auditoria.md](decisions/0002-estrategia-rdf-vocabularios-y-auditoria.md)). Resuelve PEND-006; fija el vocabulario de PEND-005.
 - **ADR-0003 (2026-06-15)** — empaquetado y licencia: paquete `ate/oer-manager`, licencia `GPL-3.0-or-later` ([decisions/0003-empaquetado-y-licencia.md](decisions/0003-empaquetado-y-licencia.md)). Resuelve PEND-009.
 - **ADR-0004 (2026-06-15)** — mapeo RDF (confirmado contra la instalación real): etapa `lrmi:educationalLevel`, materia `schema:about`, saberes `lrmi:teaches`, criterios `lrmi:assesses`, eje temático/tags `dcterms:relation` (controlado por `schema:DefinedTermSet`), proyecto `schema:isPartOf` (acción de gestor), licencia `dcterms:rights` (CustomVocab) ([decisions/0004-mapeo-rdf-alineamiento-tags.md](decisions/0004-mapeo-rdf-alineamiento-tags.md)). Resuelve PEND-005.
-- **ADR-0005 (2026-06-16)** — vista maestra v1 aprobada tal cual (columnas, filtros, drawer fijo, curación de visibilidad individual/lote) ([decisions/0005-vista-maestra-v1-aprobacion.md](decisions/0005-vista-maestra-v1-aprobacion.md)). Resuelve PEND-007 punto 1 para el alcance v1.
+- **ADR-0005 (2026-06-16)** — vista maestra v1 aprobada tal cual (columnas, filtros, drawer fijo, curación de visibilidad individual/lote) ([decisions/0005-vista-maestra-v1-aprobacion.md](decisions/0005-vista-maestra-v1-aprobacion.md)). Resuelve PEND-007 punto 1 para el alcance v1; implementada en TASK-003.
+- **ADR-0006 (2026-06-16)** — raíz de los árboles RDF: ejes temáticos = un único `schema:DefinedTermSet` identificado por ID de item fijado en la config del módulo (`40260` en la instalación de referencia); alineamiento curricular = varios `schema:DefinedTermSet`, uno por marco/etapa, identificados por `lrmi:educationalFramework` (`LOMLOE` en la instalación de referencia), también configurable ([decisions/0006-raiz-arboles-rdf-config.md](decisions/0006-raiz-arboles-rdf-config.md)). Resuelve la parte de localización de vocabularios de PEND-007.
 
 ## Abierto (no inventar; preguntar al propietario)
 
-Queda **un** PEND abierto, parcialmente resuelto (IDs en [requirements.md §1](requirements.md)):
-
-- **PEND-007** — RF/NFR detallados. **Punto 1 (vista maestra v1) resuelto con ADR-0005.** Quedan abiertos los puntos 2-6: reglas del re-catalogador, matriz rol×acción completa, reglas de integridad, catálogo de estadísticas, rendimiento, i18n, accesibilidad. Bloquea TASK-004, TASK-005, TASK-006 y la matriz rol×acción definitiva (TASK-003 ya no está bloqueada). Inputs nuevos (ADR-0004): el proyecto (`schema:isPartOf`) es acción de gestor aparte; valorar una plantilla REA (`resource_template`) para obligatoriedad; la config del módulo necesita el `schema:DefinedTermSet` de ejes temáticos y el `CustomVocab` de licencias.
-
-Resueltos el 2026-06-12: PEND-001…PEND-004. Resueltos el 2026-06-15: **PEND-005** (mapeo RDF, ADR-0004), **PEND-006** (auditoría RDF nativa, ADR-0002), **PEND-008** (skills descartadas), **PEND-009** (paquete + licencia, ADR-0003).
+No quedan PEND abiertos. Resueltos el 2026-06-12: PEND-001…PEND-004. Resueltos el 2026-06-15: **PEND-005** (mapeo RDF, ADR-0004), **PEND-006** (auditoría RDF nativa, ADR-0002), **PEND-008** (skills descartadas), **PEND-009** (paquete + licencia, ADR-0003). Resuelto el 2026-06-16: **PEND-007** (RF/NFR detallados — punto 1, columnas/panel de la vista maestra v1, ya implementado en TASK-003 vía ADR-0005; resto — cardinalidad y roles del re-catalogador, regla de integridad, catálogo de estadísticas, rendimiento, i18n, accesibilidad, localización de vocabularios — ver `requirements.md` y ADR-0006).
 
 ## Skills
 
 | Skill | Estado | Cuándo usarla |
 | --- | --- | --- |
 | `omeka-module` | **destilada (2026-06-12)** desde el Omeka 4.2 real del contenedor; verificada, no inventada | Cualquier código del módulo: convenciones, eventos, ACL, columnas, REST API |
-| `recatalogador` | stub de FASE 0 + invariantes de escritura RDF y auditoría (ADR-0002) destilados; reglas de negocio pendientes de PEND-005/PEND-007 | Todo lo que toque alineamiento curricular, tags o escritura RDF |
+| `recatalogador` | stub de FASE 0 + invariantes de escritura RDF y auditoría (ADR-0002) destilados; reglas de negocio (cardinalidad, roles, raíces de árboles) ya fijadas en `requirements.md` y ADR-0006 — **pendiente de refinar la skill con esta información antes de TASK-004** | Todo lo que toque alineamiento curricular, tags o escritura RDF |
 
 `rea-validacion-legal` y `spreadsheet-analyzer` se **descartaron** el 2026-06-15 (PEND-008): no forman parte del módulo.
 
