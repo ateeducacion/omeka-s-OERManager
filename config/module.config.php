@@ -11,7 +11,7 @@
 
 namespace OERManager;
 
-use Laminas\Router\Http\Literal;
+use Laminas\Router\Http\Segment;
 
 return [
     'view_manager' => [
@@ -20,8 +20,19 @@ return [
         ],
     ],
     'controllers' => [
-        'invokables' => [
-            Controller\Admin\IndexController::class => Controller\Admin\IndexController::class,
+        'factories' => [
+            Controller\Admin\IndexController::class => function ($container) {
+                return new Controller\Admin\IndexController(
+                    $container->get(Service\MasterViewQuery::class)
+                );
+            },
+        ],
+    ],
+    'service_manager' => [
+        'factories' => [
+            Service\MasterViewQuery::class => function ($container) {
+                return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
         ],
     ],
     'form_elements' => [
@@ -34,9 +45,12 @@ return [
             'admin' => [
                 'child_routes' => [
                     'oer-manager' => [
-                        'type' => Literal::class,
+                        'type' => Segment::class,
                         'options' => [
-                            'route' => '/oer-manager',
+                            'route' => '/oer-manager[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
                             'defaults' => [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\IndexController::class,
@@ -68,9 +82,10 @@ return [
             ],
         ],
     ],
-    // Punto de extensión: column types propios de la vista maestra (TASK-003).
+    // Vista maestra v1 (TASK-003, ADR-0005): indicador de alineamiento.
     'column_types' => [
         'invokables' => [
+            'oerAlignmentStatus' => ColumnType\AlignmentStatus::class,
         ],
     ],
 ];

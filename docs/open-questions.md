@@ -34,11 +34,11 @@ Quién cambió visibilidad/alineamiento, qué y cuándo. Opciones (de `contexto-
 
 **Pregunta:** ¿qué opción? (recomendación preliminar, a tu criterio: **A**, dado que el módulo Log ya está y respeta "sin tablas propias").
 
-## PEND-007 — RF/NFR detallados (bloquea vista maestra TASK-003, estadísticas TASK-006, ACL efectiva)
+## PEND-007 — RF/NFR detallados (bloquea estadísticas TASK-006, ACL efectiva; punto 1 ya resuelve vista maestra v1)
 
 Desglosado para poder responder por partes:
 
-1. **Vista maestra — columnas exactas y orden** (visibilidad, licencia, proyecto, estado de alineamiento, integridad…), filtros disponibles, y contenido del **panel de detalle** configurable.
+1. **Vista maestra — columnas exactas y orden, filtros y panel de detalle.** ✅ **Resuelto (2026-06-16, ADR-0005)** para el alcance v1 (lectura + curación de visibilidad): ver `docs/superpowers/specs/2026-06-15-vista-maestra-design.md`. El panel de detalle **configurable** por el admin queda fuera de v1 y sigue abierto.
 2. **Re-catalogador — reglas de negocio:** ¿una o varias materias/etapas por recurso (cardinalidad)? ¿mínimo de alineamiento para considerar un recurso "completo"? ¿límite de tamaño de lote?
 3. **Curación — acciones y matriz rol×acción:** lista exacta de acciones y qué rol de Omeka puede cada una (ACL).
 4. **Integridad — reglas que definen "íntegro":** campos obligatorios, destino de alineamiento vivo, licencia presente, etc.
@@ -62,7 +62,7 @@ Desglosado para poder responder por partes:
 
 ## Orden recomendado para desbloquear
 
-> Actualizado 2026-06-15: PEND-005/006/008/009 cerrados. **Único pendiente: PEND-007.**
+> Actualizado 2026-06-16: PEND-005/006/008/009 cerrados; PEND-007 punto 1 (vista maestra v1) cerrado con ADR-0005. **Pendiente: PEND-007 puntos 2-6** (re-catalogador, matriz rol×acción, integridad, estadísticas, NFR).
 
-1. **PEND-007** (vista maestra, reglas del re-catalogador, matriz rol×acción, integridad, estadísticas, NFR) → desbloquea el resto del backlog.
-2. Con el mapeo RDF ya fijado (ADR-0004), se puede diseñar el **re-catalogador en plan mode** (alto riesgo) y construir la **vista maestra** (TASK-003) como primera feature.
+1. TASK-003 (vista maestra v1) **en curso**, sin bloqueo.
+2. **PEND-007 puntos 2-6** (reglas del re-catalogador, matriz rol×acción, integridad, estadísticas, NFR) → desbloquea TASK-004/005/006 y la matriz rol×acción definitiva.

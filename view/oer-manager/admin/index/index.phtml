@@ -1,9 +1,103 @@
 <?php
 /**
- * Página de aterrizaje del módulo (FASE 1).
- * La vista maestra del catálogo REA llega en TASK-003.
+ * Vista maestra del catálogo REA (TASK-003, ADR-0005 v1). Página
+ * server-rendered: reutiliza column types del core para Visibilidad,
+ * Etapa, Materia, Licencia y Modificado; el drawer de detalle y las
+ * acciones de visibilidad son la única parte asíncrona (oer-master-view.js).
+ *
+ * @var \Omeka\Api\Representation\ItemRepresentation[] $items
+ * @var array $query
  */
-?>
-<?php echo $this->pageTitle($this->translate('OER Manager')); ?>
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$columnTypeManager = $this->browse()->getBrowseService()->getColumnTypeManager();
 
-<p><?php echo $this->translate('OER Manager is installed. The catalog management view will arrive in a later phase.'); ?></p>
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+$this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERManager'));
+
+$columns = [
+    ['name' => 'is_public', 'type' => $columnTypeManager->get('is_public'), 'data' => []],
+    ['name' => 'stage', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'lrmi:educationalLevel', 'max_values' => 1]],
+    ['name' => 'subject', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'schema:about', 'max_values' => 1]],
+    ['name' => 'alignment', 'type' => $columnTypeManager->get('oerAlignmentStatus'), 'data' => []],
+    ['name' => 'licence', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'dcterms:rights', 'max_values' => 1]],
+    ['name' => 'modified', 'type' => $columnTypeManager->get('modified'), 'data' => []],
+];
+?>
+<?php echo $this->pageTitle($translate('OER Manager')); ?>
+
+<form id="oer-master-view-filters" method="get">
+    <div class="oer-filter-row">
+        <input type="text" name="title" value="<?php echo $escape($query['title'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Título')); ?>">
+        <select name="visibility">
+            <option value=""><?php echo $translate('Visibilidad (todas)'); ?></option>
+            <option value="public" <?php echo ($query['visibility'] ?? '') === 'public' ? 'selected' : ''; ?>><?php echo $translate('Público'); ?></option>
+            <option value="private" <?php echo ($query['visibility'] ?? '') === 'private' ? 'selected' : ''; ?>><?php echo $translate('Privado'); ?></option>
+        </select>
+        <select name="alignment">
+            <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
+            <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
+            <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
+            <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
+        </select>
+        <input type="number" name="stage" value="<?php echo $escape($query['stage'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Etapa (id)')); ?>">
+        <input type="number" name="subject" value="<?php echo $escape($query['subject'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Materia (id)')); ?>">
+        <input type="text" name="licence" value="<?php echo $escape($query['licence'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Licencia')); ?>">
+        <input type="number" name="project" value="<?php echo $escape($query['project'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Proyecto (id)')); ?>">
+        <input type="number" name="axis" value="<?php echo $escape($query['axis'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Eje temático (id)')); ?>">
+        <input type="number" name="resource_type" value="<?php echo $escape($query['resource_type'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Tipo de recurso (id)')); ?>">
+        <button type="submit"><?php echo $translate('Filtrar'); ?></button>
+    </div>
+</form>
+
+<div class="browse-controls">
+    <?php echo $this->pagination(); ?>
+</div>
+
+<?php if ($items): ?>
+<div class="oer-batch-actions">
+    <button type="button" class="oer-batch-set-public" data-is-public="1"><?php echo $translate('Hacer público (selección)'); ?></button>
+    <button type="button" class="oer-batch-set-public" data-is-public="0"><?php echo $translate('Hacer privado (selección)'); ?></button>
+</div>
+
+<table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack" data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>">
+    <thead>
+        <tr>
+            <th><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
+            <th><?php echo $translate('Título'); ?></th>
+            <?php foreach ($columns as $column): ?>
+            <th><?php echo $escape($column['type']->renderHeader($this, $column['data'])); ?></th>
+            <?php endforeach; ?>
+        </tr>
+    </thead>
+    <tbody>
+        <?php foreach ($items as $item): ?>
+        <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>">
+            <td><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>
+            <td>
+                <a href="#" class="oer-open-drawer" data-item-id="<?php echo $item->id(); ?>"><?php echo $escape($item->displayTitle()); ?></a>
+                <ul class="actions">
+                    <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
+                </ul>
+            </td>
+            <?php foreach ($columns as $column): ?>
+            <td class="column-<?php echo $escape($column['name']); ?>"><?php echo $column['type']->renderContent($this, $item, $column['data']); ?></td>
+            <?php endforeach; ?>
+        </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
+<?php else: ?>
+<div class="no-resources">
+    <p><?php echo $translate('No se han encontrado recursos educativos abiertos.'); ?></p>
+</div>
+<?php endif; ?>
+
+<div class="browse-controls">
+    <?php echo $this->pagination(); ?>
+</div>
+
+<div id="oer-drawer" class="oer-drawer" hidden aria-hidden="true" role="dialog" aria-label="<?php echo $escape($translate('Detalle del REA')); ?>">
+    <button type="button" class="oer-drawer-close" aria-label="<?php echo $escape($translate('Cerrar')); ?>">&times;</button>
+    <div class="oer-drawer-content"></div>
+</div>

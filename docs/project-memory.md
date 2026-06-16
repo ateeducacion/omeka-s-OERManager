@@ -1,6 +1,6 @@
 # Memoria del proyecto — OERManager
 
-> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-15 (PEND-005/006/008/009 resueltos, ADR-0002/0003/0004; solo queda PEND-007).
+> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-16 (PEND-007 punto 1 resuelto con ADR-0005; TASK-003 en curso).
 
 ## Estado actual
 
@@ -29,12 +29,13 @@ Formalizadas:
 - **ADR-0002 (2026-06-15)** — estrategia RDF: vocabularios permitidos (solo `dcterms`/`lrmi`/`schema`) y auditoría de curación RDF nativa vía value annotations `dcterms`, sin módulo Log ni tablas; visibilidad fuera del alcance ([decisions/0002-estrategia-rdf-vocabularios-y-auditoria.md](decisions/0002-estrategia-rdf-vocabularios-y-auditoria.md)). Resuelve PEND-006; fija el vocabulario de PEND-005.
 - **ADR-0003 (2026-06-15)** — empaquetado y licencia: paquete `ate/oer-manager`, licencia `GPL-3.0-or-later` ([decisions/0003-empaquetado-y-licencia.md](decisions/0003-empaquetado-y-licencia.md)). Resuelve PEND-009.
 - **ADR-0004 (2026-06-15)** — mapeo RDF (confirmado contra la instalación real): etapa `lrmi:educationalLevel`, materia `schema:about`, saberes `lrmi:teaches`, criterios `lrmi:assesses`, eje temático/tags `dcterms:relation` (controlado por `schema:DefinedTermSet`), proyecto `schema:isPartOf` (acción de gestor), licencia `dcterms:rights` (CustomVocab) ([decisions/0004-mapeo-rdf-alineamiento-tags.md](decisions/0004-mapeo-rdf-alineamiento-tags.md)). Resuelve PEND-005.
+- **ADR-0005 (2026-06-16)** — vista maestra v1 aprobada tal cual (columnas, filtros, drawer fijo, curación de visibilidad individual/lote) ([decisions/0005-vista-maestra-v1-aprobacion.md](decisions/0005-vista-maestra-v1-aprobacion.md)). Resuelve PEND-007 punto 1 para el alcance v1.
 
 ## Abierto (no inventar; preguntar al propietario)
 
-Queda **un** PEND abierto (IDs en [requirements.md §1](requirements.md)):
+Queda **un** PEND abierto, parcialmente resuelto (IDs en [requirements.md §1](requirements.md)):
 
-- **PEND-007** — RF/NFR detallados (vista maestra, reglas del re-catalogador, matriz rol×acción, integridad, estadísticas, rendimiento, i18n, accesibilidad). Bloquea TASK-003, TASK-005, TASK-006. Inputs nuevos (ADR-0004): el proyecto (`schema:isPartOf`) es acción de gestor aparte; valorar una plantilla REA (`resource_template`) para obligatoriedad; la config del módulo necesita el `schema:DefinedTermSet` de ejes temáticos y el `CustomVocab` de licencias.
+- **PEND-007** — RF/NFR detallados. **Punto 1 (vista maestra v1) resuelto con ADR-0005.** Quedan abiertos los puntos 2-6: reglas del re-catalogador, matriz rol×acción completa, reglas de integridad, catálogo de estadísticas, rendimiento, i18n, accesibilidad. Bloquea TASK-004, TASK-005, TASK-006 y la matriz rol×acción definitiva (TASK-003 ya no está bloqueada). Inputs nuevos (ADR-0004): el proyecto (`schema:isPartOf`) es acción de gestor aparte; valorar una plantilla REA (`resource_template`) para obligatoriedad; la config del módulo necesita el `schema:DefinedTermSet` de ejes temáticos y el `CustomVocab` de licencias.
 
 Resueltos el 2026-06-12: PEND-001…PEND-004. Resueltos el 2026-06-15: **PEND-005** (mapeo RDF, ADR-0004), **PEND-006** (auditoría RDF nativa, ADR-0002), **PEND-008** (skills descartadas), **PEND-009** (paquete + licencia, ADR-0003).
 
@@ -46,6 +47,10 @@ Resueltos el 2026-06-12: PEND-001…PEND-004. Resueltos el 2026-06-15: **PEND-00
 | `recatalogador` | stub de FASE 0 + invariantes de escritura RDF y auditoría (ADR-0002) destilados; reglas de negocio pendientes de PEND-005/PEND-007 | Todo lo que toque alineamiento curricular, tags o escritura RDF |
 
 `rea-validacion-legal` y `spreadsheet-analyzer` se **descartaron** el 2026-06-15 (PEND-008): no forman parte del módulo.
+
+## Limitación conocida del arnés de tests (TASK-008)
+
+`test/phpunit.xml` arranca con `vendor/autoload.php` del propio módulo (sin el core de Omeka, ver TASK-008): cualquier clase que implemente una interfaz del core (p. ej. `Omeka\ColumnType\ColumnTypeInterface`) o tipe-hinte una clase del core en un parámetro que se invoque en el test (p. ej. `Omeka\Api\Manager`, `ItemRepresentation`) provoca un fatal de autoload en el host. Por eso `ColumnType\AlignmentStatus` y `Service\MasterViewQuery` (TASK-003) se verificaron manualmente en el contenedor real (igual que ya se hacía con el JS) en vez de con PHPUnit; `test/ModuleConfigTest.php` solo cubre el array de config porque es lo único cargable sin el core. Si se quiere cobertura automatizada de lógica que toca el core, hace falta un arnés de integración que corra dentro del contenedor (no existe todavía; afectará igual a TASK-004/005/006).
 
 ## Glosario
 

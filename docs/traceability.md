@@ -5,8 +5,8 @@
 | Necesidad (origen: docs/referencia/contexto-modulo-rea.md) | RF/NFR | ADR | TASK | Criterio de aceptación |
 | --- | --- | --- | --- | --- |
 | Gestionar solo el catálogo de REA (`lrmi:LearningResource`) | RF-001 | `[PENDIENTE]` | TASK-002, TASK-003 | Listado admin filtra por `resource_class` |
-| Vista maestra de gestión en panel admin | RF-002 | `[PENDIENTE: ADR vista maestra híbrida, decisión previa del propietario aún sin ADR]` | TASK-003 | `[PENDIENTE]` (PEND-007: columnas, filtros, panel) |
-| Curar visibilidad público/privado | RF-003 | `[PENDIENTE]` | TASK-003 | `[PENDIENTE]` (PEND-007: roles y confirmación) |
+| Vista maestra de gestión en panel admin | RF-002 | ADR-0005 (columnas, filtros, panel v1) | TASK-003 | Tabla `admin/oer-manager` con columnas/filtros del spec aprobado; panel configurable queda fuera de v1 |
+| Curar visibilidad público/privado | RF-003 | ADR-0005 (flujo v1) | TASK-003 | Toggle individual + lote con confirmación; ACL nativa de edición; matriz rol×acción propia `[PENDIENTE]` (PEND-007) |
 | Re-catalogación curricular fiable y reversible | RF-004, NFR-004 | ADR-0002 (vocabularios) + ADR-0004 (mapeo: educationalLevel/about/teaches/assesses) | TASK-004 | Properties fijadas; reglas de negocio `[PENDIENTE]` (PEND-007) |
 | Re-catalogación por etiquetas | RF-005 | ADR-0004 (`dcterms:relation`, controlado por `schema:DefinedTermSet`) | TASK-004 | `[PENDIENTE]` (PEND-007 / config) |
 | Garantizar integridad del catálogo | RF-006 | ADR-0004 (campos a validar) | TASK-005 | Campos fijados; definición de «completo» `[PENDIENTE]` (PEND-007) |

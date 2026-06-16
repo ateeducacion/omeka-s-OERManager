@@ -37,8 +37,9 @@ final class ModuleConfigTest extends TestCase
     {
         $route = $this->config['router']['routes']['admin']['child_routes']['oer-manager'] ?? null;
         $this->assertIsArray($route, 'La ruta admin hija oer-manager no está registrada');
-        $this->assertSame('/oer-manager', $route['options']['route']);
+        $this->assertSame('/oer-manager[/:action]', $route['options']['route']);
         $this->assertSame('OERManager\Controller\Admin', $route['options']['defaults']['__NAMESPACE__']);
+        $this->assertSame('index', $route['options']['defaults']['action']);
     }
 
     public function testNavigationPointsToAdminRoute(): void
@@ -50,10 +51,22 @@ final class ModuleConfigTest extends TestCase
 
     public function testIndexControllerIsRegistered(): void
     {
-        $invokables = $this->config['controllers']['invokables'] ?? [];
-        $this->assertContains(
-            \OERManager\Controller\Admin\IndexController::class,
-            array_values($invokables)
+        $factories = $this->config['controllers']['factories'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Controller\Admin\IndexController::class, $factories);
+    }
+
+    public function testMasterViewQueryServiceIsRegistered(): void
+    {
+        $factories = $this->config['service_manager']['factories'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Service\MasterViewQuery::class, $factories);
+    }
+
+    public function testAlignmentStatusColumnTypeIsRegistered(): void
+    {
+        $invokables = $this->config['column_types']['invokables'] ?? [];
+        $this->assertSame(
+            \OERManager\ColumnType\AlignmentStatus::class,
+            $invokables['oerAlignmentStatus'] ?? null
         );
     }
 

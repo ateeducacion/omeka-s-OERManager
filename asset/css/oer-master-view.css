@@ -1,0 +1,54 @@
+.oer-batch-actions {
+    margin-bottom: 1em;
+}
+
+.oer-alignment-status {
+    padding: 0.1em 0.6em;
+    border-radius: 1em;
+    font-size: 0.9em;
+}
+
+.oer-alignment-status-complete {
+    background-color: #d9f2d9;
+}
+
+.oer-alignment-status-partial {
+    background-color: #fdf3cd;
+}
+
+.oer-alignment-status-none {
+    background-color: #f2d9d9;
+}
+
+.oer-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 28em;
+    max-width: 90vw;
+    background: #fff;
+    box-shadow: -0.2em 0 0.6em rgba(0, 0, 0, 0.2);
+    overflow-y: auto;
+    padding: 1.5em;
+    z-index: 1000;
+}
+
+.oer-drawer[hidden] {
+    display: none;
+}
+
+.oer-drawer-close {
+    position: absolute;
+    top: 0.5em;
+    right: 0.5em;
+    font-size: 1.5em;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.oer-drawer-content dt {
+    font-weight: bold;
+    margin-top: 1em;
+}
