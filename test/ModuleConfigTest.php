@@ -61,6 +61,12 @@ final class ModuleConfigTest extends TestCase
         $this->assertArrayHasKey(\OERManager\Service\MasterViewQuery::class, $factories);
     }
 
+    public function testIntegrityCheckerServiceIsRegistered(): void
+    {
+        $invokables = $this->config['service_manager']['invokables'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Service\IntegrityChecker::class, $invokables);
+    }
+
     public function testAlignmentStatusColumnTypeIsRegistered(): void
     {
         $invokables = $this->config['column_types']['invokables'] ?? [];

@@ -29,6 +29,9 @@ return [
         ],
     ],
     'service_manager' => [
+        'invokables' => [
+            Service\IntegrityChecker::class => Service\IntegrityChecker::class,
+        ],
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));

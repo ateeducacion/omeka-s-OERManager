@@ -1,6 +1,6 @@
 # Memoria del proyecto — OERManager
 
-> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-16 (PEND-007 resuelto: punto 1 con ADR-0005, ya implementado en TASK-003; resto con ADR-0006 y `requirements.md`; **TASK-001 cerrada, no quedan PEND abiertos**; TASK-004/005/006 desbloqueadas).
+> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-18 (TASK-005 hecha: `IntegrityChecker` + `IntegrityResult` + hooks en Module.php).
 
 ## Estado actual
 

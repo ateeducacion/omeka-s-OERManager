@@ -2,10 +2,12 @@
 
 namespace OERManager;
 
+use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\Mvc\Controller\AbstractController;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Renderer\PhpRenderer;
+use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Module\AbstractModule;
 
 /**
@@ -38,9 +40,51 @@ class Module extends AbstractModule
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager)
     {
-        // Punto de extensión (NFR-001: extender el core, nunca parchearlo).
-        // Los listeners de negocio llegan en fases posteriores:
-        // vista maestra (TASK-003), re-catalogador (TASK-004), integridad (TASK-005).
+        // Integridad RDF (TASK-005, RF-006): valida y registra issues tras guardar un item.
+        $sharedEventManager->attach(
+            'Omeka\Api\Adapter\ItemAdapter',
+            'api.create.post',
+            [$this, 'handleItemPostSave']
+        );
+        $sharedEventManager->attach(
+            'Omeka\Api\Adapter\ItemAdapter',
+            'api.update.post',
+            [$this, 'handleItemPostSave']
+        );
+    }
+
+    /**
+     * Comprueba la integridad RDF de un item lrmi:LearningResource tras guardarlo
+     * y vuelca las incidencias en el logger de Omeka (RF-006, TASK-005).
+     * No bloquea el guardado: la acción sobre errores se decide en un ADR futuro.
+     */
+    public function handleItemPostSave(Event $event): void
+    {
+        $item = $event->getParam('response')->getContent();
+        if (!$item instanceof ItemRepresentation) {
+            return;
+        }
+        $class = $item->resourceClass();
+        if (!$class || $class->term() !== 'lrmi:LearningResource') {
+            return;
+        }
+
+        $services = $this->getServiceLocator();
+        $checker = $services->get(Service\IntegrityChecker::class);
+        $result = $checker->check($item);
+
+        if (!$result->isOk()) {
+            $logger = $services->get('Omeka\Logger');
+            foreach ($result->getIssues() as $issue) {
+                $logger->warn(sprintf(
+                    'OERManager integrity [%s] item %d – [%s] %s',
+                    $issue['severity'],
+                    $item->id(),
+                    $issue['code'],
+                    $issue['message']
+                ));
+            }
+        }
     }
 
     public function getConfigForm(PhpRenderer $renderer)
