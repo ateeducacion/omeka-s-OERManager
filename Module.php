@@ -4,20 +4,31 @@ namespace OERManager;
 
 use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\Mvc\Controller\AbstractController;
+use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Renderer\PhpRenderer;
 use Omeka\Module\AbstractModule;
 
 /**
  * Módulo OERManager: gestión de un catálogo de Recursos Educativos Abiertos
- * (items lrmi:LearningResource). FASE 1: scaffolding instalable, sin lógica
- * de negocio todavía.
+ * (items lrmi:LearningResource).
  */
 class Module extends AbstractModule
 {
     public function getConfig()
     {
         return include __DIR__ . '/config/module.config.php';
+    }
+
+    public function onBootstrap(MvcEvent $event): void
+    {
+        parent::onBootstrap($event);
+        // Permite el acceso a IndexController a editor y roles superiores.
+        // global_admin y site_admin ya tienen allow global por el AclFactory
+        // de Omeka; aquí se añade editor (NFR-003, RF-003, ADR-0005).
+        // La matriz completa (reviewer, author, etc.) llega en TASK-004/PEND-007.
+        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+        $acl->allow(['editor'], [Controller\Admin\IndexController::class]);
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -40,7 +51,7 @@ class Module extends AbstractModule
     {
         // Punto de extensión (NFR-001: extender el core, nunca parchearlo).
         // Los listeners de negocio llegan en fases posteriores:
-        // vista maestra (TASK-003), re-catalogador (TASK-004), integridad (TASK-005).
+        // re-catalogador (TASK-004), integridad (TASK-005).
     }
 
     public function getConfigForm(PhpRenderer $renderer)
