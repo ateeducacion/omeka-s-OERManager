@@ -16,6 +16,8 @@ class MasterViewQuery
     public const LEARNING_RESOURCE_CLASS_TERM = 'lrmi:LearningResource';
 
     private ApiManager $api;
+    private bool $classIdResolved = false;
+    private ?int $learningResourceClassId = null;
 
     public function __construct(ApiManager $api)
     {
@@ -130,9 +132,13 @@ class MasterViewQuery
 
     private function resolveLearningResourceClassId(): ?int
     {
-        $response = $this->api
-            ->search('resource_classes', ['term' => self::LEARNING_RESOURCE_CLASS_TERM])
-            ->getContent();
-        return $response ? $response[0]->id() : null;
+        if (!$this->classIdResolved) {
+            $response = $this->api
+                ->search('resource_classes', ['term' => self::LEARNING_RESOURCE_CLASS_TERM])
+                ->getContent();
+            $this->learningResourceClassId = $response ? $response[0]->id() : null;
+            $this->classIdResolved = true;
+        }
+        return $this->learningResourceClassId;
     }
 }

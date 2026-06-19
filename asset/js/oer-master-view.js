@@ -54,9 +54,10 @@
         return $content;
     }
 
-    function openDrawer(apiUrl) {
+    function openDrawer(apiUrl, itemId) {
         var $drawer = $('#oer-drawer');
         var $content = $drawer.find('.oer-drawer-content');
+        $drawer.data('last-item-id', itemId);
         $content.empty().text(Omeka.jsTranslate('Cargando…'));
         $drawer.prop('hidden', false).attr('aria-hidden', 'false');
         $drawer.find('.oer-drawer-close').trigger('focus');
@@ -68,11 +69,12 @@
         });
     }
 
-    function closeDrawer($trigger) {
+    function closeDrawer() {
         var $drawer = $('#oer-drawer');
+        var lastId = $drawer.data('last-item-id');
         $drawer.prop('hidden', true).attr('aria-hidden', 'true');
-        if ($trigger && $trigger.length) {
-            $trigger.trigger('focus');
+        if (lastId) {
+            $('.oer-open-drawer[data-item-id="' + lastId + '"]').trigger('focus');
         }
     }
 
@@ -81,7 +83,8 @@
         $.post(url, {
             id: ids.length === 1 ? ids[0] : undefined,
             resource_ids: ids,
-            is_public: isPublic ? '1' : ''
+            is_public: isPublic ? '1' : '',
+            oer_visibility_csrf: $table.data('csrf-token')
         }).done(function (response) {
             onDone(response);
         }).fail(function () {
@@ -92,11 +95,11 @@
     $(document).on('click', '.oer-open-drawer', function (e) {
         e.preventDefault();
         var $row = $(this).closest('tr');
-        openDrawer($row.data('api-url'));
+        openDrawer($row.data('api-url'), $(this).data('item-id'));
     });
 
     $(document).on('click', '.oer-drawer-close', function () {
-        closeDrawer($('.oer-open-drawer[data-item-id="' + $('#oer-drawer').data('last-item-id') + '"]'));
+        closeDrawer();
     });
 
     $(document).on('keydown', function (e) {

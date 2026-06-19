@@ -50,6 +50,9 @@ class AlignmentStatus implements ColumnTypeInterface
 
     public function renderContent(PhpRenderer $view, AbstractEntityRepresentation $resource, array $data): ?string
     {
+        if (!$resource instanceof ItemRepresentation) {
+            return null;
+        }
         $labels = [
             self::COMPLETE => $view->translate('Completo'), // @translate
             self::PARTIAL => $view->translate('Parcial'), // @translate
