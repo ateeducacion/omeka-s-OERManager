@@ -1,6 +1,6 @@
 # Memoria del proyecto — OERManager
 
-> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-19 (TASK-005 cerrada; TASK-004/006 pasan a pendiente).
+> Estado vivo y contexto compartido para evitar decisiones implícitas en conflicto. Se actualiza al cerrar cada fase o decisión. Última actualización: 2026-06-22 (TASK-004 en curso — diseño en plan mode; RF-009…RF-012 y ADR-0007/0008 formalizados; PEND-007 rectificado a resuelto completo en open-questions.md).
 
 ## Estado actual
 
@@ -8,14 +8,15 @@
 - **FASE 1 (scaffolding): completada (TASK-002, 2026-06-12).** Estructura instalable verificada en el contenedor real (PHP 8.4.15, Omeka 4.2.0). Hooks de lint/test activos; 8 tests en verde.
 - **Vista maestra v1: completada (TASK-003, 2026-06-16).** `IndexController`, `MasterViewQuery`, `ColumnType\AlignmentStatus`, vista + JS/CSS. Verificado en el contenedor contra 20 items `lrmi:LearningResource`. Alcance restante de RF-002/RF-003 (edición inline, columna de integridad en UI, historial) queda para iteraciones siguientes.
 - **Integridad RDF: completada (TASK-005, 2026-06-18).** `IntegrityChecker` + `IntegrityResult`; hooks en `api.create.post`/`api.update.post` de `ItemAdapter`; issues al logger de Omeka. Sin bloqueo de guardado (pendiente de ADR).
-- **Pendiente a continuación:** TASK-004 (re-catalogador, **ALTO RIESGO** — requiere plan mode + revisor externo) y TASK-006 (estadísticas). TASK-007 (auditoría) bloqueada por TASK-004.
+- **Re-catalogador (TASK-004): en curso (2026-06-22).** Diseño aprobado en plan mode. Se entrega en dos fases: **4a** (manual: autocomplete curricular + tags, preview+confirmar+auditoría+reversibilidad, config form ADR-0006, ACL NFR-003) en TASK-004; **4b** (IA-assist: extracción de contenido + LLM configurable que propone) en TASK-010. Lote→Job (RF-011/TASK-011) y visión de imágenes (RF-012/TASK-012) quedan como tareas posteriores.
+- **Pendiente a continuación:** cerrar TASK-004 (4a) y TASK-006 (estadísticas). TASK-007 (auditoría) bloqueada por TASK-004.
 - **Nota de entorno:** healthcheck MariaDB marca *unhealthy* aunque el sitio responde HTTP 200 (fuera del alcance del módulo).
 
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
 Tomadas por el propietario y documentadas en `docs/referencia/contexto-modulo-rea.md` §2; pendientes de formalizar como ADR cuando se toquen:
 
-1. **Proceso single-agent** con Claude Code; sin agentes LLM en el runtime del módulo.
+1. **Proceso single-agent** con Claude Code para el desarrollo. ~~Sin agentes LLM en el runtime del módulo.~~ **Revisado (2026-06-22, ADR-0007):** el módulo **sí** invoca un LLM en runtime para la catalogación IA-assistida (RF-009/RF-010), de forma acotada y **siempre bajo confirmación humana** (la IA propone, el curador confirma). La conexión es configurable por proveedor (ADR-0008).
 2. **Extender el core, no parchearlo** (vía `attachListeners` y mecanismos nativos). → NFR-001, guardrail en `.claude/settings.json`.
 3. **Datos como RDF nativo, sin tablas Doctrine propias** (única excepción evaluable: auditoría, PEND-006). → NFR-002.
 4. **Vista maestra híbrida**: columnas del browse del core + capa JS jQuery propia sobre la REST API. Ni SPA ni tabla desde cero.
@@ -28,6 +29,8 @@ Formalizadas:
 - **ADR-0004 (2026-06-15)** — mapeo RDF (confirmado contra la instalación real): etapa `lrmi:educationalLevel`, materia `schema:about`, saberes `lrmi:teaches`, criterios `lrmi:assesses`, eje temático/tags `dcterms:relation` (controlado por `schema:DefinedTermSet`), proyecto `schema:isPartOf` (acción de gestor), licencia `dcterms:rights` (CustomVocab) ([decisions/0004-mapeo-rdf-alineamiento-tags.md](decisions/0004-mapeo-rdf-alineamiento-tags.md)). Resuelve PEND-005.
 - **ADR-0005 (2026-06-16)** — vista maestra v1 aprobada tal cual (columnas, filtros, drawer fijo, curación de visibilidad individual/lote) ([decisions/0005-vista-maestra-v1-aprobacion.md](decisions/0005-vista-maestra-v1-aprobacion.md)). Resuelve PEND-007 punto 1 para el alcance v1; implementada en TASK-003.
 - **ADR-0006 (2026-06-16)** — raíz de los árboles RDF: ejes temáticos = un único `schema:DefinedTermSet` identificado por ID de item fijado en la config del módulo (`40260` en la instalación de referencia); alineamiento curricular = varios `schema:DefinedTermSet`, uno por marco/etapa, identificados por `lrmi:educationalFramework` (`LOMLOE` en la instalación de referencia), también configurable ([decisions/0006-raiz-arboles-rdf-config.md](decisions/0006-raiz-arboles-rdf-config.md)). Resuelve la parte de localización de vocabularios de PEND-007.
+- **ADR-0007 (2026-06-22)** — catalogación curricular IA-assistida: la IA propone, el curador confirma; resolución por etiqueta→búsqueda incremental contra los DefinedTermSet (sin volcar el árbol al LLM, NFR-004); escritura idéntica a la manual. Revisa la decisión 1 (LLM en runtime, acotado y bajo confirmación) ([decisions/0007-catalogacion-ia-assistida.md](decisions/0007-catalogacion-ia-assistida.md)). Formaliza RF-009.
+- **ADR-0008 (2026-06-22)** — conexión LLM configurable por proveedor (local/Anthropic/OpenAI-compatible) por adaptadores; HTTP con `Laminas\Http\Client` (sin dependencia nueva); clave API en settings nativos, nunca en repo/código/logs ([decisions/0008-conexion-llm-configurable.md](decisions/0008-conexion-llm-configurable.md)). Formaliza RF-010.
 
 ## Abierto (no inventar; preguntar al propietario)
 
