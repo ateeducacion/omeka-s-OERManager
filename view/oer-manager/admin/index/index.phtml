@@ -60,7 +60,15 @@ $columns = [
     <button type="button" class="oer-batch-set-public" data-is-public="0"><?php echo $translate('Hacer privado (selección)'); ?></button>
 </div>
 
-<table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack" data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>">
+<?php
+$canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexController', 'recatalog-apply');
+?>
+<table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack"
+    data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>"
+    data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
+    data-recatalog-preview-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-preview'])); ?>"
+    data-recatalog-apply-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-apply'])); ?>"
+    data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>">
     <thead>
         <tr>
             <th><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
