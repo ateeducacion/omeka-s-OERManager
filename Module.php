@@ -111,10 +111,14 @@ class Module extends AbstractModule
         $services = $this->getServiceLocator();
         $settings = $services->get('Omeka\Settings');
         $form = $services->get('FormElementManager')->get(Form\ConfigForm::class);
-        $form->setData([
+        $data = [
             CurriculumSearch::AXIS_SETTING => $settings->get(CurriculumSearch::AXIS_SETTING),
             CurriculumSearch::FRAMEWORK_SETTING => $settings->get(CurriculumSearch::FRAMEWORK_SETTING),
-        ]);
+        ];
+        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
+            $data[$setting] = $settings->get($setting);
+        }
+        $form->setData($data);
         return $renderer->formCollection($form);
     }
 
@@ -129,6 +133,9 @@ class Module extends AbstractModule
             CurriculumSearch::FRAMEWORK_SETTING,
             trim((string) $params[CurriculumSearch::FRAMEWORK_SETTING])
         );
+        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
+            $settings->set($setting, trim((string) ($params[$setting] ?? '')));
+        }
         return true;
     }
 }
