@@ -43,47 +43,67 @@
             || $('#oer-master-view-table').data('can-recatalog') === '1';
     }
 
-    function buildChip(id, title) {
+    // Chip de término seleccionado con el marcado de Chosen de Omeka
+    // (chosen-container-multi), para integración visual nativa.
+    function buildSearchChoice(id, title) {
         return $('<li>')
-            .addClass('oer-chip')
+            .addClass('search-choice')
             .attr('data-id', id)
-            .text(title + ' ')
+            .append($('<span>').text(title))
             .append(
-                $('<button>')
-                    .attr('type', 'button')
-                    .addClass('oer-chip-remove')
+                $('<a>')
+                    .addClass('search-choice-close')
+                    .attr('href', '#')
+                    .attr('role', 'button')
                     .attr('aria-label', Omeka.jsTranslate('Quitar'))
-                    .text('×')
             );
     }
 
-    // Panel de re-catalogación (TASK-004): chips precargados con el alineamiento
-    // actual + autocomplete por dimensión + preview + confirmación.
+    // Selector de términos por dimensión, con la apariencia del widget Chosen de
+    // Omeka pero alimentado por búsqueda incremental AJAX (NFR-004: nunca se
+    // precarga el árbol). Cada dimensión solo ofrece términos de su propio
+    // metadato (la acotación la hace el endpoint search-terms por dimension).
+    function buildDimensionSelector(term, label, itemJson) {
+        var $dim = $('<div>').addClass('oer-recatalog-dim')
+            .attr('data-term', term)
+            .attr('data-dirty', '0');
+        $dim.append($('<label>').text(label));
+
+        var $choices = $('<ul>').addClass('chosen-choices');
+        (itemJson[term] || []).forEach(function (value) {
+            if (value['value_resource_id']) {
+                $choices.append(buildSearchChoice(value['value_resource_id'], valueText(value)));
+            }
+        });
+        $choices.append(
+            $('<li>').addClass('search-field').append(
+                $('<input>')
+                    .addClass('chosen-search-input oer-term-search')
+                    .attr('type', 'text')
+                    .attr('autocomplete', 'off')
+                    .attr('placeholder', Omeka.jsTranslate('Buscar término…'))
+            )
+        );
+
+        $dim.append(
+            $('<div>').addClass('chosen-container chosen-container-multi')
+                .css('width', '100%')
+                .append($choices)
+                .append($('<div>').addClass('chosen-drop').append($('<ul>').addClass('chosen-results')))
+        );
+        return $dim;
+    }
+
+    // Panel de re-catalogación (TASK-004): selectores Chosen precargados con el
+    // alineamiento actual + preview + confirmación. Solo se envían al servidor
+    // las dimensiones que el curador modifica (data-dirty), así que confirmar
+    // nunca toca properties no editadas (isPartial las deja intactas).
     function buildRecatalogPanel(itemId, itemJson) {
         var $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
         $panel.append($('<h4>').text(Omeka.jsTranslate('Re-catalogar')));
 
         RECATALOG_DIMENSIONS.forEach(function (dimension) {
-            var term = dimension[0];
-            var label = dimension[1];
-            var $dim = $('<div>').addClass('oer-recatalog-dim').attr('data-term', term);
-            $dim.append($('<label>').text(label));
-
-            var $chips = $('<ul>').addClass('oer-chips');
-            (itemJson[term] || []).forEach(function (value) {
-                if (value['value_resource_id']) {
-                    $chips.append(buildChip(value['value_resource_id'], valueText(value)));
-                }
-            });
-            $dim.append($chips);
-            $dim.append(
-                $('<input>')
-                    .attr('type', 'text')
-                    .addClass('oer-term-search')
-                    .attr('placeholder', Omeka.jsTranslate('Buscar término…'))
-            );
-            $dim.append($('<ul>').addClass('oer-suggestions'));
-            $panel.append($dim);
+            $panel.append(buildDimensionSelector(dimension[0], dimension[1], itemJson));
         });
 
         $panel.append(
@@ -211,18 +231,29 @@
         });
     });
 
-    // --- Re-catalogador (TASK-004): autocomplete + chips + preview + confirmar.
+    // --- Re-catalogador (TASK-004): selector Chosen + dirty-tracking + preview.
+
+    function disableApply($panel) {
+        $panel.find('.oer-recatalog-apply').prop('disabled', true);
+    }
+
+    // Marca una dimensión como modificada: solo las modificadas se envían al
+    // confirmar (las demás no se tocan). Invalida el preview anterior.
+    function markDirty($dim) {
+        $dim.attr('data-dirty', '1');
+        disableApply($dim.closest('.oer-recatalog'));
+    }
 
     function collectAlignmentPairs($panel) {
         var pairs = [{ name: 'id', value: $panel.data('item-id') }];
-        RECATALOG_DIMENSIONS.forEach(function (dimension) {
-            var term = dimension[0];
-            var $dim = $panel.find('.oer-recatalog-dim[data-term="' + term + '"]');
-            var ids = $dim.find('.oer-chips .oer-chip').map(function () {
+        $panel.find('.oer-recatalog-dim[data-dirty="1"]').each(function () {
+            var $dim = $(this);
+            var term = $dim.data('term');
+            var ids = $dim.find('.chosen-choices .search-choice').map(function () {
                 return $(this).data('id');
             }).get();
             if (!ids.length) {
-                // Dimensión presente pero vacía: borrado intencional de la property.
+                // Dimensión modificada y vaciada: borrado intencional explícito.
                 pairs.push({ name: 'alignment[' + term + '][]', value: '' });
             } else {
                 ids.forEach(function (id) {
@@ -233,51 +264,74 @@
         return pairs;
     }
 
-    function disableApply($panel) {
-        $panel.find('.oer-recatalog-apply').prop('disabled', true);
+    function showDrop($container, results, existingIds) {
+        var $results = $container.find('.chosen-results').empty();
+        (results || []).forEach(function (result) {
+            var selected = existingIds.indexOf(String(result.id)) !== -1;
+            $results.append(
+                $('<li>')
+                    .addClass(selected ? 'result-selected' : 'active-result')
+                    .attr('data-id', result.id)
+                    .text(result.title)
+            );
+        });
+        if (!results || !results.length) {
+            $results.append($('<li>').addClass('no-results').text(Omeka.jsTranslate('Sin resultados')));
+        }
+        $container.addClass('chosen-container-active chosen-with-drop');
     }
 
     var searchTimer = null;
-    $(document).on('input', '.oer-term-search', function () {
+    $(document).on('input focus', '.oer-term-search', function () {
         var $input = $(this);
         var $dim = $input.closest('.oer-recatalog-dim');
+        var $container = $input.closest('.chosen-container');
         var term = $dim.data('term');
-        var text = $input.val();
-        var $suggestions = $dim.find('.oer-suggestions');
+        var text = String($input.val() || '');
         window.clearTimeout(searchTimer);
-        if (!text || text.length < 2) {
-            $suggestions.empty();
+        if (text.length < 2) {
+            $container.find('.chosen-results').empty();
+            $container.removeClass('chosen-with-drop');
             return;
         }
         searchTimer = window.setTimeout(function () {
             var url = $('#oer-master-view-table').data('search-terms-url');
             $.getJSON(url, { dimension: term, q: text }).done(function (response) {
-                $suggestions.empty();
-                (response.results || []).forEach(function (result) {
-                    $suggestions.append(
-                        $('<li>').addClass('oer-suggestion').attr('data-id', result.id).text(result.title)
-                    );
-                });
+                var existing = $dim.find('.chosen-choices .search-choice').map(function () {
+                    return String($(this).data('id'));
+                }).get();
+                showDrop($container, response.results, existing);
             });
         }, 250);
     });
 
-    $(document).on('click', '.oer-suggestion', function () {
-        var $suggestion = $(this);
-        var $dim = $suggestion.closest('.oer-recatalog-dim');
-        var id = $suggestion.data('id');
-        if (!$dim.find('.oer-chips .oer-chip[data-id="' + id + '"]').length) {
-            $dim.find('.oer-chips').append(buildChip(id, $suggestion.text()));
-        }
-        $dim.find('.oer-term-search').val('');
-        $dim.find('.oer-suggestions').empty();
-        disableApply($dim.closest('.oer-recatalog'));
+    $(document).on('blur', '.oer-term-search', function () {
+        var $container = $(this).closest('.chosen-container');
+        // Retardo para que el click en un resultado se registre antes de cerrar.
+        window.setTimeout(function () {
+            $container.removeClass('chosen-with-drop chosen-container-active');
+        }, 200);
     });
 
-    $(document).on('click', '.oer-chip-remove', function () {
-        var $chip = $(this).closest('.oer-chip');
-        disableApply($chip.closest('.oer-recatalog'));
-        $chip.remove();
+    $(document).on('click', '.chosen-results .active-result', function () {
+        var $result = $(this);
+        var $dim = $result.closest('.oer-recatalog-dim');
+        var $container = $result.closest('.chosen-container');
+        var id = $result.data('id');
+        if (!$dim.find('.chosen-choices .search-choice[data-id="' + id + '"]').length) {
+            $dim.find('.search-field').before(buildSearchChoice(id, $result.text()));
+            markDirty($dim);
+        }
+        $container.find('.oer-term-search').val('').trigger('focus');
+        $container.find('.chosen-results').empty();
+        $container.removeClass('chosen-with-drop');
+    });
+
+    $(document).on('click', '.oer-recatalog .search-choice-close', function (e) {
+        e.preventDefault();
+        var $choice = $(this).closest('.search-choice');
+        markDirty($choice.closest('.oer-recatalog-dim'));
+        $choice.remove();
     });
 
     function renderDiff($panel, diff) {
@@ -307,8 +361,14 @@
 
     $(document).on('click', '.oer-recatalog-preview', function () {
         var $panel = $(this).closest('.oer-recatalog');
+        var pairs = collectAlignmentPairs($panel);
+        if (pairs.length <= 1) {
+            $panel.find('.oer-recatalog-diff').text(Omeka.jsTranslate('No hay cambios que confirmar.'));
+            disableApply($panel);
+            return;
+        }
         var url = $('#oer-master-view-table').data('recatalog-preview-url');
-        $.post(url, $.param(collectAlignmentPairs($panel))).done(function (response) {
+        $.post(url, $.param(pairs)).done(function (response) {
             var ok = renderDiff($panel, response.diff || {});
             $panel.find('.oer-recatalog-apply').prop('disabled', !ok);
         }).fail(function () {
