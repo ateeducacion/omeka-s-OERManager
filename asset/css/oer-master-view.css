@@ -70,52 +70,15 @@
     margin-bottom: 0.3em;
 }
 
-.oer-chips,
-.oer-suggestions {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-}
-
-.oer-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3em;
+/* El selector reutiliza el widget Chosen del admin de Omeka (chosen-container).
+   Solo aseguramos que el desplegable de resultados quede visible dentro del
+   drawer, que tiene overflow propio. */
+.oer-recatalog-dim .chosen-container {
     margin-bottom: 0.3em;
 }
 
-.oer-chip {
-    background: #e6eef7;
-    border-radius: 1em;
-    padding: 0.1em 0.6em;
-    font-size: 0.9em;
-}
-
-.oer-chip-remove {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1em;
-    line-height: 1;
-}
-
-.oer-suggestions {
-    border: 1px solid #ccc;
-    max-height: 12em;
-    overflow-y: auto;
-}
-
-.oer-suggestions:empty {
-    border: none;
-}
-
-.oer-suggestion {
-    padding: 0.3em 0.6em;
-    cursor: pointer;
-}
-
-.oer-suggestion:hover {
-    background: #e6eef7;
+.oer-recatalog-dim .chosen-drop {
+    z-index: 1100;
 }
 
 .oer-recatalog-actions {
