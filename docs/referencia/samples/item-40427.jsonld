@@ -1,0 +1,282 @@
+{
+    "@context": "http://localhost:8080/api-context",
+    "@id": "http://localhost:8080/api/items/40427",
+    "@type": [
+        "o:Item",
+        "lrmi:LearningResource"
+    ],
+    "o:id": 40427,
+    "o:is_public": true,
+    "o:owner": {
+        "@id": "http://localhost:8080/api/users/3",
+        "o:id": 3
+    },
+    "o:resource_class": {
+        "@id": "http://localhost:8080/api/resource_classes/4758",
+        "o:id": 4758
+    },
+    "o:resource_template": null,
+    "o:thumbnail": {
+        "@id": "http://localhost:8080/api/assets/23",
+        "o:id": 23
+    },
+    "o:title": "Alonso Quesada: un viaje por la literatura y el patrimonio canario",
+    "thumbnail_display_urls": {
+        "large": "http://localhost:8080/files/asset/4d6c606074bb89a4ea61b9de45bb12e6dd75c50b.jpeg",
+        "medium": "http://localhost:8080/files/asset/4d6c606074bb89a4ea61b9de45bb12e6dd75c50b.jpeg",
+        "square": "http://localhost:8080/files/asset/4d6c606074bb89a4ea61b9de45bb12e6dd75c50b.jpeg"
+    },
+    "o:created": {
+        "@value": "2026-04-16T09:54:49+00:00",
+        "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+    },
+    "o:modified": {
+        "@value": "2026-06-15T09:28:44+00:00",
+        "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
+    },
+    "o:primary_media": {
+        "@id": "http://localhost:8080/api/media/40429",
+        "o:id": 40429
+    },
+    "o:media": [
+        {
+            "@id": "http://localhost:8080/api/media/40429",
+            "o:id": 40429
+        }
+    ],
+    "o:item_set": [],
+    "o:site": [
+        {
+            "@id": "http://localhost:8080/api/sites/1",
+            "o:id": 1
+        }
+    ],
+    "dcterms:title": [
+        {
+            "type": "literal",
+            "property_id": 1,
+            "property_label": "Title",
+            "is_public": true,
+            "@value": "Alonso Quesada: un viaje por la literatura y el patrimonio canario"
+        }
+    ],
+    "dcterms:description": [
+        {
+            "type": "literal",
+            "property_id": 4,
+            "property_label": "Description",
+            "is_public": true,
+            "@value": "Este recurso educativo digital tiene como objetivo acercar al alumnado a la figura de Alonso Quesada, seudónimo de Rafael Romero Quesada, uno de los máximos exponentes del modernismo literario canario. A través de actividades interactivas y reflexivas, se explorará su obra, el contexto histórico que lo rodeó y su impacto en el patrimonio cultural de Canarias. Además, se conectarán estos contenidos con los Objetivos de Desarrollo Sostenible (ODS), reflexionando sobre cómo la literatura contribuye a un mundo más justo y sostenible.\n\nSe ha establecido relación curricular con las materias de Lengua Castellana y Literatura (3.º y 4.º ESO principalmente) y Bachillerato, en especial la materia optativa de Literatura Canaria (2.º Bachillerato) así como con Geografía e Historia (4.º ESO). Esto no quita que también sea vinculable con otras materias como Historia de Canarias; Educación Plástica, Visual y Audiovisual, entre otras."
+        }
+    ],
+    "lrmi:learningResourceType": [
+        {
+            "type": "literal",
+            "property_id": 7815,
+            "property_label": "Learning Resource Type",
+            "is_public": true,
+            "@value": "objeto de aprendizaje"
+        }
+    ],
+    "lrmi:teaches": [
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28322",
+            "value_resource_id": 28322,
+            "value_resource_name": "items",
+            "url": "/admin/item/28322",
+            "display_title": "BLCA02SBI.1.5"
+        },
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28324",
+            "value_resource_id": 28324,
+            "value_resource_name": "items",
+            "url": "/admin/item/28324",
+            "display_title": "BLCA02SBI.2.1"
+        },
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28325",
+            "value_resource_id": 28325,
+            "value_resource_name": "items",
+            "url": "/admin/item/28325",
+            "display_title": "BLCA02SBI.2.2"
+        },
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28328",
+            "value_resource_id": 28328,
+            "value_resource_name": "items",
+            "url": "/admin/item/28328",
+            "display_title": "BLCA02SBI.2.5"
+        },
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28337",
+            "value_resource_id": 28337,
+            "value_resource_name": "items",
+            "url": "/admin/item/28337",
+            "display_title": "BLCA02SBIII.3"
+        },
+        {
+            "type": "resource",
+            "property_id": 7820,
+            "property_label": "Teaches",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/28341",
+            "value_resource_id": 28341,
+            "value_resource_name": "items",
+            "url": "/admin/item/28341",
+            "display_title": "BLCA02SBIV.2"
+        }
+    ],
+    "lrmi:assesses": [
+        {
+            "type": "resource",
+            "property_id": 7807,
+            "property_label": "Assesses",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/38014",
+            "value_resource_id": 38014,
+            "value_resource_name": "items",
+            "url": "/admin/item/38014",
+            "display_title": "BLCA02CE1.1"
+        },
+        {
+            "type": "resource",
+            "property_id": 7807,
+            "property_label": "Assesses",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/38015",
+            "value_resource_id": 38015,
+            "value_resource_name": "items",
+            "url": "/admin/item/38015",
+            "display_title": "BLCA02CE1.2"
+        },
+        {
+            "type": "resource",
+            "property_id": 7807,
+            "property_label": "Assesses",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/38019",
+            "value_resource_id": 38019,
+            "value_resource_name": "items",
+            "url": "/admin/item/38019",
+            "display_title": "BLCA02CE4.1"
+        }
+    ],
+    "lrmi:educationalLevel": [
+        {
+            "type": "resource",
+            "property_id": 7810,
+            "property_label": "Educational Level",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/24559",
+            "value_resource_id": 24559,
+            "value_resource_name": "items",
+            "url": "/admin/item/24559",
+            "display_title": "1º Bachillerato"
+        }
+    ],
+    "schema:about": [
+        {
+            "type": "resource",
+            "property_id": 7768,
+            "property_label": "about",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/24650",
+            "value_resource_id": 24650,
+            "value_resource_name": "items",
+            "url": "/admin/item/24650",
+            "display_title": "Literatura Canaria"
+        }
+    ],
+    "dcterms:rights": [
+        {
+            "type": "literal",
+            "property_id": 15,
+            "property_label": "Rights",
+            "is_public": true,
+            "@value": "ccbysa"
+        }
+    ],
+    "lrmi:timeRequired": [
+        {
+            "type": "literal",
+            "property_id": 7819,
+            "property_label": "Time Required",
+            "is_public": true,
+            "@value": "10"
+        }
+    ],
+    "dcterms:relation": [
+        {
+            "type": "resource",
+            "property_id": 13,
+            "property_label": "Relation",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/40289",
+            "value_resource_id": 40289,
+            "value_resource_name": "items",
+            "url": "/admin/item/40289",
+            "display_title": "Patrimonio"
+        }
+    ],
+    "schema:isPartOf": [
+        {
+            "type": "resource",
+            "property_id": 7799,
+            "property_label": "isPartOf",
+            "is_public": true,
+            "@id": "http://localhost:8080/api/items/40433",
+            "value_resource_id": 40433,
+            "value_resource_name": "items",
+            "url": "/admin/item/40433",
+            "display_title": "UCTICEE"
+        }
+    ],
+    "lrmi:educationalUse": [
+        {
+            "type": "literal",
+            "property_id": 7812,
+            "property_label": "Educational Use",
+            "is_public": true,
+            "@value": "Uso educativo del recurso"
+        }
+    ],
+    "lrmi:educationalRole": [
+        {
+            "type": "literal",
+            "property_id": 7811,
+            "property_label": "Educational Role",
+            "is_public": true,
+            "@value": "Alumnado"
+        },
+        {
+            "type": "literal",
+            "property_id": 7811,
+            "property_label": "Educational Role",
+            "is_public": true,
+            "@value": "Familias"
+        }
+    ],
+    "o-access:status": {
+        "level": "free"
+    }
+}

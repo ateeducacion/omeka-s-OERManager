@@ -97,7 +97,7 @@ class IndexController extends AbstractActionController
         $text = (string) $this->params()->fromQuery('q', '');
         $results = 'dcterms:relation' === $dimension
             ? $this->curriculumSearch->searchAxes($text)
-            : $this->curriculumSearch->searchCurricular($text);
+            : $this->curriculumSearch->searchDimension($dimension, $text);
 
         return new JsonModel(['results' => $results]);
     }

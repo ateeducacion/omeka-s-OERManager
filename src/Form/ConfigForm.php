@@ -42,5 +42,28 @@ class ConfigForm extends Form
                 'id' => CurriculumSearch::FRAMEWORK_SETTING,
             ],
         ]);
+
+        // Valor de dcterms:type que distingue cada dimensión curricular dentro
+        // del marco (ADR-0006 + docs/referencia/curriculo-modelo-rdf.md). El
+        // re-catalogador acota cada input a los términos de su dcterms:type.
+        $typeLabels = [
+            'lrmi:educationalLevel' => 'dcterms:type de Etapa (lrmi:educationalLevel)', // @translate
+            'schema:about' => 'dcterms:type de Materia (schema:about)', // @translate
+            'lrmi:teaches' => 'dcterms:type de Saberes (lrmi:teaches)', // @translate
+            'lrmi:assesses' => 'dcterms:type de Criterios (lrmi:assesses)', // @translate
+        ];
+        foreach (CurriculumSearch::TYPE_SETTINGS as $dimension => $setting) {
+            $this->add([
+                'name' => $setting,
+                'type' => 'Text',
+                'options' => [
+                    'label' => $typeLabels[$dimension],
+                    'info' => 'Valor de dcterms:type de los términos de esta dimensión.', // @translate
+                ],
+                'attributes' => [
+                    'id' => $setting,
+                ],
+            ]);
+        }
     }
 }
