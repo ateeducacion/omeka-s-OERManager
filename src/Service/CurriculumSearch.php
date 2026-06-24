@@ -68,8 +68,9 @@ class CurriculumSearch
         if ('' === $typeValue) {
             return [];
         }
-        // dcterms:type por defecto se trata como literal (eq). VERIFICAR en
-        // contenedor si fuera resource (cambiaría a 'res' con el id del tipo).
+        // dcterms:type se trata como literal (eq): confirmado contra la
+        // instalación real (2026-06-24). Mejora propuesta (RF-013): migrar estos
+        // literales a recursos skos:Concept; entonces el filtro pasaría a 'res'.
         $query = [
             'property' => [[
                 'property' => self::TYPE_TERM,

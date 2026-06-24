@@ -31,8 +31,16 @@ Confirmado por el propietario (2026-06-23):
 - Los `schema:DefinedTermSet` se agrupan por **marco** (`lrmi:educationalFramework`, en la instalación de referencia `LOMLOE`); no hay un set separado por dimensión (ADR-0006). De ahí que la dimensión se resuelva por `dcterms:type`, no por pertenencia a set.
 - Los códigos de saberes/criterios (p. ej. `BLCA02SBI.1.5`, `BLCA02CE1.1`) llevan prefijo de materia/etapa: indican su lugar en el grafo.
 
-## Pendiente de confirmar en contenedor
+## Confirmado / pendiente
 
-- Si `dcterms:type` es **literal** (filtro `eq`) o **resource** (filtro `res`); el re-catalogador asume literal por defecto y es ajuste trivial.
+- **`dcterms:type` es literal** (confirmado 2026-06-24): el re-catalogador filtra con `eq`. Es un literal compartido por los términos de una misma dimensión.
+
+Pendiente de confirmar en contenedor:
+
 - Qué property concreta del grafo conecta cada nivel (saber→materia, criterio→materia/etapa), para una posible **acotación contextual** (filtrar Saberes/Criterios por la materia/etapa ya elegida). Mejora propuesta, fuera del primer corte de TASK-004.
 - El formato exacto de las **value annotations** (`@annotation`) al escribir auditoría (ADR-0002).
+
+## Mejoras propuestas
+
+- **RF-013 — `dcterms:type` como `skos:Concept` (recurso):** hoy la dimensión se marca con un literal `dcterms:type`. Migrar esos literales a recursos controlados (`skos:Concept`) daría un vocabulario de tipos enlazable y sin erratas. Afecta al dato del currículo (que el módulo consume, no posee) y al re-catalogador, que pasaría de filtrar `eq` a `res`. Tarea posterior.
+- **Acotación contextual por el grafo** (ver arriba).
