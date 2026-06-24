@@ -95,9 +95,19 @@ class IndexController extends AbstractActionController
     {
         $dimension = (string) $this->params()->fromQuery('dimension', '');
         $text = (string) $this->params()->fromQuery('q', '');
-        $results = 'dcterms:relation' === $dimension
-            ? $this->curriculumSearch->searchAxes($text)
-            : $this->curriculumSearch->searchDimension($dimension, $text);
+        $context = [
+            'etapa' => $this->params()->fromQuery('etapa'),
+            'level' => $this->params()->fromQuery('level'),
+            'about' => $this->params()->fromQuery('about'),
+        ];
+
+        if ('etapa' === $dimension) {
+            $results = $this->curriculumSearch->searchEtapas($text);
+        } elseif ('dcterms:relation' === $dimension) {
+            $results = $this->curriculumSearch->searchAxes($text);
+        } else {
+            $results = $this->curriculumSearch->searchDimension($dimension, $text, $context);
+        }
 
         return new JsonModel(['results' => $results]);
     }

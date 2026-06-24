@@ -40,6 +40,10 @@ Reglas asociadas:
 - La **config del módulo** gana dos parámetros: el `schema:DefinedTermSet` de ejes y el `CustomVocab` de licencias.
 - La skill `recatalogador` se actualiza con esta tabla; se refinará al construir TASK-004.
 
+## Addendum (2026-06-24) — precisión de nodos
+
+Verificado contra el grafo real (ADR-0009): el valor de `lrmi:educationalLevel` del REA referencia un **Curso** (p. ej. "1º Bachillerato"), no la Etapa educativa; la Etapa es el ancestro (un `schema:DefinedTermSet`). `schema:about` referencia una **Asignatura**. No cambia el mapeo de properties de arriba; precisa qué nodo del currículo ocupa cada una. Modelo completo en [ADR-0009](0009-grafo-curricular-lomloe.md) y [docs/referencia/curriculo-modelo-rdf.md](../referencia/curriculo-modelo-rdf.md).
+
 ## Fuentes
 
 - JSON-LD de un item REA real de la instalación (chat 2026-06-15).

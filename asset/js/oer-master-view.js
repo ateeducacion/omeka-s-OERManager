@@ -18,11 +18,12 @@
         ['dcterms:rights', 'Licencia']
     ];
 
-    // Properties que el re-catalogador puede escribir (ADR-0004); el proyecto
-    // (schema:isPartOf) queda fuera a propósito (acción de gestor aparte).
+    // Properties que el re-catalogador puede escribir (ADR-0004/0009); el
+    // proyecto (schema:isPartOf) queda fuera (acción de gestor aparte). El
+    // educationalLevel del REA referencia un Curso (ADR-0009).
     var RECATALOG_DIMENSIONS = [
-        ['lrmi:educationalLevel', 'Etapa'],
-        ['schema:about', 'Materia'],
+        ['lrmi:educationalLevel', 'Curso'],
+        ['schema:about', 'Asignatura'],
         ['lrmi:teaches', 'Saberes básicos'],
         ['lrmi:assesses', 'Criterios de evaluación'],
         ['dcterms:relation', 'Eje temático']
@@ -63,10 +64,11 @@
     // Omeka pero alimentado por búsqueda incremental AJAX (NFR-004: nunca se
     // precarga el árbol). Cada dimensión solo ofrece términos de su propio
     // metadato (la acotación la hace el endpoint search-terms por dimension).
-    function buildDimensionSelector(term, label, itemJson) {
+    function buildDimensionSelector(term, label, itemJson, isHelper) {
         var $dim = $('<div>').addClass('oer-recatalog-dim')
             .attr('data-term', term)
-            .attr('data-dirty', '0');
+            .attr('data-dirty', '0')
+            .attr('data-helper', isHelper ? '1' : '0');
         $dim.append($('<label>').text(label));
 
         var $choices = $('<ul>').addClass('chosen-choices');
@@ -102,8 +104,13 @@
         var $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
         $panel.append($('<h4>').text(Omeka.jsTranslate('Re-catalogar')));
 
+        // Etapa: ayuda de navegación de la cascada (ADR-0009). No se escribe en
+        // el REA; solo acota Curso → Asignatura → Saberes/Criterios.
+        $panel.append(
+            buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa (ayuda, no se guarda)'), {}, true)
+        );
         RECATALOG_DIMENSIONS.forEach(function (dimension) {
-            $panel.append(buildDimensionSelector(dimension[0], dimension[1], itemJson));
+            $panel.append(buildDimensionSelector(dimension[0], dimension[1], itemJson, false));
         });
 
         $panel.append(
@@ -244,9 +251,26 @@
         disableApply($dim.closest('.oer-recatalog'));
     }
 
+    // Primer término elegido en una dimensión del panel (id), o 0.
+    function firstChipId($panel, term) {
+        var $chip = $panel.find('.oer-recatalog-dim[data-term="' + term + '"] .chosen-choices .search-choice').first();
+        return $chip.length ? $chip.data('id') : 0;
+    }
+
+    // Contexto de ancestros para acotar la búsqueda de una dimensión hija
+    // (ADR-0009): etapa (ayuda), curso (educationalLevel) y asignatura (about).
+    function getContext($panel) {
+        return {
+            etapa: firstChipId($panel, 'etapa'),
+            level: firstChipId($panel, 'lrmi:educationalLevel'),
+            about: firstChipId($panel, 'schema:about')
+        };
+    }
+
     function collectAlignmentPairs($panel) {
         var pairs = [{ name: 'id', value: $panel.data('item-id') }];
-        $panel.find('.oer-recatalog-dim[data-dirty="1"]').each(function () {
+        // La Etapa (data-helper) no se escribe: se excluye de la confirmación.
+        $panel.find('.oer-recatalog-dim[data-dirty="1"][data-helper="0"]').each(function () {
             var $dim = $(this);
             var term = $dim.data('term');
             var ids = $dim.find('.chosen-choices .search-choice').map(function () {
@@ -296,7 +320,11 @@
         }
         searchTimer = window.setTimeout(function () {
             var url = $('#oer-master-view-table').data('search-terms-url');
-            $.getJSON(url, { dimension: term, q: text }).done(function (response) {
+            // Acotación contextual (ADR-0009): se envían los ancestros elegidos.
+            var params = getContext($dim.closest('.oer-recatalog'));
+            params.dimension = term;
+            params.q = text;
+            $.getJSON(url, params).done(function (response) {
                 var existing = $dim.find('.chosen-choices .search-choice').map(function () {
                     return String($(this).data('id'));
                 }).get();
