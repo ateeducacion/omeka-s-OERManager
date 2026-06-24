@@ -17,6 +17,7 @@
 | Catalogar muchos recursos sin bloquear la UI | RF-011 | ADR-0007 + ADR-0008 | TASK-011 | Marcar varios items → Omeka Job en segundo plano; tarea aparte de TASK-004/010 |
 | Aprovechar el contenido visual de los recursos | RF-012 | ADR-0007 | TASK-012 | Visión para imágenes en la extracción, activable desde la config; mejora posterior |
 | Vocabulario de tipos de término enlazable (sin literales) | RF-013 | ADR-0004, ADR-0006 (addendum dcterms:type) | TASK-013 | `dcterms:type` literal → `skos:Concept`; el re-catalogador pasaría de filtrar `eq` a `res`; mejora posterior |
+| Catalogación guiada por la estructura del currículo | RF-014, NFR-004 | ADR-0009 (grafo curricular LOMLOE) + ADR-0004/0006 | TASK-004 | Cascada Etapa→Curso→Asignatura→{Saberes, Criterios} acotando cada dimensión por el ancestro elegido; `dcterms:type` + enlaces del grafo; búsqueda incremental |
 | No romper el core de Omeka | NFR-001 | ADR-0001 (guardrails como parte del gobierno) | TASK-008 | `git diff` del core vacío; hook PreToolUse bloquea escrituras fuera del repo |
 | Portabilidad de datos (sin tablas propias) | NFR-002 | ADR-0002 (auditoría RDF nativa, sin excepción de tablas) | TASK-007 | Sin entidades Doctrine propias; la auditoría usa value annotations `dcterms`, no tablas |
 | Solo usuarios autorizados curan | NFR-003 | `[PENDIENTE]` | TASK-003, TASK-004 | Matriz rol×acción fijada en requirements.md: `editor`+ para visibilidad/alineamiento/tags, `global_admin`/`site_admin` para proyecto |

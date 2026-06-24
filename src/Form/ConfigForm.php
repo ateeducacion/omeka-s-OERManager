@@ -46,9 +46,12 @@ class ConfigForm extends Form
         // Valor de dcterms:type que distingue cada dimensión curricular dentro
         // del marco (ADR-0006 + docs/referencia/curriculo-modelo-rdf.md). El
         // re-catalogador acota cada input a los términos de su dcterms:type.
+        // El lrmi:educationalLevel del REA referencia un Curso, no la Etapa
+        // (ADR-0009). Valores reales de referencia: Curso, Asignatura,
+        // Saber básico, Criterio de evaluación.
         $typeLabels = [
-            'lrmi:educationalLevel' => 'dcterms:type de Etapa (lrmi:educationalLevel)', // @translate
-            'schema:about' => 'dcterms:type de Materia (schema:about)', // @translate
+            'lrmi:educationalLevel' => 'dcterms:type de Curso (lrmi:educationalLevel)', // @translate
+            'schema:about' => 'dcterms:type de Asignatura (schema:about)', // @translate
             'lrmi:teaches' => 'dcterms:type de Saberes (lrmi:teaches)', // @translate
             'lrmi:assesses' => 'dcterms:type de Criterios (lrmi:assesses)', // @translate
         ];
