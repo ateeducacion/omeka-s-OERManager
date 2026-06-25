@@ -11,6 +11,8 @@
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $columnTypeManager = $this->browse()->getBrowseService()->getColumnTypeManager();
+/** @var bool $isPartialFilter */
+/** @var string $csrfToken */
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
 $this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERManager'));
@@ -54,6 +56,10 @@ $columns = [
     <?php echo $this->pagination(); ?>
 </div>
 
+<?php if ($isPartialFilter): ?>
+<p class="status-info"><?php echo $translate('Nota: el total paginado es aproximado al filtrar por alineamiento parcial.'); /* @translate */ ?></p>
+<?php endif; ?>
+
 <?php if ($items): ?>
 <div class="oer-batch-actions">
     <button type="button" class="oer-batch-set-public" data-is-public="1"><?php echo $translate('Hacer público (selección)'); ?></button>
@@ -65,6 +71,7 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
 ?>
 <table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack"
     data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>"
+    data-csrf-token="<?php echo $escape($csrfToken); ?>"
     data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
     data-recatalog-preview-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-preview'])); ?>"
     data-recatalog-apply-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-apply'])); ?>"

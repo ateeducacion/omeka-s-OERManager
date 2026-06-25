@@ -4,6 +4,7 @@ namespace OERManager\Controller\Admin;
 
 use Laminas\Log\LoggerInterface;
 use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\Session\Container as SessionContainer;
 use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
@@ -57,18 +58,28 @@ class IndexController extends AbstractActionController
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
         $response = $this->api()->search('items', $searchParams);
         $items = $response->getContent();
+        $isPartialFilter = AlignmentStatus::PARTIAL === ($query['alignment'] ?? '');
 
-        if (AlignmentStatus::PARTIAL === ($query['alignment'] ?? '')) {
+        if ($isPartialFilter) {
             $items = $this->masterViewQuery->filterPartialAlignment($items);
         }
 
         $this->paginator($response->getTotalResults());
 
+        // CSRF: token por sesión, consumido por setVisibilityAction via JS.
+        $session = new SessionContainer('OERManager');
+        if (empty($session->visibilityCsrfToken)) {
+            $session->visibilityCsrfToken = bin2hex(random_bytes(16));
+        }
+
         $view = new ViewModel();
         $view->setTemplate('oer-manager/admin/index/index');
         $view->setVariable('items', $items);
         $view->setVariable('query', $query);
-        // Token CSRF para la confirmación del re-catalogador (I4).
+        $view->setVariable('isPartialFilter', $isPartialFilter);
+        // CSRF de visibilidad (QA TASK-003) y de la confirmación del
+        // re-catalogador (TASK-004, I4): mecanismos independientes.
+        $view->setVariable('csrfToken', $session->visibilityCsrfToken);
         $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
         return $view;
     }
@@ -76,12 +87,23 @@ class IndexController extends AbstractActionController
     /**
      * Cambia is_public individual o en lote (ADR-0005 §7). Reusa el permiso
      * nativo de edición del item: la API deniega por sí misma a quien no
-     * pueda editar (NFR-003 en v1; matriz rol×acción propia → PEND-007).
+     * pueda editar (NFR-003 en v1; matriz rol×acción propia → TASK-004).
      */
     public function setVisibilityAction()
     {
         if (!$this->getRequest()->isPost()) {
             return $this->redirect()->toRoute('admin/oer-manager');
+        }
+
+        $token = $this->params()->fromPost('oer_visibility_csrf', '');
+        $session = new SessionContainer('OERManager');
+        if (
+            empty($token)
+            || empty($session->visibilityCsrfToken)
+            || !hash_equals($session->visibilityCsrfToken, $token)
+        ) {
+            $this->getResponse()->setStatusCode(403);
+            return new JsonModel(['error' => 'Invalid CSRF token']);
         }
 
         $isPublic = (bool) $this->params()->fromPost('is_public');
