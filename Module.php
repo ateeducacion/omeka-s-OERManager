@@ -26,9 +26,10 @@ class Module extends AbstractModule
 
     /**
      * ACL de curación (NFR-003): el re-catalogador y la vista maestra requieren
-     * rol editor o superior. El proyecto (schema:isPartOf) no se toca aquí: es
-     * acción de gestor aparte, reservada a admin (ADR-0004), y vive fuera de
-     * este controlador. El global_admin ya tiene todos los privilegios.
+     * rol editor o superior. global_admin y site_admin suelen tener allow global
+     * por el AclFactory de Omeka; se listan editor y site_admin explícitamente
+     * para garantizar el acceso (idempotente si ya estaban). El proyecto
+     * (schema:isPartOf) no se toca aquí: acción de gestor aparte (ADR-0004).
      */
     public function onBootstrap(MvcEvent $event): void
     {
