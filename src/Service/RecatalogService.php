@@ -140,8 +140,8 @@ class RecatalogService
 
     /**
      * Auditoría RDF nativa (ADR-0002): quién/cuándo/qué sobre el valor curado.
-     * VERIFICAR el formato exacto de '@annotation' en Omeka 4.2 contra la
-     * instalación real antes de fiarse en producción.
+     * El formato '@annotation' está verificado contra la instalación real
+     * (2026-06-25): se escribe correctamente como value annotation.
      *
      * @return array<string,array<int,array<string,mixed>>>
      */
