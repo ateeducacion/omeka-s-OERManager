@@ -79,4 +79,4 @@ Estas reglas son las que la **IA-assistida** (TASK-010) asume al resolver etique
 ## 7. Confirmado / pendiente
 
 - **`dcterms:type` es literal** (filtro `eq`, confirmado 2026-06-24). Mejora propuesta RF-013: migrarlo a `skos:Concept` (pasaría a `res`).
-- Pendiente de contenedor: formato exacto de las **value annotations** (`@annotation`) de la auditoría (ADR-0002).
+- **Value annotations (`@annotation`)** de la auditoría (ADR-0002): formato verificado contra el contenedor (2026-06-25), se escribe correctamente.
