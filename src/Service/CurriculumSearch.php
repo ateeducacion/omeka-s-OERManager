@@ -58,7 +58,7 @@ class CurriculumSearch
      *
      * @return array<int,array{id:int,title:string}>
      */
-    public function searchEtapas(string $text): array
+    public function searchEtapas(string $text, int $limit = self::RESULT_LIMIT): array
     {
         $framework = trim((string) $this->settings->get(self::FRAMEWORK_SETTING));
         if ('' === $framework) {
@@ -72,7 +72,7 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
-            'per_page' => self::RESULT_LIMIT,
+            'per_page' => $limit,
         ];
         $this->addTitleFilter($query, $text);
         return $this->mapResults($this->api->search('items', $query)->getContent());
@@ -85,8 +85,12 @@ class CurriculumSearch
      * @param array<string,int|string> $context ids de ancestros: etapa, level (curso), about (asignatura)
      * @return array<int,array{id:int,title:string}>
      */
-    public function searchDimension(string $dimension, string $text, array $context = []): array
-    {
+    public function searchDimension(
+        string $dimension,
+        string $text,
+        array $context = [],
+        int $limit = self::RESULT_LIMIT
+    ): array {
         if (!isset(self::TYPE_SETTINGS[$dimension])) {
             return [];
         }
@@ -105,7 +109,7 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
-            'per_page' => self::RESULT_LIMIT,
+            'per_page' => $limit,
         ];
         $contextFilter = $this->contextFilter($dimension, $context);
         if (null !== $contextFilter) {
@@ -125,7 +129,7 @@ class CurriculumSearch
      *
      * @return array<int,array{id:int,title:string}>
      */
-    public function searchAxes(string $text): array
+    public function searchAxes(string $text, int $limit = self::RESULT_LIMIT): array
     {
         $setId = (int) $this->settings->get(self::AXIS_SETTING);
         if ($setId <= 0) {
@@ -141,7 +145,7 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
-            'per_page' => self::RESULT_LIMIT,
+            'per_page' => $limit,
         ];
         $this->addTitleFilter($query, $text);
         return $this->mapResults($this->api->search('items', $query)->getContent());

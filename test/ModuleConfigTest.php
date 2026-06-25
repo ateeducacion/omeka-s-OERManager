@@ -76,6 +76,35 @@ final class ModuleConfigTest extends TestCase
         );
     }
 
+    public function testAiInvokableServicesAreRegistered(): void
+    {
+        $invokables = $this->config['service_manager']['invokables'] ?? [];
+        foreach ([
+            \OERManager\Service\Ai\PromptBuilder::class,
+            \OERManager\Service\Ai\ResponseParser::class,
+            \OERManager\Service\Ai\EvaluationScorer::class,
+        ] as $service) {
+            $this->assertArrayHasKey($service, $invokables, "Falta invokable IA $service");
+        }
+    }
+
+    public function testAiFactoryServicesAreRegistered(): void
+    {
+        $factories = $this->config['service_manager']['factories'] ?? [];
+        foreach ([
+            \OERManager\Service\Llm\HttpTransportInterface::class,
+            \OERManager\Service\Llm\LlmClientInterface::class,
+            \OERManager\Service\Ai\TermResolverInterface::class,
+            \OERManager\Service\Content\MediaSourceInterface::class,
+            \OERManager\Service\Content\ContentExtractor::class,
+            \OERManager\Service\Ai\CurricularClassifier::class,
+            \OERManager\Service\Ai\TagClassifier::class,
+            \OERManager\Service\Ai\AiCataloguer::class,
+        ] as $service) {
+            $this->assertArrayHasKey($service, $factories, "Falta factory IA $service");
+        }
+    }
+
     public function testModuleIniDeclaresOmeka42Constraint(): void
     {
         $ini = parse_ini_file(self::MODULE_ROOT . '/config/module.ini', true);

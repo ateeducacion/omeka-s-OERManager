@@ -44,6 +44,11 @@
             || $('#oer-master-view-table').data('can-recatalog') === '1';
     }
 
+    function aiEnabled() {
+        return $('#oer-master-view-table').data('ai-enabled') === 1
+            || $('#oer-master-view-table').data('ai-enabled') === '1';
+    }
+
     // Chip de término seleccionado con el marcado de Chosen de Omeka
     // (chosen-container-multi), para integración visual nativa.
     function buildSearchChoice(id, title) {
@@ -113,14 +118,19 @@
             $panel.append(buildDimensionSelector(dimension[0], dimension[1], itemJson, false));
         });
 
-        $panel.append(
-            $('<div>').addClass('oer-recatalog-actions')
-                .append($('<button>').attr('type', 'button').addClass('oer-recatalog-preview')
-                    .text(Omeka.jsTranslate('Previsualizar cambios')))
-                .append($('<button>').attr('type', 'button').addClass('oer-recatalog-apply')
-                    .prop('disabled', true)
-                    .text(Omeka.jsTranslate('Confirmar')))
-        );
+        var $actions = $('<div>').addClass('oer-recatalog-actions');
+        // Pre-relleno IA (TASK-010): propone, el curador revisa y confirma.
+        if (aiEnabled()) {
+            $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai')
+                .text(Omeka.jsTranslate('Proponer con IA')));
+        }
+        $actions
+            .append($('<button>').attr('type', 'button').addClass('oer-recatalog-preview')
+                .text(Omeka.jsTranslate('Previsualizar cambios')))
+            .append($('<button>').attr('type', 'button').addClass('oer-recatalog-apply')
+                .prop('disabled', true)
+                .text(Omeka.jsTranslate('Confirmar')));
+        $panel.append($actions);
         $panel.append($('<div>').addClass('oer-recatalog-diff'));
         return $panel;
     }
@@ -431,6 +441,70 @@
                 + (messages[response.error] || response.error || ''));
         }).fail(function () {
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar.'));
+        });
+    });
+
+    // Pre-rellena el panel con la propuesta IA: por dimensión, añade los chips
+    // propuestos que no estén ya seleccionados y marca la dimensión modificada.
+    // No escribe nada: el curador revisa y confirma (preview/apply de 4a).
+    function applyAiProposal($panel, alignment) {
+        var added = 0;
+        Object.keys(alignment || {}).forEach(function (term) {
+            var $dim = $panel.find('.oer-recatalog-dim[data-term="' + term + '"]');
+            if (!$dim.length) {
+                return;
+            }
+            (alignment[term] || []).forEach(function (candidate) {
+                if ($dim.find('.chosen-choices .search-choice[data-id="' + candidate.id + '"]').length) {
+                    return;
+                }
+                $dim.find('.search-field').before(buildSearchChoice(candidate.id, candidate.title));
+                markDirty($dim);
+                added += 1;
+            });
+        });
+        return added;
+    }
+
+    $(document).on('click', '.oer-recatalog-ai', function () {
+        var $button = $(this);
+        var $panel = $button.closest('.oer-recatalog');
+        var $diff = $panel.find('.oer-recatalog-diff')
+            .text(Omeka.jsTranslate('Consultando a la IA…'));
+        $button.prop('disabled', true);
+        $.post(
+            $('#oer-master-view-table').data('ai-propose-url'),
+            {
+                id: $panel.data('item-id'),
+                csrf: $('#oer-master-view-table').data('recatalog-csrf')
+            }
+        ).done(function (response) {
+            if (response.error) {
+                var messages = {
+                    csrf: Omeka.jsTranslate('Token de seguridad caducado: recarga la página.'),
+                    disabled: Omeka.jsTranslate('La asistencia IA no está configurada.'),
+                    llm: Omeka.jsTranslate('El proveedor de IA no respondió correctamente.'),
+                    not_found: Omeka.jsTranslate('No se encontró el recurso.'),
+                    unexpected: Omeka.jsTranslate('Error inesperado al consultar la IA.')
+                };
+                $diff.text(messages[response.error] || response.error);
+                return;
+            }
+            var added = applyAiProposal($panel, response.alignment);
+            var note = added
+                ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
+                : Omeka.jsTranslate('La IA no propuso cambios nuevos.');
+            if (response.content && response.content.truncated) {
+                note += ' ' + Omeka.jsTranslate('(contenido truncado al límite configurado).');
+            }
+            if (response.content && response.content.empty) {
+                note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
+            }
+            $diff.text(note);
+        }).fail(function () {
+            $diff.text(Omeka.jsTranslate('No se pudo consultar a la IA.'));
+        }).always(function () {
+            $button.prop('disabled', false);
         });
     });
 })(jQuery);
