@@ -61,7 +61,7 @@ El arnés de tests corre en el **host** con el `vendor/` del módulo (sin el cor
 | Decisión abierta | Resolución |
 | --- | --- |
 | Estrategia (jerárquica vs RAG) | Jerárquica top-down. Embeddings/RAG fuera (NFR-002). |
-| Salida estructurada | Contrato JSON estricto en el prompt + parser tolerante (portátil); modo JSON nativo del proveedor si existe. El LLM devuelve etiquetas, no ids. |
+| Salida estructurada | Contrato JSON estricto en el prompt + parser tolerante (portátil); modo JSON nativo del proveedor si existe. El LLM elige de una lista CERRADA de candidatos numerados y devuelve **índices** (`{"selected":[n,...]}`), que se resuelven a ids por posición — nunca ids ni el árbol completo (ADR-0007). _(Refinado en la revisión adversaria: índice en vez de texto exacto — más barato en tokens, robusto al truncado y sin ambigüedad de títulos repetidos.)_ |
 | Proveedor/modelo por defecto | Ambos adaptadores presentes; config sin valor por defecto (el admin lo fija). IDs de modelo Anthropic vigentes vía skill `claude-api`. |
 | Tope de tokens / truncado | Configurable; por defecto ~6000 tokens (≈24k chars), priorizando título+descripción+encabezados; cap por medio y total; estimación ~4 chars/token. |
 | Enriquecer el grafo | Nada en este PR (spec §5: "no se asumen"); propuesta futura. |
