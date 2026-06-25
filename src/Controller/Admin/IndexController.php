@@ -32,6 +32,9 @@ class IndexController extends AbstractActionController
     public const CSRF_NAME = 'oer_recatalog';
     public const CSRF_SALT = 'oermanager';
 
+    /** Tope de items por evaluación síncrona de accuracy (acota coste de tokens). */
+    private const MAX_EVALUATE_ITEMS = 50;
+
     private MasterViewQuery $masterViewQuery;
     private CurriculumSearch $curriculumSearch;
     private RecatalogService $recatalogService;
@@ -286,13 +289,16 @@ class IndexController extends AbstractActionController
         if (!$this->aiEnabled()) {
             return new JsonModel(['error' => 'disabled']);
         }
-        $ids = array_values(array_filter(
+        $ids = array_values(array_unique(array_filter(
             array_map('intval', explode(',', (string) $this->params()->fromQuery('ids', ''))),
             static fn (int $i): bool => $i > 0
-        ));
+        )));
         if (!$ids) {
             return new JsonModel(['error' => 'ids']);
         }
+        // Acota el coste de tokens del LLM: la evaluación es síncrona (revisión
+        // adversaria). El lote grande es RF-011 (Job en segundo plano, TASK-011).
+        $ids = array_slice($ids, 0, self::MAX_EVALUATE_ITEMS);
 
         $dimensions = ['lrmi:educationalLevel', 'schema:about', 'lrmi:teaches', 'lrmi:assesses', 'dcterms:relation'];
         $perDimension = array_fill_keys($dimensions, []);
@@ -335,11 +341,28 @@ class IndexController extends AbstractActionController
         return new JsonModel(['summary' => $summary, 'items' => $perItem, 'evaluated' => count($perItem)]);
     }
 
-    /** ¿La asistencia IA está activa y configurada (toggle + modelo)? */
+    /**
+     * ¿La asistencia IA está activa y CONFIGURADA de forma completa? Toggle +
+     * modelo, y además base URL cuando el proveedor OpenAI-compatible la exige
+     * (revisión adversaria, finding #5: no mostrar el botón si la llamada va a
+     * fallar siempre por falta de base URL).
+     */
     private function aiEnabled(): bool
     {
-        return (bool) $this->settings->get(LlmSettings::ENABLED)
-            && '' !== trim((string) $this->settings->get(LlmSettings::MODEL));
+        if (!$this->settings->get(LlmSettings::ENABLED)) {
+            return false;
+        }
+        if ('' === trim((string) $this->settings->get(LlmSettings::MODEL))) {
+            return false;
+        }
+        $provider = (string) $this->settings->get(LlmSettings::PROVIDER, LlmSettings::PROVIDER_ANTHROPIC);
+        if (
+            LlmSettings::PROVIDER_OPENAI === $provider
+            && '' === trim((string) $this->settings->get(LlmSettings::BASE_URL))
+        ) {
+            return false;
+        }
+        return true;
     }
 
     /**

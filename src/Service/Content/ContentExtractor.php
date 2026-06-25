@@ -2,6 +2,7 @@
 
 namespace OERManager\Service\Content;
 
+use Smalot\PdfParser\Config as PdfConfig;
 use Smalot\PdfParser\Parser as PdfParser;
 
 /**
@@ -128,7 +129,14 @@ final class ContentExtractor
         $text = null;
         set_error_handler(static fn (): bool => true);
         try {
-            $parser = new PdfParser();
+            // Endurecimiento (revisión adversaria, finding #2): topar la memoria de
+            // decodificación de streams FlateDecode (anti PDF-bomb, simétrico al
+            // guard de ratio del ZIP) y no retener imágenes. El cap de tamaño de
+            // entrada no acota el ratio de compresión interno del PDF.
+            $config = new PdfConfig();
+            $config->setRetainImageContent(false);
+            $config->setDecodeMemoryLimit((int) $this->limits['max_entry_bytes']);
+            $parser = new PdfParser([], $config);
             $document = $parser->parseContent($bytes);
             $text = (string) $document->getText();
         } catch (\Throwable $e) {

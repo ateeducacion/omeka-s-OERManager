@@ -11,8 +11,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * TDD del clasificador curricular jerárquico top-down (NFR-008): Etapa→Curso→
- * Asignatura→{Saberes, Criterios}, acotando candidatos por el ancestro elegido y
- * mapeando las etiquetas del LLM a ids de la lista cerrada.
+ * Asignatura→{Saberes, Criterios}, acotando candidatos por el ancestro elegido.
+ * El LLM devuelve ÍNDICES de la lista cerrada, que se mapean a ids por posición.
  */
 final class CurricularClassifierTest extends TestCase
 {
@@ -32,15 +32,15 @@ final class CurricularClassifierTest extends TestCase
         return new CurricularClassifier($llm, $resolver, new PromptBuilder(), new ResponseParser());
     }
 
-    public function testTopDownCascadeMapsLabelsToIds(): void
+    public function testTopDownCascadeMapsIndicesToIds(): void
     {
         $resolver = $this->resolver();
         $llm = new FakeLlmClient([
-            '{"selected":["ESO"]}',
-            '{"selected":["1º ESO"]}',
-            '{"selected":["Matemáticas"]}',
-            '{"selected":["Números","Álgebra"]}',
-            '{"selected":["Resuelve ecuaciones"]}',
+            '{"selected":[1]}',     // ESO
+            '{"selected":[1]}',     // 1º ESO
+            '{"selected":[1]}',     // Matemáticas
+            '{"selected":[1,2]}',   // Números, Álgebra
+            '{"selected":[1]}',     // Resuelve ecuaciones
         ]);
 
         $result = $this->make($resolver, $llm)->classify('recurso de álgebra para ESO');
@@ -57,15 +57,14 @@ final class CurricularClassifierTest extends TestCase
     {
         $resolver = $this->resolver();
         $llm = new FakeLlmClient([
-            '{"selected":["ESO"]}',
-            '{"selected":["1º ESO"]}',
-            '{"selected":["Matemáticas"]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
             '{"selected":[]}',
             '{"selected":[]}',
         ]);
         $this->make($resolver, $llm)->classify('contenido');
 
-        // Orden de enumeración: etapa, level, about, teaches, assesses.
         $aboutCall = $resolver->calls[2];
         $this->assertSame('schema:about', $aboutCall['dimension']);
         $this->assertSame(1, $aboutCall['context']['etapa'] ?? null);
@@ -76,27 +75,12 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame(20, $teachesCall['context']['about'] ?? null);
     }
 
-    public function testCaseInsensitiveLabelMatching(): void
-    {
-        $resolver = $this->resolver();
-        $llm = new FakeLlmClient([
-            '{"selected":["eso"]}',
-            '{"selected":["1º eso"]}',
-            '{"selected":["MATEMÁTICAS"]}',
-            '{"selected":[]}',
-            '{"selected":[]}',
-        ]);
-        $result = $this->make($resolver, $llm)->classify('contenido');
-        $this->assertSame([10], $result['lrmi:educationalLevel']);
-        $this->assertSame([20], $result['schema:about']);
-    }
-
     public function testSingleSelectKeepsOnlyFirst(): void
     {
         $resolver = $this->resolver();
         $llm = new FakeLlmClient([
-            '{"selected":["ESO"]}',
-            '{"selected":["1º ESO","2º ESO"]}', // el modelo se pasa: solo uno
+            '{"selected":[1]}',
+            '{"selected":[1,2]}', // el modelo se pasa en un single-select: solo uno
             '{"selected":[]}',
             '{"selected":[]}',
             '{"selected":[]}',
@@ -105,14 +89,14 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame([10], $result['lrmi:educationalLevel']);
     }
 
-    public function testHallucinatedLabelsAreDropped(): void
+    public function testOutOfRangeIndicesAreDropped(): void
     {
         $resolver = $this->resolver();
         $llm = new FakeLlmClient([
-            '{"selected":["ESO"]}',
-            '{"selected":["1º ESO"]}',
-            '{"selected":["Matemáticas"]}',
-            '{"selected":["Geografía","Números"]}', // "Geografía" no es candidato
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[99,1]}', // 99 no existe; 1 = Números
             '{"selected":[]}',
         ]);
         $result = $this->make($resolver, $llm)->classify('contenido');
@@ -123,14 +107,36 @@ final class CurricularClassifierTest extends TestCase
     {
         $resolver = $this->resolver();
         $llm = new FakeLlmClient([
-            '{"selected":["ESO"]}',
-            '{"selected":["1º ESO"]}',
-            '{"selected":["Matemáticas"]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
             '{"selected":[]}',
             '{"selected":[]}',
         ]);
         $result = $this->make($resolver, $llm)->classify('contenido');
         $this->assertArrayNotHasKey('lrmi:teaches', $result);
         $this->assertArrayNotHasKey('lrmi:assesses', $result);
+    }
+
+    public function testDuplicateTitlesResolveToDistinctIdsByPosition(): void
+    {
+        // Finding #4 (revisión adversaria): dos candidatos con el mismo título no
+        // colapsan; el índice los distingue por posición → ambos ids alcanzables.
+        $resolver = new FakeTermResolver([
+            'etapa' => [['id' => 1, 'title' => 'ESO']],
+            'lrmi:educationalLevel' => [['id' => 10, 'title' => '1º ESO']],
+            'schema:about' => [['id' => 20, 'title' => 'Matemáticas']],
+            'lrmi:teaches' => [['id' => 30, 'title' => 'Igual'], ['id' => 31, 'title' => 'Igual']],
+            'lrmi:assesses' => [],
+        ]);
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[1]}',
+            '{"selected":[1,2]}', // ambos "Igual"
+            '{"selected":[]}',
+        ]);
+        $result = $this->make($resolver, $llm)->classify('contenido');
+        $this->assertSame([30, 31], $result['lrmi:teaches']);
     }
 }

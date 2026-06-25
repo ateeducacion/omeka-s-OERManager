@@ -16,7 +16,7 @@ use OERManager\Service\Llm\LlmClientInterface;
  */
 final class CurricularClassifier implements ClassifierInterface
 {
-    use LabelMatching;
+    use IndexSelection;
 
     /**
      * Pasos de la cascada (ADR-0009). 'context' = clave donde guardar el id
@@ -43,7 +43,7 @@ final class CurricularClassifier implements ClassifierInterface
         private TermResolverInterface $resolver,
         private PromptBuilder $prompts,
         private ResponseParser $parser,
-        int $maxTokens = 512
+        int $maxTokens = 1024
     ) {
         $this->maxTokens = $maxTokens;
     }
@@ -85,7 +85,7 @@ final class CurricularClassifier implements ClassifierInterface
             [['role' => 'user', 'content' => $prompt['user']]],
             ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
         );
-        $ids = $this->mapLabelsToIds($this->parser->parseSelection($response->text()), $candidates);
+        $ids = $this->mapIndicesToIds($this->parser->parseIndices($response->text()), $candidates);
         return $step['multi'] ? $ids : array_slice($ids, 0, 1);
     }
 }

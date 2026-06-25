@@ -11,7 +11,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * TDD del clasificador de ejes temáticos (dcterms:relation): los ejes en un
- * único prompt (set plano y pequeño), el LLM elige y se mapean a ids.
+ * único prompt; el LLM devuelve índices que se mapean a ids por posición.
  */
 final class TagClassifierTest extends TestCase
 {
@@ -29,7 +29,7 @@ final class TagClassifierTest extends TestCase
                 ['id' => 52, 'title' => 'AICLE'],
             ],
         ]);
-        $llm = new FakeLlmClient(['{"selected":["STEAM","Patrimonio"]}']);
+        $llm = new FakeLlmClient(['{"selected":[2,1]}']); // STEAM, Patrimonio
 
         $result = $this->make($resolver, $llm)->classify('recurso STEAM sobre patrimonio');
 
@@ -41,7 +41,7 @@ final class TagClassifierTest extends TestCase
     public function testNoAxesConfiguredReturnsEmpty(): void
     {
         $resolver = new FakeTermResolver([]);
-        $llm = new FakeLlmClient(['{"selected":["STEAM"]}']);
+        $llm = new FakeLlmClient(['{"selected":[1]}']);
         $this->assertSame([], $this->make($resolver, $llm)->classify('contenido'));
     }
 

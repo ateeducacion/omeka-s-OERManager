@@ -12,7 +12,7 @@ use OERManager\Service\Llm\LlmClientInterface;
  */
 final class TagClassifier implements ClassifierInterface
 {
-    use LabelMatching;
+    use IndexSelection;
 
     private int $maxTokens;
 
@@ -21,7 +21,7 @@ final class TagClassifier implements ClassifierInterface
         private TermResolverInterface $resolver,
         private PromptBuilder $prompts,
         private ResponseParser $parser,
-        int $maxTokens = 512
+        int $maxTokens = 1024
     ) {
         $this->maxTokens = $maxTokens;
     }
@@ -42,7 +42,7 @@ final class TagClassifier implements ClassifierInterface
             [['role' => 'user', 'content' => $prompt['user']]],
             ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
         );
-        $ids = $this->mapLabelsToIds($this->parser->parseSelection($response->text()), $candidates);
+        $ids = $this->mapIndicesToIds($this->parser->parseIndices($response->text()), $candidates);
         return $ids ? ['dcterms:relation' => $ids] : [];
     }
 }

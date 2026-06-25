@@ -3,34 +3,40 @@
 namespace OERManager\Service\Ai;
 
 /**
- * Parsea la respuesta del LLM a la lista de etiquetas seleccionadas. Tolerante:
- * extrae el objeto JSON aunque venga envuelto en prosa o en fences de código, y
- * solo lee la clave 'selected' (ignora cualquier otra clave que el modelo pueda
- * añadir, incluidas instrucciones inyectadas). Devuelve etiquetas saneadas.
+ * Parsea la respuesta del LLM a la lista de ÍNDICES de candidatos seleccionados
+ * (1-based sobre la lista cerrada que se le mostró). La selección por índice es
+ * barata en tokens y robusta al truncado, y evita la ambigüedad de títulos
+ * repetidos (revisión adversaria, findings #1 y #4).
+ *
+ * Tolerante: extrae el objeto JSON aunque venga envuelto en prosa o en fences de
+ * código, y solo lee la clave 'selected' (ignora cualquier otra clave que el
+ * modelo pueda añadir, incluidas instrucciones inyectadas).
  */
 final class ResponseParser
 {
     /**
-     * @return string[] etiquetas seleccionadas, sin vacíos ni duplicados
+     * @return int[] índices 1-based seleccionados, sin <= 0 ni duplicados
      */
-    public function parseSelection(string $text): array
+    public function parseIndices(string $text): array
     {
         $data = $this->decodeObject($text);
         if (!is_array($data) || !isset($data['selected']) || !is_array($data['selected'])) {
             return [];
         }
-        $selected = [];
+        $indices = [];
         foreach ($data['selected'] as $item) {
-            if (!is_string($item)) {
+            if (is_int($item)) {
+                $index = $item;
+            } elseif (is_string($item) && 1 === preg_match('/^-?\d+$/', trim($item))) {
+                $index = (int) trim($item);
+            } else {
                 continue;
             }
-            $label = trim($item);
-            if ('' === $label || in_array($label, $selected, true)) {
-                continue;
+            if ($index > 0 && !in_array($index, $indices, true)) {
+                $indices[] = $index;
             }
-            $selected[] = $label;
         }
-        return $selected;
+        return $indices;
     }
 
     /**
