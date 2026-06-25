@@ -112,7 +112,7 @@ class CurriculumSearch
             $query['property'][] = [
                 'property' => $contextFilter[0],
                 'type' => 'res',
-                'text' => $contextFilter[1],
+                'text' => (string) $contextFilter[1],
             ];
         }
         $this->addTitleFilter($query, $text);
@@ -135,7 +135,9 @@ class CurriculumSearch
             'property' => [[
                 'property' => self::IN_TERMSET_TERM,
                 'type' => 'res',
-                'text' => [$setId],
+                // 'text' debe ser escalar: buildPropertyQuery hace trim() (un
+                // array provoca TypeError fatal en PHP 8.4).
+                'text' => (string) $setId,
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
