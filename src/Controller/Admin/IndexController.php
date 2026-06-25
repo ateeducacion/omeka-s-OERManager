@@ -2,7 +2,9 @@
 
 namespace OERManager\Controller\Admin;
 
+use Laminas\Log\LoggerInterface;
 use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\ColumnType\AlignmentStatus;
@@ -18,18 +20,35 @@ use Omeka\Permissions\Exception\PermissionDeniedException;
  */
 class IndexController extends AbstractActionController
 {
+    /** Identificadores del token CSRF de la escritura del re-catalogador. */
+    public const CSRF_NAME = 'oer_recatalog';
+    public const CSRF_SALT = 'oermanager';
+
     private MasterViewQuery $masterViewQuery;
     private CurriculumSearch $curriculumSearch;
     private RecatalogService $recatalogService;
+    private LoggerInterface $logger;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
         CurriculumSearch $curriculumSearch,
-        RecatalogService $recatalogService
+        RecatalogService $recatalogService,
+        LoggerInterface $logger
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
         $this->recatalogService = $recatalogService;
+        $this->logger = $logger;
+    }
+
+    /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
+    private function csrfValidator(): Csrf
+    {
+        return new Csrf([
+            'name' => self::CSRF_NAME,
+            'salt' => self::CSRF_SALT,
+            'timeout' => 3600,
+        ]);
     }
 
     public function indexAction()
@@ -49,6 +68,8 @@ class IndexController extends AbstractActionController
         $view->setTemplate('oer-manager/admin/index/index');
         $view->setVariable('items', $items);
         $view->setVariable('query', $query);
+        // Token CSRF para la confirmación del re-catalogador (I4).
+        $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
         return $view;
     }
 
@@ -139,6 +160,11 @@ class IndexController extends AbstractActionController
             return $this->redirect()->toRoute('admin/oer-manager');
         }
 
+        // CSRF: escritura masiva de RDF, no fiarse solo de la ACL (NFR-003).
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+
         $id = (int) $this->params()->fromPost('id');
         $alignment = $this->collectAlignment();
         $identity = $this->identity();
@@ -148,8 +174,13 @@ class IndexController extends AbstractActionController
             $result = $this->recatalogService->apply($id, $alignment, $contributor);
         } catch (PermissionDeniedException $e) {
             return new JsonModel(['updated' => false, 'error' => 'denied']);
-        } catch (\Exception $e) {
+        } catch (\RuntimeException $e) {
+            // Excepción de dominio (destinos inválidos): mensaje seguro y útil.
             return new JsonModel(['updated' => false, 'error' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            // Inesperada: registrar el detalle, no filtrarlo al cliente (I2).
+            $this->logger->err('OERManager recatalog apply item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['updated' => false, 'error' => 'unexpected']);
         }
 
         return new JsonModel($result);
