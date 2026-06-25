@@ -73,6 +73,8 @@ class RecatalogService
     {
         $now = (new \DateTimeImmutable())->format('c');
         $data = [];
+        $clear = [];
+        $properties = [];
         foreach (self::ALIGNMENT_TERMS as $term) {
             if (!array_key_exists($term, $proposed)) {
                 continue;
@@ -90,15 +92,32 @@ class RecatalogService
                     implode(', ', $invalid)
                 ));
             }
-            $data[$term] = $this->buildValues($propertyId, $ids, $contributor, $now, $term);
+            // Limpiar SOLO esta property (clear_property_values) y anexar sus
+            // nuevos valores. Vaciar una dimensión = limpiarla sin anexar.
+            $clear[] = $propertyId;
+            $properties[] = $term;
+            if ($ids) {
+                $data[$term] = $this->buildValues($propertyId, $ids, $contributor, $now, $term);
+            }
         }
-        if (!$data) {
+        if (!$clear) {
             return ['updated' => false, 'properties' => []];
         }
-        // isPartial: solo se reemplazan las properties presentes en $data; el
-        // resto del item queda intacto (visibilidad, proyecto, licencia, etc.).
-        $this->api->update('items', $itemId, $data, [], ['isPartial' => true]);
-        return ['updated' => true, 'properties' => array_keys($data)];
+        // El partial de Omeka reemplaza el set COMPLETO de values del item
+        // (ValueHydrator recorre la colección plana y borra lo no reutilizado).
+        // Para tocar SOLO las properties editadas: limpiar esas properties con
+        // clear_property_values y anexar (collectionAction=append) los nuevos
+        // valores; en modo append Omeka no reutiliza ni borra el resto, así que
+        // título, descripción, licencia, proyecto, etc. quedan intactos.
+        $data['clear_property_values'] = $clear;
+        $this->api->update(
+            'items',
+            $itemId,
+            $data,
+            [],
+            ['isPartial' => true, 'collectionAction' => 'append']
+        );
+        return ['updated' => true, 'properties' => $properties];
     }
 
     /**
