@@ -25,7 +25,8 @@ return [
                 return new Controller\Admin\IndexController(
                     $container->get(Service\MasterViewQuery::class),
                     $container->get(Service\CurriculumSearch::class),
-                    $container->get(Service\RecatalogService::class)
+                    $container->get(Service\RecatalogService::class),
+                    $container->get('Omeka\Logger')
                 );
             },
         ],
@@ -46,7 +47,10 @@ return [
                 );
             },
             Service\RecatalogService::class => function ($container) {
-                return new Service\RecatalogService($container->get('Omeka\ApiManager'));
+                return new Service\RecatalogService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
             },
         ],
     ],

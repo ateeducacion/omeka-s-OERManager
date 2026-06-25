@@ -68,7 +68,8 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
     data-recatalog-preview-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-preview'])); ?>"
     data-recatalog-apply-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-apply'])); ?>"
-    data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>">
+    data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>"
+    data-recatalog-csrf="<?php echo $escape($recatalogCsrf ?? ''); ?>">
     <thead>
         <tr>
             <th><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>

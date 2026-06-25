@@ -412,12 +412,20 @@
         var url = $('#oer-master-view-table').data('recatalog-apply-url');
         var itemId = $panel.data('item-id');
         var apiUrl = $('tr[data-resource-id="' + itemId + '"]').data('api-url');
-        $.post(url, $.param(collectAlignmentPairs($panel))).done(function (response) {
+        var pairs = collectAlignmentPairs($panel);
+        pairs.push({ name: 'csrf', value: $('#oer-master-view-table').data('recatalog-csrf') });
+        $.post(url, $.param(pairs)).done(function (response) {
             if (response.updated) {
                 openDrawer(apiUrl, itemId);
-            } else {
-                window.alert(Omeka.jsTranslate('No se pudo re-catalogar: ') + (response.error || ''));
+                return;
             }
+            var messages = {
+                csrf: Omeka.jsTranslate('Token de seguridad caducado: recarga la página.'),
+                denied: Omeka.jsTranslate('No tienes permiso para re-catalogar.'),
+                unexpected: Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')
+            };
+            window.alert(Omeka.jsTranslate('No se pudo re-catalogar: ')
+                + (messages[response.error] || response.error || ''));
         }).fail(function () {
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar.'));
         });

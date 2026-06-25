@@ -4,6 +4,7 @@ namespace OERManager\Service;
 
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\ItemRepresentation;
+use Omeka\Settings\Settings;
 
 /**
  * Escritura del alineamiento curricular y los ejes temáticos como resource
@@ -29,10 +30,12 @@ class RecatalogService
     private array $propertyIds = [];
 
     private ApiManager $api;
+    private Settings $settings;
 
-    public function __construct(ApiManager $api)
+    public function __construct(ApiManager $api, Settings $settings)
     {
         $this->api = $api;
+        $this->settings = $settings;
     }
 
     /**
@@ -56,7 +59,7 @@ class RecatalogService
                 'next' => $next,
                 'added' => array_values(array_diff($next, $current)),
                 'removed' => array_values(array_diff($current, $next)),
-                'invalid' => $this->invalidTargets($next),
+                'invalid' => $this->invalidTargets($term, $next),
             ];
         }
         return $diff;
@@ -84,10 +87,10 @@ class RecatalogService
                 continue;
             }
             $ids = $this->normalizeIds($proposed[$term]);
-            $invalid = $this->invalidTargets($ids);
+            $invalid = $this->invalidTargets($term, $ids);
             if ($invalid) {
                 throw new \RuntimeException(sprintf(
-                    'Destinos inexistentes o no-item en %s: %s',
+                    'Destinos inválidos para %s (inexistentes o de otra dimensión): %s',
                     $term,
                     implode(', ', $invalid)
                 ));
@@ -196,20 +199,63 @@ class RecatalogService
     }
 
     /**
+     * Destinos inválidos para una dimensión: los que no existen como item o no
+     * son del tipo esperado (skill recatalogador: validar que el destino existe
+     * y es del tipo esperado). El POST es manipulable, así que no basta con que
+     * el id exista: debe ser un término de ESA dimensión.
+     *
      * @param int[] $ids
-     * @return int[] ids que no existen como item
+     * @return int[]
      */
-    private function invalidTargets(array $ids): array
+    private function invalidTargets(string $term, array $ids): array
     {
         $invalid = [];
         foreach ($ids as $id) {
             try {
-                $this->api->read('items', $id);
+                $item = $this->api->read('items', $id)->getContent();
             } catch (\Exception $e) {
+                $invalid[] = $id;
+                continue;
+            }
+            if (!$this->matchesDimension($term, $item)) {
                 $invalid[] = $id;
             }
         }
         return $invalid;
+    }
+
+    /**
+     * ¿El item-término pertenece a la dimensión $term? Curriculares: su
+     * dcterms:type coincide con el valor configurado (ADR-0009). Ejes: pertenece
+     * al DefinedTermSet de ejes configurado (ADR-0006). Si la dimensión no está
+     * configurada, no se puede validar el tipo y no se bloquea (solo existencia).
+     */
+    private function matchesDimension(string $term, ItemRepresentation $item): bool
+    {
+        if ('dcterms:relation' === $term) {
+            $axisId = (int) $this->settings->get(CurriculumSearch::AXIS_SETTING);
+            if ($axisId <= 0) {
+                return true;
+            }
+            foreach ($item->value(CurriculumSearch::IN_TERMSET_TERM, ['all' => true, 'default' => []]) as $value) {
+                $resource = $value->valueResource();
+                if ($resource && (int) $resource->id() === $axisId) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        $setting = CurriculumSearch::TYPE_SETTINGS[$term] ?? null;
+        if (null === $setting) {
+            return true;
+        }
+        $expected = trim((string) $this->settings->get($setting));
+        if ('' === $expected) {
+            return true;
+        }
+        $typeValue = $item->value(CurriculumSearch::TYPE_TERM);
+        return null !== $typeValue && trim((string) $typeValue) === $expected;
     }
 
     private function propertyId(string $term): ?int
