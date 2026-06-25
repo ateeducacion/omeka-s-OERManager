@@ -1,0 +1,42 @@
+name: Dependency Review
+
+# Revision de seguridad de dependencias Composer (NFR-009).
+#
+# Se usa `composer audit` en lugar de la `dependency-review-action` de GitHub:
+# este repo es PRIVADO y la dependency-review-action exigiria GitHub Advanced
+# Security. `composer audit` consulta la base de advisories de PHP y funciona
+# sin GHAS. Si el repo pasa a publico (o se habilita Advanced Security), puede
+# anadirse ademas un job con `actions/dependency-review-action@v4` sobre el
+# evento pull_request.
+
+on:
+  pull_request:
+    paths:
+      - 'composer.json'
+      - 'composer.lock'
+  schedule:
+    # Lunes a las 06:00 UTC: deteccion continua de advisories nuevos
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP setup
+        # Accion de terceros anclada a SHA (supply-chain, NFR-009); Dependabot la actualiza
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
+        with:
+          php-version: '8.4'
+          tools: composer
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Audit dependencies
+        run: composer audit --no-interaction

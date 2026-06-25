@@ -1,0 +1,48 @@
+{
+  "$schema": "https://ateeducacion.github.io/omeka-s-playground/assets/blueprints/blueprint-schema.json",
+  "debug": {
+    "enabled": true
+  },
+  "landingPage": "/admin",
+  "siteOptions": {
+    "title": "OER Manager Playground",
+    "locale": "es",
+    "timezone": "Atlantic/Canary"
+  },
+  "users": [
+    {
+      "username": "admin",
+      "email": "admin@example.com",
+      "password": "password",
+      "role": "global_admin"
+    },
+    {
+      "username": "editor",
+      "email": "editor@example.com",
+      "password": "password",
+      "role": "editor",
+      "settings": {
+        "limit_to_granted_sites": false,
+        "limit_to_own_assets": false
+      }
+    }
+  ],
+  "modules": [
+    {
+      "name": "OERManager",
+      "state": "activate",
+      "source": {
+        "type": "url",
+        "url": "https://github.com/ateeducacion/omeka-s-OERManager/archive/refs/heads/main.zip"
+      }
+    }
+  ],
+  "site": {
+    "title": "OER Manager Playground",
+    "slug": "oer-manager",
+    "theme": "default",
+    "summary": "Instalacion para probar el modulo OERManager en Omeka-S Playground. El modulo consume un grafo curricular (DefinedTermSets, ADR-0006) y vocabularios LRMI que un playground limpio no incluye: este preview demuestra la instalacion/activacion del modulo, no la catalogacion curricular completa.",
+    "isPublic": true,
+    "setAsDefault": true
+  }
+}
