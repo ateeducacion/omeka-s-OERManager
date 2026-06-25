@@ -9,10 +9,17 @@ use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\ColumnType\AlignmentStatus;
+use OERManager\Service\Ai\AiCataloguer;
+use OERManager\Service\Ai\EvaluationScorer;
+use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Llm\LlmException;
+use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
+use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Permissions\Exception\PermissionDeniedException;
+use Omeka\Settings\Settings;
 
 /**
  * Vista maestra del catálogo REA (TASK-003, ADR-0005) y re-catalogador
@@ -29,17 +36,29 @@ class IndexController extends AbstractActionController
     private CurriculumSearch $curriculumSearch;
     private RecatalogService $recatalogService;
     private LoggerInterface $logger;
+    private AiCataloguer $aiCataloguer;
+    private MediaSourceInterface $mediaSource;
+    private EvaluationScorer $scorer;
+    private Settings $settings;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
         CurriculumSearch $curriculumSearch,
         RecatalogService $recatalogService,
-        LoggerInterface $logger
+        LoggerInterface $logger,
+        AiCataloguer $aiCataloguer,
+        MediaSourceInterface $mediaSource,
+        EvaluationScorer $scorer,
+        Settings $settings
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
         $this->recatalogService = $recatalogService;
         $this->logger = $logger;
+        $this->aiCataloguer = $aiCataloguer;
+        $this->mediaSource = $mediaSource;
+        $this->scorer = $scorer;
+        $this->settings = $settings;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -81,6 +100,8 @@ class IndexController extends AbstractActionController
         // re-catalogador (TASK-004, I4): mecanismos independientes.
         $view->setVariable('csrfToken', $session->visibilityCsrfToken);
         $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
+        // Pre-relleno IA (TASK-010): solo si la conexión LLM está activa y con modelo.
+        $view->setVariable('aiEnabled', $this->aiEnabled());
         return $view;
     }
 
@@ -206,6 +227,193 @@ class IndexController extends AbstractActionController
         }
 
         return new JsonModel($result);
+    }
+
+    /**
+     * Propuesta IA (TASK-010, ADR-0007): extrae el contenido del item, clasifica
+     * con el LLM y devuelve etiquetas+ids por dimensión para PRE-RELLENAR el panel.
+     * No escribe nada: la IA propone, el curador confirma (luego usa el apply de
+     * 4a). ACL editor+ (onBootstrap) + CSRF; los errores del LLM no se filtran.
+     */
+    public function aiProposeAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        if (!$this->aiEnabled()) {
+            return new JsonModel(['error' => 'disabled']);
+        }
+        $id = (int) $this->params()->fromPost('id');
+        if ($id <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+
+        try {
+            $proposal = $this->aiCataloguer->propose(
+                $this->itemMetadataText($item),
+                $this->mediaSource->filesFor($id)
+            );
+        } catch (LlmException $e) {
+            // Error del proveedor LLM: mensaje genérico (sin clave ni contenido).
+            return new JsonModel(['error' => 'llm']);
+        } catch (\Exception $e) {
+            $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['error' => 'unexpected']);
+        }
+
+        return new JsonModel([
+            'alignment' => $this->enrichLabels($proposal['alignment']),
+            'content' => $proposal['content'],
+        ]);
+    }
+
+    /**
+     * Evaluación de accuracy (NFR-008): ejecuta la propuesta IA sobre REAs ya
+     * catalogados (verdad-terreno = su alineamiento actual) y reporta métricas por
+     * dimensión. Herramienta de iteración de prompts; solo lectura (sin CSRF).
+     * GET ?ids=1,2,3
+     */
+    public function aiEvaluateAction()
+    {
+        if (!$this->aiEnabled()) {
+            return new JsonModel(['error' => 'disabled']);
+        }
+        $ids = array_values(array_filter(
+            array_map('intval', explode(',', (string) $this->params()->fromQuery('ids', ''))),
+            static fn (int $i): bool => $i > 0
+        ));
+        if (!$ids) {
+            return new JsonModel(['error' => 'ids']);
+        }
+
+        $dimensions = ['lrmi:educationalLevel', 'schema:about', 'lrmi:teaches', 'lrmi:assesses', 'dcterms:relation'];
+        $perDimension = array_fill_keys($dimensions, []);
+        $perItem = [];
+
+        foreach ($ids as $id) {
+            try {
+                $item = $this->api()->read('items', $id)->getContent();
+            } catch (\Exception $e) {
+                continue;
+            }
+            $truth = $this->currentAlignment($item, $dimensions);
+            try {
+                $proposal = $this->aiCataloguer->propose(
+                    $this->itemMetadataText($item),
+                    $this->mediaSource->filesFor($id)
+                );
+            } catch (\Exception $e) {
+                continue;
+            }
+            $proposed = $proposal['alignment'];
+            $itemScores = [];
+            foreach ($dimensions as $dimension) {
+                $score = $this->scorer->score($proposed[$dimension] ?? [], $truth[$dimension] ?? []);
+                $perDimension[$dimension][] = $score;
+                $itemScores[$dimension] = [
+                    'precision' => $score['precision'],
+                    'recall' => $score['recall'],
+                    'f1' => $score['f1'],
+                    'exact' => $score['exact'],
+                ];
+            }
+            $perItem[$id] = $itemScores;
+        }
+
+        $summary = [];
+        foreach ($dimensions as $dimension) {
+            $summary[$dimension] = $this->scorer->macroAverage($perDimension[$dimension]);
+        }
+        return new JsonModel(['summary' => $summary, 'items' => $perItem, 'evaluated' => count($perItem)]);
+    }
+
+    /** ¿La asistencia IA está activa y configurada (toggle + modelo)? */
+    private function aiEnabled(): bool
+    {
+        return (bool) $this->settings->get(LlmSettings::ENABLED)
+            && '' !== trim((string) $this->settings->get(LlmSettings::MODEL));
+    }
+
+    /**
+     * Texto de metadatos del item para la IA: título + todos los valores
+     * literales (no resource values, que son el propio alineamiento), sin
+     * duplicados.
+     */
+    private function itemMetadataText(ItemRepresentation $item): string
+    {
+        $parts = [];
+        $title = trim((string) $item->displayTitle(''));
+        if ('' !== $title) {
+            $parts[] = $title;
+        }
+        foreach ($item->values() as $info) {
+            foreach ($info['values'] as $value) {
+                if ('literal' !== $value->type()) {
+                    continue;
+                }
+                $text = trim((string) $value->value());
+                if ('' !== $text) {
+                    $parts[] = $text;
+                }
+            }
+        }
+        return implode("\n", array_values(array_unique($parts)));
+    }
+
+    /**
+     * Resuelve los ids propuestos a {id,title} para que el panel pinte los chips.
+     *
+     * @param array<string,int[]> $alignment
+     * @return array<string,array<int,array{id:int,title:string}>>
+     */
+    private function enrichLabels(array $alignment): array
+    {
+        $out = [];
+        foreach ($alignment as $term => $ids) {
+            $list = [];
+            foreach ($ids as $id) {
+                try {
+                    $title = (string) $this->api()->read('items', (int) $id)->getContent()->displayTitle();
+                } catch (\Exception $e) {
+                    continue;
+                }
+                $list[] = ['id' => (int) $id, 'title' => $title];
+            }
+            if ($list) {
+                $out[$term] = $list;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Alineamiento curricular/tags actual del item (verdad-terreno de evaluación).
+     *
+     * @param string[] $dimensions
+     * @return array<string,int[]>
+     */
+    private function currentAlignment(ItemRepresentation $item, array $dimensions): array
+    {
+        $out = [];
+        foreach ($dimensions as $term) {
+            $ids = [];
+            foreach ($item->value($term, ['all' => true, 'default' => []]) as $value) {
+                $resource = $value->valueResource();
+                if ($resource) {
+                    $ids[] = $resource->id();
+                }
+            }
+            $out[$term] = $ids;
+        }
+        return $out;
     }
 
     /**

@@ -9,6 +9,7 @@ use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Renderer\PhpRenderer;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Llm\LlmSettings;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Module\AbstractModule;
 
@@ -119,6 +120,16 @@ class Module extends AbstractModule
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $data[$setting] = $settings->get($setting);
         }
+        // Conexión LLM (TASK-010). La clave API NO se devuelve en claro (write-only):
+        // el campo se deja en blanco; solo se actualiza si el admin introduce un valor.
+        $data[LlmSettings::ENABLED] = (bool) $settings->get(LlmSettings::ENABLED);
+        $data[LlmSettings::PROVIDER] = $settings->get(LlmSettings::PROVIDER, LlmSettings::PROVIDER_ANTHROPIC);
+        $data[LlmSettings::BASE_URL] = $settings->get(LlmSettings::BASE_URL);
+        $data[LlmSettings::MODEL] = $settings->get(LlmSettings::MODEL);
+        $data[LlmSettings::CONTENT_TOKEN_CAP] = $settings->get(
+            LlmSettings::CONTENT_TOKEN_CAP,
+            LlmSettings::DEFAULT_CONTENT_TOKEN_CAP
+        );
         $form->setData($data);
         return $renderer->formCollection($form);
     }
@@ -136,6 +147,24 @@ class Module extends AbstractModule
         );
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $settings->set($setting, trim((string) ($params[$setting] ?? '')));
+        }
+
+        // Conexión LLM (TASK-010, ADR-0008).
+        $settings->set(LlmSettings::ENABLED, !empty($params[LlmSettings::ENABLED]));
+        $provider = (string) ($params[LlmSettings::PROVIDER] ?? LlmSettings::PROVIDER_ANTHROPIC);
+        $allowed = [LlmSettings::PROVIDER_ANTHROPIC, LlmSettings::PROVIDER_OPENAI];
+        $settings->set(
+            LlmSettings::PROVIDER,
+            in_array($provider, $allowed, true) ? $provider : LlmSettings::PROVIDER_ANTHROPIC
+        );
+        $settings->set(LlmSettings::BASE_URL, trim((string) ($params[LlmSettings::BASE_URL] ?? '')));
+        $settings->set(LlmSettings::MODEL, trim((string) ($params[LlmSettings::MODEL] ?? '')));
+        $cap = (int) ($params[LlmSettings::CONTENT_TOKEN_CAP] ?? 0);
+        $settings->set(LlmSettings::CONTENT_TOKEN_CAP, $cap > 0 ? $cap : LlmSettings::DEFAULT_CONTENT_TOKEN_CAP);
+        // Clave API write-only: solo se sobrescribe si llega un valor no vacío.
+        $apiKey = (string) ($params[LlmSettings::API_KEY] ?? '');
+        if ('' !== trim($apiKey)) {
+            $settings->set(LlmSettings::API_KEY, $apiKey);
         }
         return true;
     }
