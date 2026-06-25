@@ -171,6 +171,7 @@
         $drawer.data('last-item-id', itemId);
         $content.empty().text(Omeka.jsTranslate('Cargando…'));
         $drawer.prop('hidden', false).attr('aria-hidden', 'false');
+        $drawer.data('last-item-id', itemId);
         $drawer.find('.oer-drawer-close').trigger('focus');
 
         $.getJSON(apiUrl).done(function (itemJson) {

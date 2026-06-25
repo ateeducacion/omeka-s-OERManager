@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    tags:
+      - '*'
+    branches:
+      - '*'
+
+jobs:
+  lint_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the code
+      - uses: actions/checkout@v7
+
+      - name: PHP setup
+        # Accion de terceros anclada a SHA (supply-chain, NFR-009); Dependabot la actualiza
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240  # 2.37.2
+        with:
+          php-version: '8.4'  # Runtime target del modulo (NFR-007)
+          extensions: mbstring, intl, curl, dom, json, pdo, mysql, xml, zip
+          tools: composer
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Install gettext
+        run: sudo apt-get install -y gettext
+
+      - name: Check untranslated strings
+        run: make check-untranslated
+
+      - name: Compile translations
+        run: make compile-mo
+
+      - name: Run code linting
+        run: make lint
+
+      - name: Run unit tests
+        run: make test
