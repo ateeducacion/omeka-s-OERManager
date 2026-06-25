@@ -26,7 +26,7 @@ jobs:
   audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: PHP setup
         # Accion de terceros anclada a SHA (supply-chain, NFR-009); Dependabot la actualiza
