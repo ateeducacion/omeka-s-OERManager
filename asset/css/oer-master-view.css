@@ -52,3 +52,46 @@
     font-weight: bold;
     margin-top: 1em;
 }
+
+/* Re-catalogador (TASK-004) */
+.oer-recatalog {
+    margin-top: 1.5em;
+    padding-top: 1em;
+    border-top: 1px solid #ccc;
+}
+
+.oer-recatalog-dim {
+    margin-bottom: 1em;
+}
+
+.oer-recatalog-dim > label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 0.3em;
+}
+
+/* El selector reutiliza el widget Chosen del admin de Omeka (chosen-container).
+   Solo aseguramos que el desplegable de resultados quede visible dentro del
+   drawer, que tiene overflow propio. */
+.oer-recatalog-dim .chosen-container {
+    margin-bottom: 0.3em;
+}
+
+.oer-recatalog-dim .chosen-drop {
+    z-index: 1100;
+}
+
+.oer-recatalog-actions {
+    margin-top: 1em;
+    display: flex;
+    gap: 0.5em;
+}
+
+.oer-recatalog-diff {
+    margin-top: 1em;
+}
+
+.oer-diff-invalid {
+    color: #a32;
+    font-weight: bold;
+}

@@ -23,15 +23,34 @@ return [
         'factories' => [
             Controller\Admin\IndexController::class => function ($container) {
                 return new Controller\Admin\IndexController(
-                    $container->get(Service\MasterViewQuery::class)
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get(Service\CurriculumSearch::class),
+                    $container->get(Service\RecatalogService::class),
+                    $container->get('Omeka\Logger')
                 );
             },
         ],
     ],
     'service_manager' => [
+        'invokables' => [
+            Service\IntegrityChecker::class => Service\IntegrityChecker::class,
+        ],
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // Re-catalogador (TASK-004, RF-004/RF-005).
+            Service\CurriculumSearch::class => function ($container) {
+                return new Service\CurriculumSearch(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
+            },
+            Service\RecatalogService::class => function ($container) {
+                return new Service\RecatalogService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
             },
         ],
     ],

@@ -4,7 +4,9 @@
 >
 > Estado a 2026-06-12: FASE 0 y FASE 1 cerradas; skill `omeka-module` destilada y arnés de tests activo. Lo que sigue (vista maestra, re-catalogador, integridad, estadísticas, auditoría) depende de lo de abajo.
 >
-> Estado a 2026-06-15: **PEND-005** (mapeo RDF, ADR-0004), **PEND-006** (auditoría RDF, ADR-0002), **PEND-008** (skills descartadas) y **PEND-009** (paquete/licencia, ADR-0003) resueltos. **Único pendiente: PEND-007.**
+> Estado a 2026-06-15: **PEND-005** (mapeo RDF, ADR-0004), **PEND-006** (auditoría RDF, ADR-0002), **PEND-008** (skills descartadas) y **PEND-009** (paquete/licencia, ADR-0003) resueltos.
+>
+> Estado a 2026-06-22: **PEND-007 resuelto por completo** (puntos 1-6; ver abajo). **No quedan PEND abiertos.** En TASK-004 se formalizan RF nuevos (RF-009 catalogación IA-assistida, RF-010 conexión LLM configurable, RF-011 lote como Job, RF-012 visión de imágenes) y ADR-0007/ADR-0008; ninguno reabre un PEND.
 
 ---
 
@@ -34,16 +36,18 @@ Quién cambió visibilidad/alineamiento, qué y cuándo. Opciones (de `contexto-
 
 **Pregunta:** ¿qué opción? (recomendación preliminar, a tu criterio: **A**, dado que el módulo Log ya está y respeta "sin tablas propias").
 
-## PEND-007 — RF/NFR detallados (bloquea estadísticas TASK-006, ACL efectiva; punto 1 ya resuelve vista maestra v1)
+## PEND-007 — RF/NFR detallados ✅ RESUELTO
 
-Desglosado para poder responder por partes:
+> **Resuelto por completo (puntos 1-6).** Punto 1: 2026-06-16, ADR-0005 (vista maestra v1, TASK-003). Puntos 2-6: cerrados en `requirements.md` (RF-002…RF-007, NFR-003…NFR-006) y ADR-0006 (localización de los `DefinedTermSet` raíz). **Ya no bloquea TASK-004/005/006.** La nota previa que presentaba los puntos 2-6 como abiertos y "desbloqueantes" quedó **obsoleta** y se rectifica aquí (corrección 2026-06-22, append-only ADR-0001): el estado real está en `requirements.md:18`.
 
-1. **Vista maestra — columnas exactas y orden, filtros y panel de detalle.** ✅ **Resuelto (2026-06-16, ADR-0005)** para el alcance v1 (lectura + curación de visibilidad): ver `docs/superpowers/specs/2026-06-15-vista-maestra-design.md`. El panel de detalle **configurable** por el admin queda fuera de v1 y sigue abierto.
-2. **Re-catalogador — reglas de negocio:** ¿una o varias materias/etapas por recurso (cardinalidad)? ¿mínimo de alineamiento para considerar un recurso "completo"? ¿límite de tamaño de lote?
-3. **Curación — acciones y matriz rol×acción:** lista exacta de acciones y qué rol de Omeka puede cada una (ACL).
-4. **Integridad — reglas que definen "íntegro":** campos obligatorios, destino de alineamiento vivo, licencia presente, etc.
-5. **Estadísticas — catálogo:** lista de gráficos, dimensión (cursos/etapas, materias, proyectos, licencias), tipo (barras/tarta/línea), filtros y plantilla de export PDF.
-6. **NFR:** rendimiento (nº de recursos y de items-término del currículo; tiempos objetivo), idiomas i18n (¿solo es/en?), nivel de accesibilidad objetivo.
+Desglose y resolución de cada punto:
+
+1. **Vista maestra — columnas exactas y orden, filtros y panel de detalle.** ✅ **Resuelto (2026-06-16, ADR-0005)** para el alcance v1 (lectura + curación de visibilidad): ver `docs/superpowers/specs/2026-06-15-vista-maestra-design.md`. El panel de detalle **configurable** por el admin queda fuera de v1 y sigue como mejora futura.
+2. **Re-catalogador — reglas de negocio.** ✅ **Resuelto:** cardinalidad **múltiple** en las cuatro properties de alineamiento y en tags (RF-004/RF-005); definición de «completo» en RF-006; localización de vocabularios en ADR-0006. Límite de tamaño de lote → no aplica a TASK-004 (opera por item individual; el lote pasa a Job en segundo plano, RF-011, tarea aparte).
+3. **Curación — acciones y matriz rol×acción.** ✅ **Resuelto (NFR-003):** visibilidad/alineamiento/tags → `editor`+; proyecto (`schema:isPartOf`) → `global_admin`/`site_admin`.
+4. **Integridad — reglas que definen "íntegro".** ✅ **Resuelto (RF-006, implementado en TASK-005):** alineamiento vivo + licencia presente; con plantilla REA, campos obligatorios de la plantilla.
+5. **Estadísticas — catálogo.** ✅ **Resuelto (RF-007):** conteo por dimensión, cruce de 2 dimensiones y % de completitud; export CSV (PDF a evaluar después). Implementación en TASK-006.
+6. **NFR.** ✅ **Resuelto:** rendimiento = lazy-load/autocomplete sin cargar el árbol (NFR-004); i18n es/en (NFR-005); accesibilidad = nivel del admin nativo (NFR-006).
 
 ## PEND-009 — Metadatos de empaquetado (bloquea `make package` publicable) ✅ RESUELTO
 
@@ -62,7 +66,7 @@ Desglosado para poder responder por partes:
 
 ## Orden recomendado para desbloquear
 
-> Actualizado 2026-06-16: PEND-005/006/008/009 cerrados; PEND-007 punto 1 (vista maestra v1) cerrado con ADR-0005. **Pendiente: PEND-007 puntos 2-6** (re-catalogador, matriz rol×acción, integridad, estadísticas, NFR).
+> Actualizado 2026-06-22: **todos los PEND cerrados.** PEND-005/006/008/009 cerrados (2026-06-15); PEND-007 cerrado por completo (punto 1 con ADR-0005, puntos 2-6 en `requirements.md` + ADR-0006). No queda nada bloqueante; el orden de abajo es histórico.
 
-1. TASK-003 (vista maestra v1) **en curso**, sin bloqueo.
-2. **PEND-007 puntos 2-6** (reglas del re-catalogador, matriz rol×acción, integridad, estadísticas, NFR) → desbloquea TASK-004/005/006 y la matriz rol×acción definitiva.
+1. TASK-003 (vista maestra v1) **hecha** (2026-06-16, ADR-0005).
+2. ~~PEND-007 puntos 2-6~~ **resueltos** (ver sección PEND-007 arriba): reglas del re-catalogador, matriz rol×acción, integridad, estadísticas y NFR fijados en `requirements.md` y ADR-0006. TASK-004/005/006 desbloqueadas.
