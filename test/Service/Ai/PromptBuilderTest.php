@@ -85,4 +85,38 @@ final class PromptBuilderTest extends TestCase
         $prompt = (new PromptBuilder())->buildSelectionPrompt('Saberes', ['A', 'B'], $injected, 0);
         $this->assertSame(1, substr_count($prompt['user'], $marker));
     }
+
+    public function testFormatsRichCandidatesWithDescriptionBlockAndCourse(): void
+    {
+        $prompt = (new PromptBuilder())->buildSelectionPrompt(
+            'Saberes básicos',
+            [[
+                'id' => 30,
+                'title' => 'SBIG01SBI.1',
+                'description' => 'Aproximación a los pasos del método científico.',
+                'block' => 'I. Proyecto científico',
+                'courseTitle' => '1º ESO',
+            ]],
+            'recurso sobre método científico',
+            0
+        );
+        // La descripción semántica y el contexto (curso · bloque) deben aparecer;
+        // el código viaja entre paréntesis para trazabilidad.
+        $this->assertStringContainsString('Aproximación a los pasos del método científico.', $prompt['user']);
+        $this->assertStringContainsString('1º ESO', $prompt['user']);
+        $this->assertStringContainsString('I. Proyecto científico', $prompt['user']);
+        $this->assertStringContainsString('(SBIG01SBI.1)', $prompt['user']);
+    }
+
+    public function testRichCandidateWithoutDescriptionFallsBackToTitle(): void
+    {
+        // Etapas/cursos/asignaturas/ejes: título ya legible, sin description.
+        $prompt = (new PromptBuilder())->buildSelectionPrompt(
+            'Materia (asignatura)',
+            [['title' => 'Biología y Geología', 'description' => '', 'block' => '']],
+            'contenido',
+            1
+        );
+        $this->assertStringContainsString('1. Biología y Geología', $prompt['user']);
+    }
 }
