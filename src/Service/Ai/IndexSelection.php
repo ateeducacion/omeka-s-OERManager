@@ -53,7 +53,7 @@ trait IndexSelection
                 continue;
             }
             $id = (int) ($candidates[$position]['id'] ?? 0);
-            if ($id > 0 && in_array($id, $seen, true)) {
+            if (in_array($id, $seen, true)) {
                 continue;
             }
             $seen[] = $id;

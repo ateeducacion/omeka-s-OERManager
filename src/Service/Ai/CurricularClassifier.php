@@ -127,6 +127,7 @@ final class CurricularClassifier implements ClassifierInterface
         if (!$families) {
             return '';
         }
+        $families = array_values($families);
         $candidates = array_map(static fn (array $f): array => ['title' => (string) $f['name']], $families);
         foreach ($this->ask($candidates, 'Materia (asignatura)', $content, 1) as $idx) {
             $pos = $idx - 1;

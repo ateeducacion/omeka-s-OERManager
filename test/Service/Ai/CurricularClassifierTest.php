@@ -140,4 +140,18 @@ final class CurricularClassifierTest extends TestCase
         $result = $this->make($r, $llm)->classify('contenido de B');
         $this->assertSame([200], $result['lrmi:teaches']);
     }
+
+    public function testEmptyLeafSelectionsOmitDerivedDimensions(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', // Etapa: ESO
+            '{"selected":[1]}', // Materia: Matemáticas
+            '{"selected":[]}',  // Saberes: ninguno
+            '{"selected":[]}',  // Criterios: ninguno
+        ]);
+        $result = $this->make($this->resolver(), $llm)->classify('contenido');
+        $this->assertSame([], $result);
+        $this->assertArrayNotHasKey('lrmi:educationalLevel', $result);
+        $this->assertArrayNotHasKey('schema:about', $result);
+    }
 }
