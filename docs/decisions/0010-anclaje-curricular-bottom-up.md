@@ -38,6 +38,11 @@ varios cursos): un error de curso propaga incoherencia a todo el subárbol.
 - La IA sigue proponiendo; el curador confirma (ADR-0007). Si el recurso es
   transversal a cursos, se proponen varios y el curador poda.
 
+## Limitaciones conocidas
+
+- **Materia única (v1):** la Fase A.2 ancla a UNA familia de materia (selección de un solo nombre); un REA interdisciplinar a varias materias requeriría selección múltiple de materia (mejora futura). El cruce de cursos dentro de una materia sí está soportado.
+- **Tope de candidatos (ENUM_LIMIT=300):** validado para ESO (peor caso ≈244 saberes de una materia cruzando cursos). `searchLeaves` trunca en `per_page` sin señal; otras etapas/marcos curriculares deben revalidar este tope antes de confiar en él.
+
 ## Fuentes
 
 - Análisis y decisión de plan mode con el propietario, 2026-06-26.

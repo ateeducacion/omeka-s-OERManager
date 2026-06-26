@@ -22,7 +22,7 @@ interface TermResolverInterface
      *   'lrmi:teaches', 'lrmi:assesses' o 'dcterms:relation' (ejes/tags).
      * @param array<string,int|string> $context ids de ancestros ya elegidos.
      *
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function listCandidates(string $dimension, array $context = []): array;
 

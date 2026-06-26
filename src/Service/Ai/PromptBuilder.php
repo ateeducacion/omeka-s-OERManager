@@ -34,7 +34,7 @@ final class PromptBuilder
 
         if ('' !== $desc && $desc !== $title) {
             $prefixParts = array_filter([$course, $block], static fn (string $p): bool => '' !== $p);
-            $line = '' !== $prefixParts ? '[' . implode(' · ', $prefixParts) . '] ' . $desc : $desc;
+            $line = [] !== $prefixParts ? '[' . implode(' · ', $prefixParts) . '] ' . $desc : $desc;
             return '' !== $title ? $line . " ({$title})" : $line;
         }
         return $title;

@@ -56,7 +56,7 @@ class CurriculumSearch
      * Etapas educativas: los DefinedTermSet del marco configurado (ADR-0006).
      * Ayuda de navegación de la cascada; no se escribe en el REA.
      *
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchEtapas(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -83,7 +83,7 @@ class CurriculumSearch
      * el ancestro ya elegido (contexto), si lo hay (RF-014, NFR-004).
      *
      * @param array<string,int|string> $context ids de ancestros: etapa, level (curso), about (asignatura)
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchDimension(
         string $dimension,
@@ -127,7 +127,7 @@ class CurriculumSearch
      * Ejes temáticos (tags, dcterms:relation): términos del DefinedTermSet raíz
      * identificado por id de item en la configuración (ADR-0006).
      *
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchAxes(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -344,7 +344,7 @@ class CurriculumSearch
         $results = [];
         foreach ($items as $item) {
             $results[] = [
-                'id' => $item->id(),
+                'id' => (int) $item->id(),
                 'title' => (string) $item->displayTitle(),
                 'description' => $this->firstLiteralValue($item, 'dcterms:description'),
                 'block' => $this->firstLiteralValue($item, 'dcterms:subject'),
