@@ -56,7 +56,7 @@ class CurriculumSearch
      * Etapas educativas: los DefinedTermSet del marco configurado (ADR-0006).
      * Ayuda de navegación de la cascada; no se escribe en el REA.
      *
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchEtapas(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -83,7 +83,7 @@ class CurriculumSearch
      * el ancestro ya elegido (contexto), si lo hay (RF-014, NFR-004).
      *
      * @param array<string,int|string> $context ids de ancestros: etapa, level (curso), about (asignatura)
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchDimension(
         string $dimension,
@@ -127,7 +127,7 @@ class CurriculumSearch
      * Ejes temáticos (tags, dcterms:relation): términos del DefinedTermSet raíz
      * identificado por id de item en la configuración (ADR-0006).
      *
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     public function searchAxes(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -149,6 +149,91 @@ class CurriculumSearch
         ];
         $this->addTitleFilter($query, $text);
         return $this->mapResults($this->api->search('items', $query)->getContent());
+    }
+
+    /**
+     * Nombres distintos de materia (asignatura) de una etapa, para la
+     * delimitación gruesa de la IA (Fase A.2). No fija curso: agrupa por nombre
+     * canónico (schema:about, fallback título). Acota por etapa + tipo (NFR-004).
+     *
+     * @return array<int,array{name:string}>
+     */
+    public function searchSubjectFamilies(int $etapaId, int $limit = self::RESULT_LIMIT): array
+    {
+        if ($etapaId <= 0) {
+            return [];
+        }
+        $typeValue = trim((string) $this->settings->get(self::TYPE_SETTINGS['schema:about']));
+        if ('' === $typeValue) {
+            return [];
+        }
+        $query = [
+            'property' => [
+                ['property' => self::TYPE_TERM, 'type' => 'eq', 'text' => $typeValue],
+                ['property' => 'dcterms:isPartOf', 'type' => 'res', 'text' => (string) $etapaId],
+            ],
+            'sort_by' => 'title',
+            'sort_order' => 'asc',
+            'per_page' => $limit,
+        ];
+        $names = [];
+        foreach ($this->api->search('items', $query)->getContent() as $item) {
+            $name = $this->firstLiteralValue($item, 'schema:about');
+            if ('' === $name) {
+                $name = trim((string) $item->displayTitle());
+            }
+            if ('' !== $name) {
+                $names[$name] = true;
+            }
+        }
+        return array_map(static fn (string $n): array => ['name' => $n], array_keys($names));
+    }
+
+    /**
+     * Saberes/criterios de una MATERIA cruzando todos sus cursos (Fase B/C), con
+     * linaje (courseId/subjectId) para la derivación bottom-up (Fase D). Acota por
+     * etapa + nombre de materia (schema:about) + tipo; nunca carga el árbol
+     * completo (NFR-004).
+     *
+     * @return array<int,array{id:int,title:string,description:string,block:string,courseId:int,courseTitle:string,subjectId:int}>
+     */
+    public function searchLeaves(
+        string $dimension,
+        int $etapaId,
+        string $subjectName,
+        int $limit = self::RESULT_LIMIT
+    ): array {
+        if (!isset(self::TYPE_SETTINGS[$dimension]) || $etapaId <= 0 || '' === trim($subjectName)) {
+            return [];
+        }
+        $typeValue = trim((string) $this->settings->get(self::TYPE_SETTINGS[$dimension]));
+        if ('' === $typeValue) {
+            return [];
+        }
+        $query = [
+            'property' => [
+                ['property' => self::TYPE_TERM, 'type' => 'eq', 'text' => $typeValue],
+                ['property' => 'schema:about', 'type' => 'eq', 'text' => trim($subjectName)],
+                ['property' => 'dcterms:isPartOf', 'type' => 'res', 'text' => (string) $etapaId],
+            ],
+            'sort_by' => 'title',
+            'sort_order' => 'asc',
+            'per_page' => $limit,
+        ];
+        $results = [];
+        foreach ($this->api->search('items', $query)->getContent() as $item) {
+            $course = $this->firstResourceRef($item, 'lrmi:educationalAlignment');
+            $results[] = [
+                'id' => (int) $item->id(),
+                'title' => (string) $item->displayTitle(),
+                'description' => $this->firstLiteralValue($item, 'dcterms:description'),
+                'block' => $this->firstLiteralValue($item, 'dcterms:subject'),
+                'courseId' => $course['id'],
+                'courseTitle' => $course['title'],
+                'subjectId' => $this->resourceRefMatchingTitle($item, self::IN_TERMSET_TERM, $subjectName),
+            ];
+        }
+        return $results;
     }
 
     /**
@@ -203,15 +288,67 @@ class CurriculumSearch
         }
     }
 
+    private function firstLiteralValue($item, string $term): string
+    {
+        foreach ($item->value($term, ['all' => true, 'default' => []]) as $v) {
+            if ('literal' === $v->type()) {
+                return (string) $v->value();
+            }
+        }
+        return '';
+    }
+
+    /** @return array{id:int,title:string} */
+    private function firstResourceRef($item, string $term): array
+    {
+        foreach ($item->value($term, ['all' => true, 'default' => []]) as $v) {
+            $res = $v->valueResource();
+            if (null !== $res) {
+                return ['id' => (int) $res->id(), 'title' => (string) $res->displayTitle()];
+            }
+        }
+        return ['id' => 0, 'title' => ''];
+    }
+
+    /**
+     * De las referencias resource de $term, el id cuyo título coincide con $title.
+     * Para un criterio, schema:inDefinedTermSet apunta a {Competencia, Asignatura};
+     * la Asignatura es la que tiene por título el nombre de la materia (la
+     * Competencia es un código). Fallback: primera referencia.
+     */
+    private function resourceRefMatchingTitle($item, string $term, string $title): int
+    {
+        $first = 0;
+        foreach ($item->value($term, ['all' => true, 'default' => []]) as $v) {
+            $res = $v->valueResource();
+            if (null === $res) {
+                continue;
+            }
+            $rid = (int) $res->id();
+            if (0 === $first) {
+                $first = $rid;
+            }
+            if (trim((string) $res->displayTitle()) === trim($title)) {
+                return $rid;
+            }
+        }
+        return $first;
+    }
+
     /**
      * @param iterable $items
-     * @return array<int,array{id:int,title:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string}>
      */
     private function mapResults($items): array
     {
         $results = [];
         foreach ($items as $item) {
-            $results[] = ['id' => $item->id(), 'title' => (string) $item->displayTitle()];
+            $results[] = [
+                'id' => (int) $item->id(),
+                'title' => (string) $item->displayTitle(),
+                'description' => $this->firstLiteralValue($item, 'dcterms:description'),
+                'block' => $this->firstLiteralValue($item, 'dcterms:subject'),
+            ];
         }
         return $results;
     }

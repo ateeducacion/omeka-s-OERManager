@@ -34,7 +34,7 @@ final class TagClassifier implements ClassifierInterface
         }
         $prompt = $this->prompts->buildSelectionPrompt(
             'Ejes temáticos',
-            array_map(static fn (array $c): string => (string) $c['title'], $candidates),
+            $candidates,
             $content,
             0
         );

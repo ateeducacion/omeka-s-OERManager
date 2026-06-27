@@ -30,4 +30,14 @@ final class CurriculumTermResolver implements TermResolverInterface
             default => $this->search->searchDimension($dimension, '', $context, self::ENUM_LIMIT),
         };
     }
+
+    public function listSubjectFamilies(int $etapaId): array
+    {
+        return $this->search->searchSubjectFamilies($etapaId, self::ENUM_LIMIT);
+    }
+
+    public function listLeaves(string $dimension, int $etapaId, string $subjectName): array
+    {
+        return $this->search->searchLeaves($dimension, $etapaId, $subjectName, self::ENUM_LIMIT);
+    }
 }

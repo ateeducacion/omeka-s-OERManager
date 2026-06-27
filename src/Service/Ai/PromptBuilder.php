@@ -18,7 +18,31 @@ final class PromptBuilder
     private const CLOSE = '<<<FIN CONTENIDO>>>';
 
     /**
-     * @param string[] $candidates títulos de los candidatos (texto exacto)
+     * Formatea un candidato para la lista numerada (E1). Si tiene description
+     * semántica (distinta del título), la muestra precedida del contexto
+     * "[curso · bloque]" y con el código entre paréntesis; si no, solo el título
+     * (etapas, cursos, asignaturas, ejes — ya legibles).
+     *
+     * @param array<string,mixed> $c
+     */
+    private function formatCandidate(array $c): string
+    {
+        $title = trim((string) ($c['title'] ?? ''));
+        $desc = trim((string) ($c['description'] ?? ''));
+        $block = trim((string) ($c['block'] ?? ''));
+        $course = trim((string) ($c['courseTitle'] ?? ''));
+
+        if ('' !== $desc && $desc !== $title) {
+            $prefixParts = array_filter([$course, $block], static fn (string $p): bool => '' !== $p);
+            $line = [] !== $prefixParts ? '[' . implode(' · ', $prefixParts) . '] ' . $desc : $desc;
+            return '' !== $title ? $line . " ({$title})" : $line;
+        }
+        return $title;
+    }
+
+    /**
+     * @param array<int,string|array<string,mixed>> $candidates títulos o candidatos
+     *   ricos {title, description?, block?, courseTitle?}
      * @param int $maxSelections 1 = elegir como máximo uno; 0 = varios/ninguno
      * @return array{system:string,user:string}
      */
@@ -41,8 +65,9 @@ final class PromptBuilder
             : 'Elige todos los que apliquen (pueden ser varios, o cero o más).';
 
         $list = '';
-        foreach (array_values($candidates) as $i => $title) {
-            $list .= sprintf("%d. %s\n", $i + 1, (string) $title);
+        foreach (array_values($candidates) as $i => $candidate) {
+            $formatted = is_array($candidate) ? $this->formatCandidate($candidate) : (string) $candidate;
+            $list .= sprintf("%d. %s\n", $i + 1, $formatted);
         }
         if ('' === $list) {
             $list = "(sin candidatos)\n";
