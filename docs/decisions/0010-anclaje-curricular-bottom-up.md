@@ -27,6 +27,15 @@ varios cursos): un error de curso propaga incoherencia a todo el subárbol.
    códigos de competencia).
 4. **Sin embeddings** en esta entrega: se difiere a TASK-016/PEND-010. El punto de
    extensión es `TermResolverInterface`.
+5. **Saberes y criterios son de primera clase: se intentan siempre, se omiten si
+   vacíos.** El clasificador ejecuta el paso de selección para `lrmi:teaches` Y
+   `lrmi:assesses` en cada clasificación (criterios igual que saberes, decisión del
+   propietario 2026-06-26), pero **omite** del resultado la dimensión cuya selección
+   queda vacía (`if (!$rows) continue;`). No se fuerza una propuesta no vacía: un REA
+   con saberes claros pero sin criterio relacionado devuelve solo `lrmi:teaches`.
+   Coherente con ADR-0007 (la IA propone, el curador confirma): forzar `≥1` por
+   dimensión obligaría a alucinar. El curador siempre ve el input de criterios en el
+   panel y puede rellenarlo a mano; lo que cambia es solo si viene pre-rellenado.
 
 ## Consecuencias
 
