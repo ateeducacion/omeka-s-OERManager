@@ -219,11 +219,44 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1]}',   // ESO
             '{"selected":[1]}',   // Matemáticas
             '{"selected":[1]}',   // saber id30 (curso 12)
-            '{"selected":[1,2]}', // criterios: la lista YA filtrada a curso 12 solo tiene id40
+            '{"selected":[1,2]}', // criterios: se piden 1 y 2...
         ]);
         $result = $this->make($r, $llm)->classify('ecuaciones');
-        // Solo el criterio del curso 12 es elegible; el del curso 99 se filtró fuera.
+        // ...pero la lista ya está filtrada al curso 12 (solo id40), así que el
+        // índice 2 queda fuera de rango. Si NO se filtrara, la lista sería
+        // [id40, id41] y el resultado sería [40, 41]: la aserción prueba el filtro.
         $this->assertSame([40], $result['lrmi:assesses']);
+    }
+
+    public function testFamiliesAreDedupedAcrossEtapas(): void
+    {
+        // "Matemáticas" aparece en ambas etapas; tras dedup la lista de materias
+        // es [Matemáticas, Física], así que el índice 2 = Física (no la 2ª
+        // Matemáticas). Lo probamos por comportamiento: elegir la materia 2 debe
+        // derivar del saber de Física, no del de Matemáticas.
+        $r = new FakeTermResolver(['etapa' => [
+            ['id' => 1, 'title' => 'Primaria'], ['id' => 2, 'title' => 'ESO'],
+        ]]);
+        $r->families = [
+            1 => [['name' => 'Matemáticas']],
+            2 => [['name' => 'Matemáticas'], ['name' => 'Física']],
+        ];
+        $r->leaves = [
+            'lrmi:teaches|Matemáticas' => [['id' => 30, 'title' => 'M', 'description' => 'd',
+                'block' => 'I', 'courseId' => 10, 'courseTitle' => '1º', 'subjectId' => 20]],
+            'lrmi:teaches|Física' => [['id' => 50, 'title' => 'F', 'description' => 'd',
+                'block' => 'II', 'courseId' => 11, 'courseTitle' => '1º', 'subjectId' => 21]],
+            'lrmi:assesses' => [],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1,2]}', // ambas etapas
+            '{"selected":[2]}',   // materia 2 = Física (si no hubiera dedup, sería Matemáticas)
+            '{"selected":[1]}',   // saber de Física
+            '{"selected":[]}',
+        ]);
+        $result = $this->make($r, $llm)->classify('x');
+        $this->assertSame([50], $result['lrmi:teaches']);
+        $this->assertSame([21], $result['schema:about']);
     }
 
     public function testCriteriaFallbackWhenNoSaberesSelected(): void
