@@ -22,10 +22,17 @@ final class AiCataloguer
 
     /**
      * @param array<int,array{path:string,mediaType?:string,name?:string}> $files
-     * @return array{alignment:array<string,int[]>,content:array{truncated:bool,empty:bool,sources:string[],skipped:array<string,string>}}
+     * @return array{alignment:array<string,int[]>,content:array{truncated:bool,empty:bool,sources:string[],skipped:array<string,string>},debug:array<string,mixed>}
      */
     public function propose(string $metadataText, array $files): array
     {
+        if ($this->curricular instanceof TraceableInterface) {
+            $this->curricular->clearTrace();
+        }
+        if ($this->tags instanceof TraceableInterface) {
+            $this->tags->clearTrace();
+        }
+
         $content = $this->extractor->extract($metadataText, $files);
 
         $alignment = [];
@@ -42,6 +49,13 @@ final class AiCataloguer
                 'empty' => $content->isEmpty(),
                 'sources' => $content->sources(),
                 'skipped' => $content->skipped(),
+            ],
+            'debug' => [
+                'content_text' => $content->text(),
+                'curricular' => $this->curricular instanceof TraceableInterface
+                    ? $this->curricular->getTrace() : [],
+                'tags' => $this->tags instanceof TraceableInterface
+                    ? $this->tags->getTrace() : [],
             ],
         ];
     }

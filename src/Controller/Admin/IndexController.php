@@ -275,6 +275,7 @@ class IndexController extends AbstractActionController
         return new JsonModel([
             'alignment' => $this->enrichLabels($proposal['alignment']),
             'content' => $proposal['content'],
+            'debug' => $proposal['debug'],
         ]);
     }
 

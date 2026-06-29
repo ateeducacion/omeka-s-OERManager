@@ -444,6 +444,81 @@
         });
     });
 
+    // Resumen "leídos N / saltados M (motivos)" de la extracción de medios.
+    function extractionSummary(content) {
+        if (!content) {
+            return '';
+        }
+        var sources = content.sources || [];
+        var skipped = content.skipped || {};
+        var skippedNames = Object.keys(skipped);
+        var parts = ['leídos: ' + (sources.length ? sources.join(', ') : '(ninguno)')];
+        if (skippedNames.length) {
+            parts.push('saltados: ' + skippedNames.map(function (name) {
+                return name + ' → ' + skipped[name];
+            }).join('; '));
+        }
+        return parts.join(' | ');
+    }
+
+    // Vuelca el intercambio completo al console (grupos colapsables por llamada LLM).
+    function logAiDebug(itemId, debug, content) {
+        console.group('OERManager AI [item #' + itemId + ']');
+        // Extracción de medios (TASK-017): qué fuentes se leyeron y cuáles se
+        // saltaron con su motivo, antes de ver qué texto llegó al LLM.
+        console.log('[Extracción de medios] ' + extractionSummary(content));
+        if (debug.content_text) {
+            console.log('[Contenido enviado al LLM]\n' + debug.content_text);
+        }
+        var allSteps = (debug.curricular || []).concat(debug.tags || []);
+        allSteps.forEach(function (entry, i) {
+            console.group('[Llamada ' + (i + 1) + '] ' + entry.step + ' (' + entry.candidates + ' candidatos)');
+            console.log('[SYSTEM]\n' + entry.system);
+            console.log('[USER]\n' + entry.user);
+            console.log('[RESPUESTA]\n' + entry.response);
+            console.log('[Índices elegidos]', entry.selected_indices);
+            console.groupEnd();
+        });
+        console.groupEnd();
+    }
+
+    // Panel <details> colapsable en pantalla con resumen del intercambio LLM.
+    function buildAiDebugPanel(debug, content) {
+        var allSteps = (debug.curricular || []).concat(debug.tags || []);
+        var $details = $('<details>').addClass('oer-ai-debug');
+        $details.append(
+            $('<summary>').text('Intercambio LLM (' + allSteps.length + ' llamadas) — ver consola para detalle completo')
+        );
+
+        // Extracción de medios (TASK-017): fuentes leídas y saltadas con motivo.
+        var $extract = $('<div>').addClass('oer-ai-debug-section');
+        $extract.append($('<strong>').text('Extracción de medios:'));
+        $extract.append($('<pre>').text(extractionSummary(content) || '(sin datos de extracción)'));
+        $details.append($extract);
+
+        var contentPreview = (debug.content_text || '').substring(0, 400);
+        if (debug.content_text && debug.content_text.length > 400) {
+            contentPreview += '…';
+        }
+        if (contentPreview) {
+            var $section = $('<div>').addClass('oer-ai-debug-section');
+            $section.append($('<strong>').text('Contenido extraído (' + (debug.content_text || '').length + ' chars):'));
+            $section.append($('<pre>').text(contentPreview));
+            $details.append($section);
+        }
+
+        allSteps.forEach(function (entry, i) {
+            var $step = $('<div>').addClass('oer-ai-debug-step');
+            $step.append(
+                $('<strong>').text((i + 1) + '. ' + entry.step + ' — ' + entry.candidates + ' candidatos → elegidos: ' + JSON.stringify(entry.selected_indices))
+            );
+            $step.append($('<pre>').text(entry.response));
+            $details.append($step);
+        });
+
+        return $details;
+    }
+
     // Pre-rellena el panel con la propuesta IA: por dimensión, añade los chips
     // propuestos que no estén ya seleccionados y marca la dimensión modificada.
     // No escribe nada: el curador revisa y confirma (preview/apply de 4a).
@@ -501,6 +576,13 @@
                 note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
             }
             $diff.text(note);
+
+            // Debug de calidad (TASK-015): intercambio completo con el LLM al console.
+            if (response.debug) {
+                logAiDebug($panel.data('item-id'), response.debug, response.content);
+                $panel.find('.oer-ai-debug').remove();
+                $panel.find('.oer-recatalog-diff').after(buildAiDebugPanel(response.debug, response.content));
+            }
         }).fail(function () {
             $diff.text(Omeka.jsTranslate('No se pudo consultar a la IA.'));
         }).always(function () {

@@ -95,3 +95,38 @@
     color: #a32;
     font-weight: bold;
 }
+
+/* Panel de debug de calidad (TASK-015): intercambio LLM */
+.oer-ai-debug {
+    margin-top: 1em;
+    border: 1px dashed #aaa;
+    border-radius: 4px;
+    padding: 0.5em 0.8em;
+    font-size: 0.85em;
+    color: #555;
+}
+
+.oer-ai-debug summary {
+    cursor: pointer;
+    font-weight: bold;
+    color: #333;
+}
+
+.oer-ai-debug-section,
+.oer-ai-debug-step {
+    margin-top: 0.7em;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 0.5em;
+}
+
+.oer-ai-debug pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #f7f7f7;
+    padding: 0.4em 0.6em;
+    border-radius: 3px;
+    margin: 0.3em 0 0;
+    max-height: 10em;
+    overflow-y: auto;
+    font-size: 0.9em;
+}

@@ -14,9 +14,12 @@ use OERManager\Service\Llm\LlmClientInterface;
  * temático (E2) antes de presentarlos al LLM. La Etapa solo acota el contexto:
  * nunca se escribe en el REA (ADR-0009).
  */
-final class CurricularClassifier implements ClassifierInterface
+final class CurricularClassifier implements ClassifierInterface, TraceableInterface
 {
     use IndexSelection;
+
+    /** @var array<int,array<string,mixed>> */
+    private array $trace = [];
 
     /** Dimensiones-hoja a clasificar por descripción (Fase B/C). */
     private const LEAF_DIMENSIONS = [
@@ -93,6 +96,16 @@ final class CurricularClassifier implements ClassifierInterface
         return $result;
     }
 
+    public function getTrace(): array
+    {
+        return $this->trace;
+    }
+
+    public function clearTrace(): void
+    {
+        $this->trace = [];
+    }
+
     /**
      * @param array<int,array<string,mixed>> $candidates
      * @return int[] índices 1-based devueltos por el LLM
@@ -104,7 +117,16 @@ final class CurricularClassifier implements ClassifierInterface
             [['role' => 'user', 'content' => $prompt['user']]],
             ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
         );
-        return $this->parser->parseIndices($response->text());
+        $indices = $this->parser->parseIndices($response->text());
+        $this->trace[] = [
+            'step' => $label,
+            'candidates' => count($candidates),
+            'system' => $prompt['system'],
+            'user' => $prompt['user'],
+            'response' => $response->text(),
+            'selected_indices' => $indices,
+        ];
+        return $indices;
     }
 
     /**
