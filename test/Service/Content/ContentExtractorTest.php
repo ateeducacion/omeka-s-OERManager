@@ -227,8 +227,20 @@ final class ContentExtractorTest extends TestCase
         $file = $this->tempFile('big.json', (string) json_encode($values));
         $extractor = new ContentExtractor(['max_json_nodes' => 50]);
         $content = $extractor->extract('', [['path' => $file]]);
-        // No revienta y respeta el tope: no aparece la última frase.
+        // Las primeras frases (dentro del tope) sí entran...
+        $this->assertStringContainsString('número 0', $content->text());
+        // ...y las que quedan más allá del tope de nodos, no.
         $this->assertStringNotContainsString('número 1999', $content->text());
+    }
+
+    public function testJsonWithOnlyTechnicalNoiseIsSkipped(): void
+    {
+        $json = json_encode(['id' => 'abc12345', 'src' => 'resources/img.png']);
+        $file = $this->tempFile('noise.json', (string) $json);
+        $content = (new ContentExtractor())->extract('meta', [['path' => $file]]);
+        $this->assertStringContainsString('meta', $content->text());
+        $this->assertArrayHasKey('noise.json', $content->skipped());
+        $this->assertSame('json_empty', $content->skipped()['noise.json']);
     }
 
     public function testJsonEntryInsideZipIsExtracted(): void
@@ -240,6 +252,8 @@ final class ContentExtractorTest extends TestCase
         ]);
         $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
         $this->assertStringContainsString('niveles de organización de la materia viva', $content->text());
+        // sources() registra el fichero externo procesado (el ZIP), no las entradas.
+        $this->assertContains('scorm.zip', $content->sources());
     }
 
     // --- helpers ---
