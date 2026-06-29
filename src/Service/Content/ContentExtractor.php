@@ -37,7 +37,11 @@ final class ContentExtractor
         // size/comp_size por encima de esto (y con tamaño relevante) = zip-bomb.
         'max_compression_ratio' => 100,
         'max_pdf_bytes' => 20971520, // 20 MB
-        'whitelist' => ['txt', 'html', 'htm', 'xml', 'pdf'],
+        // Tope de nodos del recorrido JSON (anti-JSON patológico/profundo).
+        'max_json_nodes' => 5000,
+        // Longitud mínima para aceptar un string suelto (sin varias palabras).
+        'min_text_len' => 25,
+        'whitelist' => ['txt', 'html', 'htm', 'xml', 'pdf', 'json'],
     ];
 
     /** @var array<string,mixed> */
@@ -100,6 +104,7 @@ final class ContentExtractor
         return match ($ext) {
             'pdf' => $this->extractPdfFile($path, $name),
             'zip' => $this->extractZip($path, $name),
+            'json' => $this->extractJsonFile($path, $name),
             'txt', 'html', 'htm', 'xml' => $this->readTextFile($path, $ext),
             default => $this->skipReturn($name, 'unsupported:' . $ext),
         };
@@ -163,6 +168,101 @@ final class ContentExtractor
             return null;
         }
         return $this->normalizeText($bytes, $ext);
+    }
+
+    private function extractJsonFile(string $path, string $name): ?string
+    {
+        $bytes = file_get_contents($path, false, null, 0, (int) $this->limits['max_entry_bytes']);
+        if (false === $bytes) {
+            $this->skip($name, 'unreadable');
+            return null;
+        }
+        return $this->parseJson($bytes, $name);
+    }
+
+    /**
+     * Extrae los valores string significativos de un JSON (cualquier herramienta).
+     * JSON inválido se salta; el recorrido está acotado por nº de nodos.
+     */
+    private function parseJson(string $bytes, string $name): ?string
+    {
+        try {
+            $data = json_decode($bytes, true, 32, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            $this->skip($name, 'json_invalid');
+            return null;
+        }
+        $out = [];
+        $nodes = 0;
+        $this->collectJsonStrings($data, $out, $nodes, (int) $this->limits['max_json_nodes']);
+        $text = trim($this->normalizeWhitespace(implode("\n", $out)));
+        if ('' === $text) {
+            $this->skip($name, 'json_empty');
+            return null;
+        }
+        return $text;
+    }
+
+    /**
+     * Recorre el árbol JSON recogiendo strings, con tope de nodos visitados.
+     *
+     * @param mixed $node
+     * @param string[] $out
+     */
+    private function collectJsonStrings(mixed $node, array &$out, int &$nodes, int $maxNodes): void
+    {
+        if ($nodes++ >= $maxNodes) {
+            return;
+        }
+        if (is_array($node)) {
+            foreach ($node as $value) {
+                $this->collectJsonStrings($value, $out, $nodes, $maxNodes);
+            }
+            return;
+        }
+        if (is_string($node)) {
+            $text = $this->meaningfulText($node);
+            if (null !== $text) {
+                $out[] = $text;
+            }
+        }
+    }
+
+    /**
+     * ¿El string es texto de contenido (no un id/ruta/url/hash/nombre de fichero)?
+     * Devuelve el texto saneado (HTML stripped) o null si es ruido técnico.
+     */
+    private function meaningfulText(string $raw): ?string
+    {
+        $value = trim($raw);
+        if ('' === $value) {
+            return null;
+        }
+        if (1 === preg_match('/<[a-z][^>]*>/i', $value)) {
+            $value = trim($this->normalizeText($value, 'html'));
+            if ('' === $value) {
+                return null;
+            }
+        }
+        // Descartar tokens técnicos.
+        if (
+            1 === preg_match('#^https?://#i', $value)
+            || str_contains($value, '/')
+            || 1 === preg_match('/^[0-9a-f]{8,}$/i', $value)
+        ) {
+            return null;
+        }
+        $fileExt = '/^[\w.-]+\.(png|jpe?g|gif|svg|css|js|json|woff2?|ttf|eot|'
+            . 'mp[34]|html?|xml|xsd|dtd)$/i';
+        if (1 === preg_match($fileExt, $value)) {
+            return null;
+        }
+        $words = preg_split('/\s+/', $value) ?: [];
+        $multiWord = count(array_filter($words, static fn (string $w): bool => mb_strlen($w) > 1)) >= 2;
+        if (!$multiWord && mb_strlen($value) < (int) $this->limits['min_text_len']) {
+            return null;
+        }
+        return $value;
     }
 
     /**
@@ -238,7 +338,11 @@ final class ContentExtractor
                 $this->skip($entryName, 'entry_unreadable');
                 continue;
             }
-            $text = 'pdf' === $ext ? $this->parsePdf($bytes, $entryName) : $this->normalizeText($bytes, $ext);
+            $text = match ($ext) {
+                'pdf' => $this->parsePdf($bytes, $entryName),
+                'json' => $this->parseJson($bytes, $entryName),
+                default => $this->normalizeText($bytes, $ext),
+            };
             if (null !== $text && '' !== trim($text)) {
                 $pieces[] = $text;
             }
