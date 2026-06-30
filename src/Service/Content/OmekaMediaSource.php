@@ -16,7 +16,7 @@ use Omeka\File\Store\StoreInterface;
 final class OmekaMediaSource implements MediaSourceInterface
 {
     /** Extensiones que el extractor sabe tratar (resto se omite ya aquí). */
-    private const WHITELIST = ['txt', 'html', 'htm', 'xml', 'pdf', 'zip'];
+    private const WHITELIST = ['txt', 'html', 'htm', 'xml', 'pdf', 'zip', 'json'];
 
     public function __construct(private ApiManager $api, private StoreInterface $store)
     {

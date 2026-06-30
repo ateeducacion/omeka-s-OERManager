@@ -5,29 +5,30 @@ namespace OERManager\Service\Ai;
 use OERManager\Service\Llm\LlmClientInterface;
 
 /**
- * Clasificador curricular bottom-up (ADR-0010): Etapa + familia de materia
- * delimitan el contexto (Fase A) sin fijar el curso; el LLM selecciona saberes
- * y criterios por su descripción semántica, cruzando todos los cursos de la
- * materia (Fases B/C); curso (lrmi:educationalLevel) y materia (schema:about) se
- * DERIVAN de las hojas elegidas (Fase D) → el subgrafo es coherente por
- * construcción. Si los saberes superan BLOCK_THRESHOLD, se pre-filtra por bloque
- * temático (E2) antes de presentarlos al LLM. La Etapa solo acota el contexto:
- * nunca se escribe en el REA (ADR-0009).
+ * Clasificador curricular bottom-up (ADR-0010). Etapa(s) y materia(s) delimitan
+ * el contexto (Fase A) en multi-select, sin fijar curso; el LLM selecciona
+ * saberes y criterios por su descripción cruzando etapas/materias/cursos (Fases
+ * B/C); los criterios se acotan a los cursos derivados de los saberes elegidos
+ * (más precisos; fallback sin saberes → criterios de la materia). Curso
+ * (lrmi:educationalLevel) y materia (schema:about) se DERIVAN de las hojas
+ * elegidas (Fase D) → subgrafo coherente por construcción. La etapa solo acota:
+ * nunca se escribe (ADR-0009).
  */
-final class CurricularClassifier implements ClassifierInterface
+final class CurricularClassifier implements ClassifierInterface, TraceableInterface
 {
     use IndexSelection;
 
-    /** Dimensiones-hoja a clasificar por descripción (Fase B/C). */
-    private const LEAF_DIMENSIONS = [
-        'lrmi:teaches' => 'Saberes básicos',
-        'lrmi:assesses' => 'Criterios de evaluación',
-    ];
-
     private const TEACHES = 'lrmi:teaches';
+    private const ASSESSES = 'lrmi:assesses';
 
     /** Si los saberes superan este número, pre-filtrar por bloque temático (E2). */
     private const BLOCK_THRESHOLD = 30;
+
+    /** Tope de hojas mergeadas presentadas al LLM (coste de tokens, NFR-004/NFR-008). */
+    private const LEAF_CAP = 200;
+
+    /** @var array<int,array<string,mixed>> */
+    private array $trace = [];
 
     private int $maxTokens;
 
@@ -43,46 +44,50 @@ final class CurricularClassifier implements ClassifierInterface
 
     public function classify(string $content): array
     {
-        // Fase A.1 — Etapa (acota; no se escribe, ADR-0009).
-        $etapaId = $this->pickFirstId($this->resolver->listCandidates('etapa'), 'Etapa educativa', $content);
-        if (0 === $etapaId) {
+        // Fase A.1 — Etapas (multi; acotan, no se escriben, ADR-0009).
+        $etapaIds = $this->pickEtapaIds($this->resolver->listCandidates('etapa'), $content);
+        if (!$etapaIds) {
             return [];
         }
 
-        // Fase A.2 — Familia de materia (acota; NO fija el curso; no se escribe).
-        $subjectName = $this->pickSubjectName($this->resolver->listSubjectFamilies($etapaId), $content);
-        if ('' === $subjectName) {
+        // Fase A.2 — Materias (multi; NO fijan curso; no se escriben).
+        $subjectNames = $this->pickSubjectNames($this->gatherFamilies($etapaIds), $content);
+        if (!$subjectNames) {
             return [];
         }
 
         $result = [];
+        /** @var array<int,bool> $courseIds */
         $courseIds = [];
+        /** @var array<int,bool> $subjectIds */
         $subjectIds = [];
 
-        // Fase B/C — Saberes y Criterios por descripción, cruzando cursos.
-        foreach (self::LEAF_DIMENSIONS as $dimension => $label) {
-            $candidates = $this->resolver->listLeaves($dimension, $etapaId, $subjectName);
-            if (self::TEACHES === $dimension && count($candidates) > self::BLOCK_THRESHOLD) {
-                $candidates = $this->prefilterByBlock($candidates, $subjectName, $content);
-            }
-            $rows = $this->selectRows($label, $candidates, $content);
-            if (!$rows) {
-                continue;
-            }
-            $result[$dimension] = array_map(static fn (array $c): int => (int) $c['id'], $rows);
-            foreach ($rows as $c) {
-                $cId = (int) ($c['courseId'] ?? 0);
-                $sId = (int) ($c['subjectId'] ?? 0);
-                if ($cId > 0) {
-                    $courseIds[$cId] = true;
-                }
-                if ($sId > 0) {
-                    $subjectIds[$sId] = true;
-                }
-            }
+        // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
+        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames);
+        if (count($teaches) > self::BLOCK_THRESHOLD) {
+            $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $content);
+        }
+        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $content);
+        if ($teachesRows) {
+            $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
+            $this->collectLineage($teachesRows, $courseIds, $subjectIds);
         }
 
-        // Fase D — Coherencia por derivación: curso y materia = padres de las hojas.
+        // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
+        $assesses = $this->gatherLeaves(self::ASSESSES, $etapaIds, $subjectNames);
+        if ($courseIds) {
+            $assesses = array_values(array_filter(
+                $assesses,
+                static fn (array $c): bool => isset($courseIds[(int) ($c['courseId'] ?? 0)])
+            ));
+        }
+        $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $content);
+        if ($assessesRows) {
+            $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
+            $this->collectLineage($assessesRows, $courseIds, $subjectIds);
+        }
+
+        // Fase D — Derivación: curso y materia = padres reales de las hojas.
         if ($courseIds) {
             $result['lrmi:educationalLevel'] = array_keys($courseIds);
         }
@@ -91,6 +96,16 @@ final class CurricularClassifier implements ClassifierInterface
         }
 
         return $result;
+    }
+
+    public function getTrace(): array
+    {
+        return $this->trace;
+    }
+
+    public function clearTrace(): void
+    {
+        $this->trace = [];
     }
 
     /**
@@ -104,38 +119,121 @@ final class CurricularClassifier implements ClassifierInterface
             [['role' => 'user', 'content' => $prompt['user']]],
             ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
         );
-        return $this->parser->parseIndices($response->text());
+        $indices = $this->parser->parseIndices($response->text());
+        $this->trace[] = [
+            'step' => $label,
+            'candidates' => count($candidates),
+            'system' => $prompt['system'],
+            'user' => $prompt['user'],
+            'response' => $response->text(),
+            'selected_indices' => $indices,
+        ];
+        return $indices;
     }
 
     /**
+     * Etapas elegidas (multi): acotan el contexto, no se escriben.
+     *
      * @param array<int,array{id:int,title:string}> $candidates
+     * @return int[]
      */
-    private function pickFirstId(array $candidates, string $label, string $content): int
+    private function pickEtapaIds(array $candidates, string $content): array
     {
         if (!$candidates) {
-            return 0;
+            return [];
         }
-        $ids = $this->mapIndicesToIds($this->ask($candidates, $label, $content, 1), $candidates);
-        return $ids[0] ?? 0;
+        return $this->mapIndicesToIds($this->ask($candidates, 'Etapa educativa', $content, 0), $candidates);
     }
 
     /**
-     * @param array<int,array{name:string}> $families
+     * Une las familias de materia de todas las etapas elegidas, dedup por nombre.
+     *
+     * @param int[] $etapaIds
+     * @return array<int,array{name:string}>
      */
-    private function pickSubjectName(array $families, string $content): string
+    private function gatherFamilies(array $etapaIds): array
+    {
+        $names = [];
+        foreach ($etapaIds as $etapaId) {
+            foreach ($this->resolver->listSubjectFamilies($etapaId) as $family) {
+                $name = trim((string) ($family['name'] ?? ''));
+                if ('' !== $name) {
+                    $names[$name] = true;
+                }
+            }
+        }
+        return array_map(static fn (string $n): array => ['name' => $n], array_keys($names));
+    }
+
+    /**
+     * Materias elegidas (multi).
+     *
+     * @param array<int,array{name:string}> $families
+     * @return string[]
+     */
+    private function pickSubjectNames(array $families, string $content): array
     {
         if (!$families) {
-            return '';
+            return [];
         }
         $families = array_values($families);
         $candidates = array_map(static fn (array $f): array => ['title' => (string) $f['name']], $families);
-        foreach ($this->ask($candidates, 'Materia (asignatura)', $content, 1) as $idx) {
+        $names = [];
+        foreach ($this->ask($candidates, 'Materia (asignatura)', $content, 0) as $idx) {
             $pos = $idx - 1;
             if (isset($families[$pos])) {
-                return (string) $families[$pos]['name'];
+                $names[(string) $families[$pos]['name']] = true;
             }
         }
-        return '';
+        return array_keys($names);
+    }
+
+    /**
+     * Reúne las hojas de una dimensión cruzando etapas×materias; dedup por id y
+     * tope LEAF_CAP (coste de tokens). Combos inexistentes devuelven [] (inocuo).
+     *
+     * @param int[] $etapaIds
+     * @param string[] $subjectNames
+     * @return array<int,array<string,mixed>>
+     */
+    private function gatherLeaves(string $dimension, array $etapaIds, array $subjectNames): array
+    {
+        $merged = [];
+        foreach ($etapaIds as $etapaId) {
+            foreach ($subjectNames as $subjectName) {
+                foreach ($this->resolver->listLeaves($dimension, $etapaId, $subjectName) as $leaf) {
+                    $id = (int) ($leaf['id'] ?? 0);
+                    if ($id > 0 && !isset($merged[$id])) {
+                        $merged[$id] = $leaf;
+                        if (count($merged) >= self::LEAF_CAP) {
+                            return array_values($merged);
+                        }
+                    }
+                }
+            }
+        }
+        return array_values($merged);
+    }
+
+    /**
+     * Acumula el linaje (curso/materia) de las filas elegidas como conjuntos.
+     *
+     * @param array<int,array<string,mixed>> $rows
+     * @param array<int,bool> $courseIds
+     * @param array<int,bool> $subjectIds
+     */
+    private function collectLineage(array $rows, array &$courseIds, array &$subjectIds): void
+    {
+        foreach ($rows as $c) {
+            $cId = (int) ($c['courseId'] ?? 0);
+            $sId = (int) ($c['subjectId'] ?? 0);
+            if ($cId > 0) {
+                $courseIds[$cId] = true;
+            }
+            if ($sId > 0) {
+                $subjectIds[$sId] = true;
+            }
+        }
     }
 
     /**
@@ -157,7 +255,7 @@ final class CurricularClassifier implements ClassifierInterface
      * @param array<int,array<string,mixed>> $candidates
      * @return array<int,array<string,mixed>>
      */
-    private function prefilterByBlock(array $candidates, string $subjectName, string $content): array
+    private function prefilterByBlock(array $candidates, string $subjectLabel, string $content): array
     {
         $blocks = array_values(array_unique(array_filter(array_map(
             static fn (array $c): string => trim((string) ($c['block'] ?? '')),
@@ -168,7 +266,7 @@ final class CurricularClassifier implements ClassifierInterface
         }
         $blockCandidates = array_map(static fn (string $b): array => ['title' => $b], $blocks);
         $selected = [];
-        foreach ($this->ask($blockCandidates, 'Bloques temáticos de ' . $subjectName, $content, 0) as $idx) {
+        foreach ($this->ask($blockCandidates, 'Bloques temáticos de ' . $subjectLabel, $content, 0) as $idx) {
             $pos = $idx - 1;
             if (isset($blocks[$pos])) {
                 $selected[$blocks[$pos]] = true;

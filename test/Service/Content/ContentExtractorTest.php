@@ -165,6 +165,97 @@ final class ContentExtractorTest extends TestCase
         $this->assertArrayHasKey('aqui.txt', $content->skipped());
     }
 
+    public function testJsonContentValuesAreExtracted(): void
+    {
+        $json = json_encode([
+            'title' => 'Partes de la célula',
+            'pages' => [
+                ['text' => 'Identificación de la célula como unidad estructural y funcional.'],
+                ['text' => 'Diferenciación entre célula procariota y eucariota.'],
+            ],
+        ]);
+        $file = $this->tempFile('project.json', (string) $json);
+        $content = (new ContentExtractor())->extract('', [['path' => $file]]);
+        $this->assertStringContainsString('unidad estructural y funcional', $content->text());
+        $this->assertStringContainsString('procariota y eucariota', $content->text());
+        $this->assertContains('project.json', $content->sources());
+    }
+
+    public function testJsonTechnicalNoiseIsFiltered(): void
+    {
+        $json = json_encode([
+            'id' => '581_573_215_0',
+            'asset' => 'resources/celula_graficos_30.jpg',
+            'url' => 'https://example.com/x',
+            'hash' => 'a630fdcd12abcdef',
+            'cssClass' => 'panel_view',
+            'body' => 'Valoración de la importancia de la célula como unidad de vida.',
+        ]);
+        $file = $this->tempFile('p.json', (string) $json);
+        $content = (new ContentExtractor())->extract('', [['path' => $file]]);
+        $this->assertStringContainsString('importancia de la célula', $content->text());
+        $this->assertStringNotContainsString('581_573_215_0', $content->text());
+        $this->assertStringNotContainsString('celula_graficos_30.jpg', $content->text());
+        $this->assertStringNotContainsString('example.com', $content->text());
+        $this->assertStringNotContainsString('a630fdcd12abcdef', $content->text());
+    }
+
+    public function testHtmlInsideJsonStringIsStripped(): void
+    {
+        $json = json_encode(['html' => '<h1>Geología</h1><p>Rocas y minerales del entorno</p>']);
+        $file = $this->tempFile('h.json', (string) $json);
+        $content = (new ContentExtractor())->extract('', [['path' => $file]]);
+        $this->assertStringContainsString('Rocas y minerales del entorno', $content->text());
+        $this->assertStringNotContainsString('<h1>', $content->text());
+    }
+
+    public function testInvalidJsonIsSkippedGracefully(): void
+    {
+        $file = $this->tempFile('broken.json', '{not valid json,,,');
+        $content = (new ContentExtractor())->extract('meta', [['path' => $file]]);
+        $this->assertStringContainsString('meta', $content->text());
+        $this->assertArrayHasKey('broken.json', $content->skipped());
+        $this->assertSame('json_invalid', $content->skipped()['broken.json']);
+    }
+
+    public function testJsonNodeBudgetIsCapped(): void
+    {
+        $values = [];
+        for ($i = 0; $i < 2000; $i++) {
+            $values[] = 'Frase de contenido educativo número ' . $i . ' sobre la célula.';
+        }
+        $file = $this->tempFile('big.json', (string) json_encode($values));
+        $extractor = new ContentExtractor(['max_json_nodes' => 50]);
+        $content = $extractor->extract('', [['path' => $file]]);
+        // Las primeras frases (dentro del tope) sí entran...
+        $this->assertStringContainsString('número 0', $content->text());
+        // ...y las que quedan más allá del tope de nodos, no.
+        $this->assertStringNotContainsString('número 1999', $content->text());
+    }
+
+    public function testJsonWithOnlyTechnicalNoiseIsSkipped(): void
+    {
+        $json = json_encode(['id' => 'abc12345', 'src' => 'resources/img.png']);
+        $file = $this->tempFile('noise.json', (string) $json);
+        $content = (new ContentExtractor())->extract('meta', [['path' => $file]]);
+        $this->assertStringContainsString('meta', $content->text());
+        $this->assertArrayHasKey('noise.json', $content->skipped());
+        $this->assertSame('json_empty', $content->skipped()['noise.json']);
+    }
+
+    public function testJsonEntryInsideZipIsExtracted(): void
+    {
+        $json = json_encode(['lesson' => 'Comparación de los niveles de organización de la materia viva.']);
+        $zip = $this->tempZip('scorm.zip', [
+            'project.json' => (string) $json,
+            'index.html' => '<p>shell</p>',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('niveles de organización de la materia viva', $content->text());
+        // sources() registra el fichero externo procesado (el ZIP), no las entradas.
+        $this->assertContains('scorm.zip', $content->sources());
+    }
+
     // --- helpers ---
 
     private function tempFile(string $name, string $contents): string

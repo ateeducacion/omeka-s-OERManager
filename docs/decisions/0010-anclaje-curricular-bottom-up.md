@@ -47,10 +47,31 @@ varios cursos): un error de curso propaga incoherencia a todo el subárbol.
 - La IA sigue proponiendo; el curador confirma (ADR-0007). Si el recurso es
   transversal a cursos, se proponen varios y el curador poda.
 
+## Afinado (TASK-018, 2026-06-30)
+
+Verificado en el contenedor con el trazado del intercambio LLM, el flujo bottom-up
+de esta decisión (materia antes de hojas; curso derivado sin LLM en la Fase D) ya
+corría. TASK-018 afina la **Fase A** sin tocar el mapeo RDF (ADR-0004) ni el grafo
+(ADR-0009):
+
+- **Etapa multi-select (Fase A.1):** la etapa deja de ser una conjetura única que
+  arrastra toda la cascada cuando el contenido es ambiguo (el mismo item se clasificó
+  como Primaria en una pasada y ESO en otra). El LLM puede devolver **varias etapas**;
+  sus familias de materia se unen con dedup por nombre.
+- **Materia multi-select (Fase A.2):** supera la limitación «Materia única (v1)»; un
+  REA interdisciplinar puede anclar a **varias materias**. Las hojas se reúnen por el
+  producto etapas×materias con dedup por id y tope `LEAF_CAP=200`.
+- **Criterios acotados a los cursos de los saberes (Fase C):** los criterios candidatos
+  se filtran a los cursos derivados de los saberes ya elegidos (lista mucho más corta y
+  precisa); fallback sin saberes → criterios de la materia. Más preciso que el
+  pre-filtro por bloque genérico en el nivel crítico.
+- **No bug — criterios vacíos:** que los criterios salgan `[]` sigue siendo coherente
+  con el §5 de esta decisión (los criterios LOMLOE son competenciales/genéricos).
+
 ## Limitaciones conocidas
 
-- **Materia única (v1):** la Fase A.2 ancla a UNA familia de materia (selección de un solo nombre); un REA interdisciplinar a varias materias requeriría selección múltiple de materia (mejora futura). El cruce de cursos dentro de una materia sí está soportado.
-- **Tope de candidatos (ENUM_LIMIT=300):** validado para ESO (peor caso ≈244 saberes de una materia cruzando cursos). `searchLeaves` trunca en `per_page` sin señal; otras etapas/marcos curriculares deben revalidar este tope antes de confiar en él.
+- ~~**Materia única (v1):**~~ superada por TASK-018 (etapa y materia multi-select; ver «Afinado» arriba).
+- **Tope de candidatos (ENUM_LIMIT=300):** validado para ESO (peor caso ≈244 saberes de una materia cruzando cursos). `searchLeaves` trunca en `per_page` sin señal; otras etapas/marcos curriculares deben revalidar este tope antes de confiar en él. El merge cross-etapa×materia añade su propio tope `LEAF_CAP=200` (coste de tokens, NFR-004/NFR-008).
 
 ## Fuentes
 

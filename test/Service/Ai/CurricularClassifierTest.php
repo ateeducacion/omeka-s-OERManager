@@ -154,4 +154,135 @@ final class CurricularClassifierTest extends TestCase
         $this->assertArrayNotHasKey('lrmi:educationalLevel', $result);
         $this->assertArrayNotHasKey('schema:about', $result);
     }
+
+    public function testMultipleEtapasAreQueried(): void
+    {
+        $r = new FakeTermResolver(['etapa' => [
+            ['id' => 1, 'title' => 'Primaria'], ['id' => 2, 'title' => 'ESO'],
+        ]]);
+        $r->families = [1 => [['name' => 'Conocimiento del Medio']], 2 => [['name' => 'Biología y Geología']]];
+        $r->leaves = ['lrmi:teaches' => [], 'lrmi:assesses' => []];
+        $llm = new FakeLlmClient([
+            '{"selected":[1,2]}', // dos etapas
+            '{"selected":[1,2]}', // dos materias
+            '{"selected":[]}', '{"selected":[]}',
+        ]);
+        $this->make($r, $llm)->classify('x');
+
+        $families = array_values(array_filter($r->calls, static fn ($c) => isset($c['subjectFamilies'])));
+        $this->assertSame([1, 2], array_map(static fn ($c) => $c['subjectFamilies'], $families));
+        $etapasEnHojas = array_values(array_unique(array_map(
+            static fn ($c) => $c['etapa'],
+            array_filter($r->calls, static fn ($c) => isset($c['leaves']))
+        )));
+        $this->assertSame([1, 2], $etapasEnHojas);
+    }
+
+    public function testLeavesGatheredAcrossMultipleSubjects(): void
+    {
+        $r = new FakeTermResolver(['etapa' => [['id' => 1, 'title' => 'ESO']]]);
+        $r->families = [1 => [['name' => 'Matemáticas'], ['name' => 'Física y Química']]];
+        $r->leaves = [
+            'lrmi:teaches|Matemáticas' => [['id' => 30, 'title' => 'M', 'description' => 'Números',
+                'block' => 'I', 'courseId' => 10, 'courseTitle' => '1º', 'subjectId' => 20]],
+            'lrmi:teaches|Física y Química' => [['id' => 50, 'title' => 'F', 'description' => 'Energía',
+                'block' => 'II', 'courseId' => 11, 'courseTitle' => '1º', 'subjectId' => 21]],
+            'lrmi:assesses' => [],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',     // ESO
+            '{"selected":[1,2]}',   // ambas materias
+            '{"selected":[1,2]}',   // ambos saberes (id30, id50)
+            '{"selected":[]}',
+        ]);
+        $result = $this->make($r, $llm)->classify('transversal');
+        $this->assertSame([30, 50], $result['lrmi:teaches']);
+        $this->assertSame([10, 11], $result['lrmi:educationalLevel']);
+        $this->assertSame([20, 21], $result['schema:about']);
+    }
+
+    public function testCriteriaAreConstrainedToCoursesOfSelectedSaberes(): void
+    {
+        $r = new FakeTermResolver(['etapa' => [['id' => 1, 'title' => 'ESO']]]);
+        $r->families = [1 => [['name' => 'Matemáticas']]];
+        $r->leaves = [
+            'lrmi:teaches' => [['id' => 30, 'title' => 'M', 'description' => 'Ecuaciones',
+                'block' => 'IV', 'courseId' => 12, 'courseTitle' => '3º', 'subjectId' => 22]],
+            'lrmi:assesses' => [
+                ['id' => 40, 'title' => 'CEX', 'description' => 'crit curso 12',
+                    'block' => '', 'courseId' => 12, 'courseTitle' => '3º', 'subjectId' => 22],
+                ['id' => 41, 'title' => 'CEY', 'description' => 'crit curso 99',
+                    'block' => '', 'courseId' => 99, 'courseTitle' => '4º', 'subjectId' => 22],
+            ],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',   // ESO
+            '{"selected":[1]}',   // Matemáticas
+            '{"selected":[1]}',   // saber id30 (curso 12)
+            '{"selected":[1,2]}', // criterios: se piden 1 y 2...
+        ]);
+        $result = $this->make($r, $llm)->classify('ecuaciones');
+        // ...pero la lista ya está filtrada al curso 12 (solo id40), así que el
+        // índice 2 queda fuera de rango. Si NO se filtrara, la lista sería
+        // [id40, id41] y el resultado sería [40, 41]: la aserción prueba el filtro.
+        $this->assertSame([40], $result['lrmi:assesses']);
+    }
+
+    public function testFamiliesAreDedupedAcrossEtapas(): void
+    {
+        // "Matemáticas" aparece en ambas etapas; tras dedup la lista de materias
+        // es [Matemáticas, Física], así que el índice 2 = Física (no la 2ª
+        // Matemáticas). Lo probamos por comportamiento: elegir la materia 2 debe
+        // derivar del saber de Física, no del de Matemáticas.
+        $r = new FakeTermResolver(['etapa' => [
+            ['id' => 1, 'title' => 'Primaria'], ['id' => 2, 'title' => 'ESO'],
+        ]]);
+        $r->families = [
+            1 => [['name' => 'Matemáticas']],
+            2 => [['name' => 'Matemáticas'], ['name' => 'Física']],
+        ];
+        $r->leaves = [
+            'lrmi:teaches|Matemáticas' => [['id' => 30, 'title' => 'M', 'description' => 'd',
+                'block' => 'I', 'courseId' => 10, 'courseTitle' => '1º', 'subjectId' => 20]],
+            'lrmi:teaches|Física' => [['id' => 50, 'title' => 'F', 'description' => 'd',
+                'block' => 'II', 'courseId' => 11, 'courseTitle' => '1º', 'subjectId' => 21]],
+            'lrmi:assesses' => [],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1,2]}', // ambas etapas
+            '{"selected":[2]}',   // materia 2 = Física (si no hubiera dedup, sería Matemáticas)
+            '{"selected":[1]}',   // saber de Física
+            '{"selected":[]}',
+        ]);
+        $result = $this->make($r, $llm)->classify('x');
+        $this->assertSame([50], $result['lrmi:teaches']);
+        $this->assertSame([21], $result['schema:about']);
+    }
+
+    public function testCriteriaFallbackWhenNoSaberesSelected(): void
+    {
+        $r = new FakeTermResolver(['etapa' => [['id' => 1, 'title' => 'ESO']]]);
+        $r->families = [1 => [['name' => 'Matemáticas']]];
+        $r->leaves = [
+            'lrmi:teaches' => [['id' => 30, 'title' => 'M', 'description' => 'd',
+                'block' => 'IV', 'courseId' => 12, 'courseTitle' => '3º', 'subjectId' => 22]],
+            'lrmi:assesses' => [
+                ['id' => 40, 'title' => 'CEX', 'description' => 'c12',
+                    'block' => '', 'courseId' => 12, 'courseTitle' => '3º', 'subjectId' => 22],
+                ['id' => 41, 'title' => 'CEY', 'description' => 'c99',
+                    'block' => '', 'courseId' => 99, 'courseTitle' => '4º', 'subjectId' => 23],
+            ],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',   // ESO
+            '{"selected":[1]}',   // Matemáticas
+            '{"selected":[]}',    // saberes: ninguno → sin cursos derivados
+            '{"selected":[1,2]}', // criterios: sin filtro, ambos elegibles
+        ]);
+        $result = $this->make($r, $llm)->classify('x');
+        $this->assertSame([40, 41], $result['lrmi:assesses']);
+        // Curso/materia derivados solo de los criterios (fallback).
+        $this->assertSame([12, 99], $result['lrmi:educationalLevel']);
+        $this->assertSame([22, 23], $result['schema:about']);
+    }
 }

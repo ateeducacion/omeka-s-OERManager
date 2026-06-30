@@ -10,9 +10,12 @@ use OERManager\Service\Llm\LlmClientInterface;
  * elige los relevantes y se mapean a ids de la lista cerrada. Clasificación
  * barata y de alta accuracy sin recuperación previa.
  */
-final class TagClassifier implements ClassifierInterface
+final class TagClassifier implements ClassifierInterface, TraceableInterface
 {
     use IndexSelection;
+
+    /** @var array<int,array<string,mixed>> */
+    private array $trace = [];
 
     private int $maxTokens;
 
@@ -24,6 +27,16 @@ final class TagClassifier implements ClassifierInterface
         int $maxTokens = 1024
     ) {
         $this->maxTokens = $maxTokens;
+    }
+
+    public function getTrace(): array
+    {
+        return $this->trace;
+    }
+
+    public function clearTrace(): void
+    {
+        $this->trace = [];
     }
 
     public function classify(string $content): array
@@ -42,7 +55,16 @@ final class TagClassifier implements ClassifierInterface
             [['role' => 'user', 'content' => $prompt['user']]],
             ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
         );
-        $ids = $this->mapIndicesToIds($this->parser->parseIndices($response->text()), $candidates);
+        $indices = $this->parser->parseIndices($response->text());
+        $this->trace[] = [
+            'step' => 'Ejes temáticos',
+            'candidates' => count($candidates),
+            'system' => $prompt['system'],
+            'user' => $prompt['user'],
+            'response' => $response->text(),
+            'selected_indices' => $indices,
+        ];
+        $ids = $this->mapIndicesToIds($indices, $candidates);
         return $ids ? ['dcterms:relation' => $ids] : [];
     }
 }

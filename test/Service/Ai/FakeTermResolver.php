@@ -43,6 +43,6 @@ final class FakeTermResolver implements TermResolverInterface
     public function listLeaves(string $dimension, int $etapaId, string $subjectName): array
     {
         $this->calls[] = ['leaves' => $dimension, 'etapa' => $etapaId, 'subject' => $subjectName];
-        return $this->leaves[$dimension] ?? [];
+        return $this->leaves["{$dimension}|{$subjectName}"] ?? $this->leaves[$dimension] ?? [];
     }
 }
