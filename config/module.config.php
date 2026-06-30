@@ -120,9 +120,42 @@ return [
                     $container->get(Service\Ai\ResponseParser::class)
                 );
             },
+            // Cliente LLM de extracción (barato, vision-capable; ADR-0011). Reusa
+            // el mismo proveedor/endpoint/clave/transporte que el clasificador, con
+            // EXTRACTION_MODEL (si está vacío, cae a MODEL). Clave de servicio propia:
+            // convive con el cliente del clasificador (LlmClientInterface).
+            'OERManager\Llm\ExtractionClient' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $transport = $container->get(Service\Llm\HttpTransportInterface::class);
+                $model = (string) $settings->get(Service\Llm\LlmSettings::EXTRACTION_MODEL, '');
+                if ('' === $model) {
+                    $model = (string) $settings->get(Service\Llm\LlmSettings::MODEL, '');
+                }
+                $config = [
+                    'api_key' => (string) $settings->get(Service\Llm\LlmSettings::API_KEY, ''),
+                    'model' => $model,
+                    'base_url' => (string) $settings->get(Service\Llm\LlmSettings::BASE_URL, ''),
+                ];
+                $provider = (string) $settings->get(
+                    Service\Llm\LlmSettings::PROVIDER,
+                    Service\Llm\LlmSettings::PROVIDER_ANTHROPIC
+                );
+                if (Service\Llm\LlmSettings::PROVIDER_OPENAI === $provider) {
+                    return new Service\Llm\OpenAiCompatibleClient($transport, $config);
+                }
+                return new Service\Llm\AnthropicClient($transport, $config);
+            },
+            // Destilador fiel (ADR-0011): ficha del recurso con el modelo de extracción.
+            Service\Ai\ContextDistiller::class => function ($container) {
+                return new Service\Ai\ContextDistiller(
+                    $container->get('OERManager\Llm\ExtractionClient'),
+                    $container->get(Service\Ai\PromptBuilder::class)
+                );
+            },
             Service\Ai\AiCataloguer::class => function ($container) {
                 return new Service\Ai\AiCataloguer(
                     $container->get(Service\Content\ContentExtractor::class),
+                    $container->get(Service\Ai\ContextDistiller::class),
                     $container->get(Service\Ai\CurricularClassifier::class),
                     $container->get(Service\Ai\TagClassifier::class)
                 );

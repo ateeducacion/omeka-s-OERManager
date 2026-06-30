@@ -76,6 +76,28 @@ LLM. Defectos detectados en pruebas funcionales (TASK-015/017/018):
   con otros se omite con motivo registrado (no rompe la propuesta).
 - Verificación funcional contra el core **diferida al contenedor** (como TASK-010/015).
 
+## Progreso de implementación (TASK-019)
+
+Faseado con TDD real en host (puertos/adaptadores, núcleo puro). Estado (2026-06-30):
+
+- **Fases 1-3 (hechas, commit `4b01d8a`):** ADR-0011 + gobierno «en curso»; adaptador
+  multimodal (`LlmClientInterface::supportsImages()/supportsPdf()`;
+  `AnthropicClient`/`OpenAiCompatibleClient` traducen bloques `image`/`document`);
+  `ItemContext` con `coarseText()`/`fineText()`/`rawForDistillation()` y enrutado por
+  paso en `CurricularClassifier`/`TagClassifier`.
+- **Fase 4 (hecha):** `ContextDistiller` — `PromptBuilder::buildDistillationPrompt()`
+  (ficha fiel: tema/conceptos/vocabulario/qué enseña; **no infiere currículo**;
+  contenido como dato-no-instrucción con marcas neutralizadas); destilador puro,
+  `TraceableInterface`, sin-LLM-si-vacío, que lee `rawForDistillation()` y devuelve la
+  ficha; `AiCataloguer` orquesta extracción → destilación → `withFicha()` →
+  clasificación y expone `ficha`/`distillation` en el debug; factoría del 2º cliente
+  LLM (`EXTRACTION_MODEL` cae a `MODEL`) + factoría de `ContextDistiller` en
+  `module.config.php`. 105 tests verdes, lint PSR-12.
+- **Pendiente:** Fase 5 (`MediaVisionExtractor` + gating por
+  `vision_enabled`/capacidad del proveedor) y Fase 6 (`ConfigForm` con campos de
+  extracción/visión + `OmekaMediaSource` reconociendo imágenes + verificación en
+  contenedor).
+
 ## Fuentes
 
 - Brainstorming con el propietario, 2026-06-30.
