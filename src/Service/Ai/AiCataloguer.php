@@ -3,10 +3,12 @@
 namespace OERManager\Service\Ai;
 
 use OERManager\Service\Content\ContentExtractor;
+use OERManager\Service\Content\ItemContext;
 
 /**
  * Orquestador de la catalogación IA-assistida (ADR-0007): extrae el contenido
- * textual seguro del item (metadatos + medios) y lo pasa a los dos clasificadores
+ * textual seguro del item (medios) y, junto con los metadatos, compone un
+ * ItemContext estructurado (ADR-0011) que pasa a los dos clasificadores
  * (curricular jerárquico + ejes), fusionando sus propuestas en un único mapa que
  * pre-rellena el panel de re-catalogación de 4a. La IA propone; el curador
  * confirma: aquí no se escribe nada en el catálogo.
@@ -33,25 +35,28 @@ final class AiCataloguer
             $this->tags->clearTrace();
         }
 
-        $content = $this->extractor->extract($metadataText, $files);
+        // Extrae SOLO el texto de los medios (sin prefijar metadatos): el contexto
+        // los mantiene separados con su procedencia (ADR-0011), y el truncado por
+        // presupuesto protege el contenido del medio.
+        $media = $this->extractor->extract('', $files);
+        $context = new ItemContext($metadataText, $media->text());
 
         $alignment = [];
-        // Sin contenido no hay nada que clasificar: no se gasta ni un token.
-        if (!$content->isEmpty()) {
-            $text = $content->text();
-            $alignment = $this->curricular->classify($text) + $this->tags->classify($text);
+        // Sin señal no hay nada que clasificar: no se gasta ni un token.
+        if (!$context->isEmpty()) {
+            $alignment = $this->curricular->classify($context) + $this->tags->classify($context);
         }
 
         return [
             'alignment' => $alignment,
             'content' => [
-                'truncated' => $content->isTruncated(),
-                'empty' => $content->isEmpty(),
-                'sources' => $content->sources(),
-                'skipped' => $content->skipped(),
+                'truncated' => $media->isTruncated(),
+                'empty' => $context->isEmpty(),
+                'sources' => $media->sources(),
+                'skipped' => $media->skipped(),
             ],
             'debug' => [
-                'content_text' => $content->text(),
+                'content_text' => $context->fineText(),
                 'curricular' => $this->curricular instanceof TraceableInterface
                     ? $this->curricular->getTrace() : [],
                 'tags' => $this->tags instanceof TraceableInterface

@@ -7,6 +7,7 @@ namespace OERManager\Test\Service\Ai;
 use OERManager\Service\Ai\PromptBuilder;
 use OERManager\Service\Ai\ResponseParser;
 use OERManager\Service\Ai\TagClassifier;
+use OERManager\Service\Content\ItemContext;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -31,7 +32,7 @@ final class TagClassifierTest extends TestCase
         ]);
         $llm = new FakeLlmClient(['{"selected":[2,1]}']); // STEAM, Patrimonio
 
-        $result = $this->make($resolver, $llm)->classify('recurso STEAM sobre patrimonio');
+        $result = $this->make($resolver, $llm)->classify(new ItemContext('recurso STEAM sobre patrimonio', ''));
 
         $this->assertSame([51, 50], $result['dcterms:relation']);
         $this->assertCount(1, $resolver->calls);
@@ -42,13 +43,13 @@ final class TagClassifierTest extends TestCase
     {
         $resolver = new FakeTermResolver([]);
         $llm = new FakeLlmClient(['{"selected":[1]}']);
-        $this->assertSame([], $this->make($resolver, $llm)->classify('contenido'));
+        $this->assertSame([], $this->make($resolver, $llm)->classify(new ItemContext('contenido', '')));
     }
 
     public function testNoSelectionOmitsDimension(): void
     {
         $resolver = new FakeTermResolver(['dcterms:relation' => [['id' => 50, 'title' => 'Patrimonio']]]);
         $llm = new FakeLlmClient(['{"selected":[]}']);
-        $this->assertSame([], $this->make($resolver, $llm)->classify('contenido'));
+        $this->assertSame([], $this->make($resolver, $llm)->classify(new ItemContext('contenido', '')));
     }
 }

@@ -2,6 +2,7 @@
 
 namespace OERManager\Service\Ai;
 
+use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Llm\LlmClientInterface;
 
 /**
@@ -42,16 +43,21 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $this->maxTokens = $maxTokens;
     }
 
-    public function classify(string $content): array
+    public function classify(ItemContext $context): array
     {
+        // Pasos gruesos (etapa/materia/bloque) con la ficha; pasos finos
+        // (saberes/criterios) con ficha + crudo de medios (ADR-0011).
+        $coarse = $context->coarseText();
+        $fine = $context->fineText();
+
         // Fase A.1 — Etapas (multi; acotan, no se escriben, ADR-0009).
-        $etapaIds = $this->pickEtapaIds($this->resolver->listCandidates('etapa'), $content);
+        $etapaIds = $this->pickEtapaIds($this->resolver->listCandidates('etapa'), $coarse);
         if (!$etapaIds) {
             return [];
         }
 
         // Fase A.2 — Materias (multi; NO fijan curso; no se escriben).
-        $subjectNames = $this->pickSubjectNames($this->gatherFamilies($etapaIds), $content);
+        $subjectNames = $this->pickSubjectNames($this->gatherFamilies($etapaIds), $coarse);
         if (!$subjectNames) {
             return [];
         }
@@ -65,9 +71,9 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
         $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames);
         if (count($teaches) > self::BLOCK_THRESHOLD) {
-            $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $content);
+            $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $coarse);
         }
-        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $content);
+        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
             $this->collectLineage($teachesRows, $courseIds, $subjectIds);
@@ -81,7 +87,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
                 static fn (array $c): bool => isset($courseIds[(int) ($c['courseId'] ?? 0)])
             ));
         }
-        $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $content);
+        $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine);
         if ($assessesRows) {
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
             $this->collectLineage($assessesRows, $courseIds, $subjectIds);

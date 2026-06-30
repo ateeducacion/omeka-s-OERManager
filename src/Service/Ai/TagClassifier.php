@@ -2,6 +2,7 @@
 
 namespace OERManager\Service\Ai;
 
+use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Llm\LlmClientInterface;
 
 /**
@@ -39,16 +40,17 @@ final class TagClassifier implements ClassifierInterface, TraceableInterface
         $this->trace = [];
     }
 
-    public function classify(string $content): array
+    public function classify(ItemContext $context): array
     {
         $candidates = $this->resolver->listCandidates('dcterms:relation');
         if (!$candidates) {
             return [];
         }
+        // Ejes temáticos: el detalle del contenido importa → contexto fino (ADR-0011).
         $prompt = $this->prompts->buildSelectionPrompt(
             'Ejes temáticos',
             $candidates,
-            $content,
+            $context->fineText(),
             0
         );
         $response = $this->llm->chat(

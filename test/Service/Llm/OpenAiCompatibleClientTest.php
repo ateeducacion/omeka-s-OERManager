@@ -70,6 +70,37 @@ final class OpenAiCompatibleClientTest extends TestCase
         $this->assertSame(4, $result->outputTokens());
     }
 
+    public function testTranslatesImagePartToImageUrlAndSkipsDocument(): void
+    {
+        // Imágenes → image_url (data URL); el PDF no es representable aquí y se omite
+        // (el gating de visión/PDF lo decide el extractor por capacidad, ADR-0011).
+        $transport = new FakeTransport($this->okResult());
+        $client = new OpenAiCompatibleClient($transport, ['api_key' => 'k', 'model' => 'm', 'base_url' => 'http://x/v1']);
+        $client->chat([[
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'describe'],
+                ['type' => 'image', 'media_type' => 'image/png', 'data' => 'BASE64IMG'],
+                ['type' => 'document', 'media_type' => 'application/pdf', 'data' => 'BASE64PDF'],
+            ],
+        ]]);
+
+        $this->assertSame([
+            ['type' => 'text', 'text' => 'describe'],
+            ['type' => 'image_url', 'image_url' => ['url' => 'data:image/png;base64,BASE64IMG']],
+        ], $transport->decodedBody()['messages'][0]['content']);
+    }
+
+    public function testReportsImageButNotPdfCapability(): void
+    {
+        $client = new OpenAiCompatibleClient(
+            new FakeTransport($this->okResult()),
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'http://x/v1']
+        );
+        $this->assertTrue($client->supportsImages());
+        $this->assertFalse($client->supportsPdf());
+    }
+
     public function testThrowsOnErrorStatus(): void
     {
         $transport = new FakeTransport(new HttpResult(500, '{"error":"boom"}'));

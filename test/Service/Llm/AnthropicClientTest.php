@@ -54,6 +54,35 @@ final class AnthropicClientTest extends TestCase
         $this->assertSame([['role' => 'user', 'content' => 'clasifica esto']], $body['messages']);
     }
 
+    public function testTranslatesMultimodalContentPartsToAnthropicBlocks(): void
+    {
+        // El contenido como lista de partes neutrales (texto/imagen/documento) se
+        // traduce a los bloques que espera la Messages API (ADR-0011, visión/PDF).
+        $transport = new FakeTransport($this->okResult());
+        $client = new AnthropicClient($transport, ['api_key' => 'k', 'model' => 'm']);
+        $client->chat([[
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'describe'],
+                ['type' => 'image', 'media_type' => 'image/png', 'data' => 'BASE64IMG'],
+                ['type' => 'document', 'media_type' => 'application/pdf', 'data' => 'BASE64PDF'],
+            ],
+        ]]);
+
+        $this->assertSame([
+            ['type' => 'text', 'text' => 'describe'],
+            ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => 'image/png', 'data' => 'BASE64IMG']],
+            ['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => 'application/pdf', 'data' => 'BASE64PDF']],
+        ], $transport->decodedBody()['messages'][0]['content']);
+    }
+
+    public function testReportsImageAndPdfCapabilities(): void
+    {
+        $client = new AnthropicClient(new FakeTransport($this->okResult()), ['api_key' => 'k', 'model' => 'm']);
+        $this->assertTrue($client->supportsImages());
+        $this->assertTrue($client->supportsPdf());
+    }
+
     public function testDoesNotSendTemperatureByDefault(): void
     {
         // Opus 4.8 rechaza temperature con 400: no debe enviarse salvo petición explícita.

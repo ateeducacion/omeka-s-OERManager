@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OERManager\Test\Service\Ai;
 
 use OERManager\Service\Ai\CurricularClassifier;
+use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Ai\PromptBuilder;
 use OERManager\Service\Ai\ResponseParser;
 use PHPUnit\Framework\TestCase;
@@ -49,7 +50,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[2]}',   // Saberes: Ecuaciones (id 31, course 12, subject 22)
             '{"selected":[1]}',   // Criterios: id 40 (course 12, subject 22)
         ]);
-        $result = $this->make($this->resolver(), $llm)->classify('recurso de ecuaciones');
+        $result = $this->make($this->resolver(), $llm)->classify(new ItemContext('recurso de ecuaciones', ''));
 
         $this->assertSame([31], $result['lrmi:teaches']);
         $this->assertSame([40], $result['lrmi:assesses']);
@@ -68,7 +69,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1,2]}',   // saberes de 1º (id30,course10,subj20) y 3º (id31,course12,subj22)
             '{"selected":[]}',      // criterios: ninguno
         ]);
-        $result = $this->make($this->resolver(), $llm)->classify('proyecto transversal');
+        $result = $this->make($this->resolver(), $llm)->classify(new ItemContext('proyecto transversal', ''));
 
         $this->assertSame([30, 31], $result['lrmi:teaches']);
         $this->assertSame([10, 12], $result['lrmi:educationalLevel']); // ambos cursos derivados
@@ -80,7 +81,7 @@ final class CurricularClassifierTest extends TestCase
     {
         $r = new FakeTermResolver(['etapa' => []]);
         $llm = new FakeLlmClient(['{"selected":[1]}']);
-        $this->assertSame([], $this->make($r, $llm)->classify('x'));
+        $this->assertSame([], $this->make($r, $llm)->classify(new ItemContext('x', '')));
     }
 
     public function testNoSubjectReturnsEmpty(): void
@@ -88,7 +89,7 @@ final class CurricularClassifierTest extends TestCase
         $r = new FakeTermResolver(['etapa' => [['id' => 1, 'title' => 'ESO']]]);
         $r->families = [1 => []];
         $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}']);
-        $this->assertSame([], $this->make($r, $llm)->classify('x'));
+        $this->assertSame([], $this->make($r, $llm)->classify(new ItemContext('x', '')));
     }
 
     public function testDelimitationPassesEtapaAndSubjectToLeaves(): void
@@ -97,7 +98,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1]}', '{"selected":[1]}', '{"selected":[]}', '{"selected":[]}',
         ]);
         $resolver = $this->resolver();
-        $this->make($resolver, $llm)->classify('contenido');
+        $this->make($resolver, $llm)->classify(new ItemContext('contenido', ''));
 
         $leafCalls = array_values(array_filter($resolver->calls, static fn ($c) => isset($c['leaves'])));
         $this->assertSame('lrmi:teaches', $leafCalls[0]['leaves']);
@@ -110,7 +111,7 @@ final class CurricularClassifierTest extends TestCase
         $llm = new FakeLlmClient([
             '{"selected":[1]}', '{"selected":[1]}', '{"selected":[99,1]}', '{"selected":[]}',
         ]);
-        $result = $this->make($this->resolver(), $llm)->classify('x');
+        $result = $this->make($this->resolver(), $llm)->classify(new ItemContext('x', ''));
         $this->assertSame([30], $result['lrmi:teaches']); // 99 descartado; 1 = id 30
         $this->assertSame([10], $result['lrmi:educationalLevel']);
     }
@@ -137,7 +138,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1]}',   // Saberes (ya filtrados a Bloque B): id 200
             '{"selected":[]}',    // Criterios
         ]);
-        $result = $this->make($r, $llm)->classify('contenido de B');
+        $result = $this->make($r, $llm)->classify(new ItemContext('contenido de B', ''));
         $this->assertSame([200], $result['lrmi:teaches']);
     }
 
@@ -149,7 +150,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[]}',  // Saberes: ninguno
             '{"selected":[]}',  // Criterios: ninguno
         ]);
-        $result = $this->make($this->resolver(), $llm)->classify('contenido');
+        $result = $this->make($this->resolver(), $llm)->classify(new ItemContext('contenido', ''));
         $this->assertSame([], $result);
         $this->assertArrayNotHasKey('lrmi:educationalLevel', $result);
         $this->assertArrayNotHasKey('schema:about', $result);
@@ -167,7 +168,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1,2]}', // dos materias
             '{"selected":[]}', '{"selected":[]}',
         ]);
-        $this->make($r, $llm)->classify('x');
+        $this->make($r, $llm)->classify(new ItemContext('x', ''));
 
         $families = array_values(array_filter($r->calls, static fn ($c) => isset($c['subjectFamilies'])));
         $this->assertSame([1, 2], array_map(static fn ($c) => $c['subjectFamilies'], $families));
@@ -195,7 +196,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1,2]}',   // ambos saberes (id30, id50)
             '{"selected":[]}',
         ]);
-        $result = $this->make($r, $llm)->classify('transversal');
+        $result = $this->make($r, $llm)->classify(new ItemContext('transversal', ''));
         $this->assertSame([30, 50], $result['lrmi:teaches']);
         $this->assertSame([10, 11], $result['lrmi:educationalLevel']);
         $this->assertSame([20, 21], $result['schema:about']);
@@ -221,7 +222,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1]}',   // saber id30 (curso 12)
             '{"selected":[1,2]}', // criterios: se piden 1 y 2...
         ]);
-        $result = $this->make($r, $llm)->classify('ecuaciones');
+        $result = $this->make($r, $llm)->classify(new ItemContext('ecuaciones', ''));
         // ...pero la lista ya está filtrada al curso 12 (solo id40), así que el
         // índice 2 queda fuera de rango. Si NO se filtrara, la lista sería
         // [id40, id41] y el resultado sería [40, 41]: la aserción prueba el filtro.
@@ -254,7 +255,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[1]}',   // saber de Física
             '{"selected":[]}',
         ]);
-        $result = $this->make($r, $llm)->classify('x');
+        $result = $this->make($r, $llm)->classify(new ItemContext('x', ''));
         $this->assertSame([50], $result['lrmi:teaches']);
         $this->assertSame([21], $result['schema:about']);
     }
@@ -279,7 +280,7 @@ final class CurricularClassifierTest extends TestCase
             '{"selected":[]}',    // saberes: ninguno → sin cursos derivados
             '{"selected":[1,2]}', // criterios: sin filtro, ambos elegibles
         ]);
-        $result = $this->make($r, $llm)->classify('x');
+        $result = $this->make($r, $llm)->classify(new ItemContext('x', ''));
         $this->assertSame([40, 41], $result['lrmi:assesses']);
         // Curso/materia derivados solo de los criterios (fallback).
         $this->assertSame([12, 99], $result['lrmi:educationalLevel']);

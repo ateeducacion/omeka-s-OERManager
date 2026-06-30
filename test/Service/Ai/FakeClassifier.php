@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace OERManager\Test\Service\Ai;
 
 use OERManager\Service\Ai\ClassifierInterface;
+use OERManager\Service\Content\ItemContext;
 
 /**
- * Clasificador falso: registra el contenido recibido y devuelve un mapa fijo,
- * para TDD del orquestador AiCataloguer.
+ * Clasificador falso: registra el texto fino del contexto recibido y devuelve un
+ * mapa fijo, para TDD del orquestador AiCataloguer.
  */
 final class FakeClassifier implements ClassifierInterface
 {
@@ -23,9 +24,9 @@ final class FakeClassifier implements ClassifierInterface
         $this->result = $result;
     }
 
-    public function classify(string $content): array
+    public function classify(ItemContext $context): array
     {
-        $this->received[] = $content;
+        $this->received[] = $context->fineText();
         return $this->result;
     }
 }

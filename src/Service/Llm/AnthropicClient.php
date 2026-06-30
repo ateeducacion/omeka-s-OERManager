@@ -42,7 +42,7 @@ final class AnthropicClient implements LlmClientInterface
             'model' => $this->model,
             'max_tokens' => (int) ($options['max_tokens'] ?? self::DEFAULT_MAX_TOKENS),
             'messages' => array_map(
-                static fn (array $m): array => ['role' => $m['role'], 'content' => $m['content']],
+                fn (array $m): array => ['role' => $m['role'], 'content' => $this->normalizeContent($m['content'])],
                 $messages
             ),
         ];
@@ -76,6 +76,55 @@ final class AnthropicClient implements LlmClientInterface
         }
 
         return $this->parse($result->body());
+    }
+
+    public function supportsImages(): bool
+    {
+        return true;
+    }
+
+    public function supportsPdf(): bool
+    {
+        return true;
+    }
+
+    /**
+     * Traduce el contenido a lo que espera la Messages API: un string se reenvía
+     * tal cual; una lista de partes neutrales (ADR-0011) se mapea a bloques
+     * text/image/document. Las partes desconocidas se omiten.
+     *
+     * @param mixed $content
+     * @return mixed string o array<int,array<string,mixed>>
+     */
+    private function normalizeContent(mixed $content): mixed
+    {
+        if (!is_array($content)) {
+            return $content;
+        }
+        $blocks = [];
+        foreach ($content as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+            $blocks[] = match ((string) ($part['type'] ?? '')) {
+                'text' => ['type' => 'text', 'text' => (string) ($part['text'] ?? '')],
+                'image' => ['type' => 'image', 'source' => [
+                    'type' => 'base64',
+                    'media_type' => (string) ($part['media_type'] ?? ''),
+                    'data' => (string) ($part['data'] ?? ''),
+                ]],
+                'document' => ['type' => 'document', 'source' => [
+                    'type' => 'base64',
+                    'media_type' => (string) ($part['media_type'] ?? 'application/pdf'),
+                    'data' => (string) ($part['data'] ?? ''),
+                ]],
+                default => null,
+            };
+            if (null === end($blocks)) {
+                array_pop($blocks);
+            }
+        }
+        return $blocks;
     }
 
     private function parse(string $body): ChatResult

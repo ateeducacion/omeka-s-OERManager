@@ -43,7 +43,7 @@ final class OpenAiCompatibleClient implements LlmClientInterface
             $chatMessages[] = ['role' => 'system', 'content' => (string) $options['system']];
         }
         foreach ($messages as $m) {
-            $chatMessages[] = ['role' => $m['role'], 'content' => $m['content']];
+            $chatMessages[] = ['role' => $m['role'], 'content' => $this->normalizeContent($m['content'])];
         }
 
         $payload = [
@@ -79,6 +79,50 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         }
 
         return $this->parse($result->body());
+    }
+
+    public function supportsImages(): bool
+    {
+        return true;
+    }
+
+    public function supportsPdf(): bool
+    {
+        // chat/completions no tiene un bloque de documento PDF estándar: el rescate
+        // de PDF escaneado se omite con este proveedor (gating en el extractor).
+        return false;
+    }
+
+    /**
+     * Traduce el contenido: un string se reenvía tal cual; una lista de partes
+     * neutrales (ADR-0011) se mapea a las partes de chat/completions — texto e
+     * imágenes como `image_url` (data URL). Las partes no representables (documento
+     * PDF) se omiten.
+     *
+     * @param mixed $content
+     * @return mixed string o array<int,array<string,mixed>>
+     */
+    private function normalizeContent(mixed $content): mixed
+    {
+        if (!is_array($content)) {
+            return $content;
+        }
+        $parts = [];
+        foreach ($content as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+            $type = (string) ($part['type'] ?? '');
+            if ('text' === $type) {
+                $parts[] = ['type' => 'text', 'text' => (string) ($part['text'] ?? '')];
+            } elseif ('image' === $type) {
+                $mediaType = (string) ($part['media_type'] ?? '');
+                $data = (string) ($part['data'] ?? '');
+                $parts[] = ['type' => 'image_url', 'image_url' => ['url' => "data:{$mediaType};base64,{$data}"]];
+            }
+            // 'document' (PDF) no representable en chat/completions → omitido.
+        }
+        return $parts;
     }
 
     private function parse(string $body): ChatResult

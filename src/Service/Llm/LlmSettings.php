@@ -18,8 +18,19 @@ final class LlmSettings
     /** Tope de tokens del contenido enviado al LLM (≈ chars/4). */
     public const CONTENT_TOKEN_CAP = 'oermanager_llm_content_token_cap';
 
+    /**
+     * Modelo barato vision-capable para extracción/destilado (ADR-0011); si está
+     * vacío, se reutiliza MODEL. El clasificador sigue usando MODEL.
+     */
+    public const EXTRACTION_MODEL = 'oermanager_llm_extraction_model';
+    /** Master toggle de visión (egress de medios binarios a un tercero). */
+    public const VISION_ENABLED = 'oermanager_llm_vision_enabled';
+    /** Tope de imágenes enviadas a visión por item. */
+    public const VISION_MAX_IMAGES = 'oermanager_llm_vision_max_images';
+
     public const PROVIDER_ANTHROPIC = 'anthropic';
     public const PROVIDER_OPENAI = 'openai';
 
     public const DEFAULT_CONTENT_TOKEN_CAP = 6000;
+    public const DEFAULT_VISION_MAX_IMAGES = 3;
 }
