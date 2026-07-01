@@ -149,5 +149,52 @@ class ConfigForm extends Form
                 'step' => 100,
             ],
         ]);
+
+        $this->addVisionFields();
+    }
+
+    /**
+     * Capa de contexto del LLM (ADR-0011): modelo de extracción/destilado barato y
+     * visión (top-N imágenes + rescate de PDF escaneado). La visión está APAGADA por
+     * defecto por privacidad: al activarla, los binarios de los medios salen hacia un
+     * tercero (el proveedor LLM).
+     */
+    private function addVisionFields(): void
+    {
+        $this->add([
+            'name' => LlmSettings::EXTRACTION_MODEL,
+            'type' => 'Text',
+            'options' => [
+                'label' => 'Modelo de extracción/visión', // @translate
+                'info' => 'Modelo barato (vision-capable) para destilar la ficha y describir imágenes; '
+                    . 'si se deja en blanco, se reutiliza el modelo del clasificador.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::EXTRACTION_MODEL],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_ENABLED,
+            'type' => 'Checkbox',
+            'options' => [
+                'label' => 'Activar visión (imágenes y PDF escaneado)', // @translate
+                'info' => 'Envía los binarios de los medios al proveedor LLM. Apagada por defecto '
+                    . '(privacidad). Requiere un proveedor/modelo con soporte de visión.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::VISION_ENABLED],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_MAX_IMAGES,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Máximo de imágenes por recurso', // @translate
+                'info' => 'Número de imágenes (las mayores) que se envían a visión por recurso.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::VISION_MAX_IMAGES,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
     }
 }

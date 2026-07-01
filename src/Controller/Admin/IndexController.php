@@ -262,7 +262,8 @@ class IndexController extends AbstractActionController
         try {
             $proposal = $this->aiCataloguer->propose(
                 $this->itemMetadataText($item),
-                $this->mediaSource->filesFor($id)
+                $this->mediaSource->filesFor($id),
+                $this->mediaSource->imagesFor($id)
             );
         } catch (LlmException $e) {
             // Error del proveedor LLM: mensaje genérico (sin clave ni contenido).
@@ -315,7 +316,8 @@ class IndexController extends AbstractActionController
             try {
                 $proposal = $this->aiCataloguer->propose(
                     $this->itemMetadataText($item),
-                    $this->mediaSource->filesFor($id)
+                    $this->mediaSource->filesFor($id),
+                    $this->mediaSource->imagesFor($id)
                 );
             } catch (\Exception $e) {
                 continue;

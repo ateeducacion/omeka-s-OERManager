@@ -130,6 +130,13 @@ class Module extends AbstractModule
             LlmSettings::CONTENT_TOKEN_CAP,
             LlmSettings::DEFAULT_CONTENT_TOKEN_CAP
         );
+        // Capa de contexto del LLM (ADR-0011): extracción/visión.
+        $data[LlmSettings::EXTRACTION_MODEL] = $settings->get(LlmSettings::EXTRACTION_MODEL);
+        $data[LlmSettings::VISION_ENABLED] = (bool) $settings->get(LlmSettings::VISION_ENABLED);
+        $data[LlmSettings::VISION_MAX_IMAGES] = $settings->get(
+            LlmSettings::VISION_MAX_IMAGES,
+            LlmSettings::DEFAULT_VISION_MAX_IMAGES
+        );
         $form->setData($data);
         return $renderer->formCollection($form);
     }
@@ -161,6 +168,18 @@ class Module extends AbstractModule
         $settings->set(LlmSettings::MODEL, trim((string) ($params[LlmSettings::MODEL] ?? '')));
         $cap = (int) ($params[LlmSettings::CONTENT_TOKEN_CAP] ?? 0);
         $settings->set(LlmSettings::CONTENT_TOKEN_CAP, $cap > 0 ? $cap : LlmSettings::DEFAULT_CONTENT_TOKEN_CAP);
+
+        // Capa de contexto del LLM (ADR-0011): modelo de extracción + visión. La
+        // visión arranca apagada (egress de binarios a un tercero); el modelo de
+        // extracción vacío cae al del clasificador (lo resuelve la factoría).
+        $settings->set(LlmSettings::EXTRACTION_MODEL, trim((string) ($params[LlmSettings::EXTRACTION_MODEL] ?? '')));
+        $settings->set(LlmSettings::VISION_ENABLED, !empty($params[LlmSettings::VISION_ENABLED]));
+        $maxImages = (int) ($params[LlmSettings::VISION_MAX_IMAGES] ?? 0);
+        $settings->set(
+            LlmSettings::VISION_MAX_IMAGES,
+            $maxImages > 0 ? $maxImages : LlmSettings::DEFAULT_VISION_MAX_IMAGES
+        );
+
         // Clave API write-only: solo se sobrescribe si llega un valor no vacío.
         $apiKey = (string) ($params[LlmSettings::API_KEY] ?? '');
         if ('' !== trim($apiKey)) {

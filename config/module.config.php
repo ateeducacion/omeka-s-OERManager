@@ -152,9 +152,26 @@ return [
                     $container->get(Service\Ai\PromptBuilder::class)
                 );
             },
+            // Extractor de visión (ADR-0011): top-N imágenes + rescate de PDF escaneado
+            // con el modelo de extracción. Apagado por defecto (VISION_ENABLED off):
+            // egress de binarios a un tercero. El gating por capacidad del proveedor lo
+            // resuelve el propio extractor (supportsImages()/supportsPdf()).
+            Service\Content\MediaVisionExtractor::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                return new Service\Content\MediaVisionExtractor(
+                    $container->get('OERManager\Llm\ExtractionClient'),
+                    $container->get(Service\Ai\PromptBuilder::class),
+                    (bool) $settings->get(Service\Llm\LlmSettings::VISION_ENABLED, false),
+                    (int) $settings->get(
+                        Service\Llm\LlmSettings::VISION_MAX_IMAGES,
+                        Service\Llm\LlmSettings::DEFAULT_VISION_MAX_IMAGES
+                    )
+                );
+            },
             Service\Ai\AiCataloguer::class => function ($container) {
                 return new Service\Ai\AiCataloguer(
                     $container->get(Service\Content\ContentExtractor::class),
+                    $container->get(Service\Content\MediaVisionExtractor::class),
                     $container->get(Service\Ai\ContextDistiller::class),
                     $container->get(Service\Ai\CurricularClassifier::class),
                     $container->get(Service\Ai\TagClassifier::class)

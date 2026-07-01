@@ -8,6 +8,7 @@ use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\ContextDistiller;
 use OERManager\Service\Ai\PromptBuilder;
 use OERManager\Service\Content\ContentExtractor;
+use OERManager\Service\Content\MediaVisionExtractor;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -39,12 +40,20 @@ final class AiCataloguerTest extends TestCase
         return new ContextDistiller(new FakeLlmClient([$ficha]), new PromptBuilder());
     }
 
+    /** Visión apagada por defecto (off-by-default, ADR-0011): no-op sin red. */
+    private function vision(?FakeLlmClient $llm = null, bool $enabled = false): MediaVisionExtractor
+    {
+        // minImageBytes bajo para no descartar ficheros pequeños de los tests.
+        return new MediaVisionExtractor($llm ?? new FakeLlmClient(), new PromptBuilder(), $enabled, 3, 10);
+    }
+
     public function testMergesProposalsAndReportsContent(): void
     {
         $curricular = new FakeClassifier(['schema:about' => [20], 'lrmi:teaches' => [30]]);
         $tags = new FakeClassifier(['dcterms:relation' => [50]]);
         $cataloguer = new AiCataloguer(
             new ContentExtractor(),
+            $this->vision(),
             $this->distiller('Ficha: álgebra y ecuaciones'),
             $curricular,
             $tags
@@ -78,6 +87,7 @@ final class AiCataloguerTest extends TestCase
         $tags = new FakeClassifier([]);
         $cataloguer = new AiCataloguer(
             new ContentExtractor(),
+            $this->vision(),
             $this->distiller('FICHA DESTILADA'),
             $curricular,
             $tags
@@ -99,6 +109,7 @@ final class AiCataloguerTest extends TestCase
         $tags = new FakeClassifier(['dcterms:relation' => [50]]);
         $cataloguer = new AiCataloguer(
             new ContentExtractor(),
+            $this->vision(),
             $this->distiller('no debería llamarse'),
             $curricular,
             $tags
@@ -113,6 +124,86 @@ final class AiCataloguerTest extends TestCase
         $this->assertSame([], $tags->received);
         $this->assertSame('', $out['debug']['ficha']);
         $this->assertSame([], $out['debug']['distillation']);
+    }
+
+    public function testVisionDescriptionsFeedTheContext(): void
+    {
+        // Item solo con una imagen (sin texto): la visión es la única señal y debe
+        // llegar al contexto y, por tanto, a los clasificadores (ADR-0011).
+        $curricular = new FakeClassifier(['schema:about' => [20]]);
+        $tags = new FakeClassifier([]);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision(new FakeLlmClient(['Infografía del ciclo del agua']), true),
+            $this->distiller('Ficha: ciclo del agua'),
+            $curricular,
+            $tags
+        );
+
+        $image = $this->dir . '/ciclo.png';
+        file_put_contents($image, str_repeat('x', 5000));
+
+        $out = $cataloguer->propose('', [], [
+            ['path' => $image, 'mediaType' => 'image/png', 'name' => 'ciclo.png', 'size' => 5000],
+        ]);
+
+        $this->assertFalse($out['content']['empty']);
+        $this->assertStringContainsString('Infografía del ciclo del agua', $out['debug']['content_text']);
+        $this->assertStringContainsString('Infografía del ciclo del agua', $curricular->received[0]);
+        $this->assertNotEmpty($out['debug']['vision']);
+        $this->assertSame(['schema:about' => [20]], $out['alignment']);
+    }
+
+    public function testScannedPdfIsRescuedThroughVision(): void
+    {
+        // Un PDF sin capa de texto (escaneado): el ContentExtractor lo salta
+        // (pdf_unreadable) y el rescate lo enruta a la visión como documento.
+        $curricular = new FakeClassifier([]);
+        $tags = new FakeClassifier([]);
+        $visionLlm = new FakeLlmClient(['Examen escaneado de matemáticas']);
+        $vision = $this->vision($visionLlm, true);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $vision,
+            $this->distiller('Ficha'),
+            $curricular,
+            $tags
+        );
+
+        $pdf = $this->dir . '/escaneado.pdf';
+        file_put_contents($pdf, 'no es un pdf real, sin capa de texto');
+
+        $out = $cataloguer->propose('', [
+            ['path' => $pdf, 'mediaType' => 'application/pdf', 'name' => 'escaneado.pdf'],
+        ]);
+
+        // El PDF ilegible se reportó como saltado y su señal se rescató por visión.
+        $this->assertStringContainsString('Examen escaneado de matemáticas', $out['debug']['content_text']);
+        $this->assertSame(1, $out['debug']['vision'][0]['pdfs']);
+        $this->assertCount(1, $visionLlm->calls);
+    }
+
+    public function testVisionDisabledByDefaultSkipsTheLlm(): void
+    {
+        $visionLlm = new FakeLlmClient(['no debería llamarse']);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision($visionLlm, false),
+            $this->distiller('Ficha'),
+            new FakeClassifier([]),
+            new FakeClassifier([])
+        );
+
+        $file = $this->dir . '/nota.txt';
+        file_put_contents($file, 'Contenido textual.');
+        $image = $this->dir . '/foto.png';
+        file_put_contents($image, str_repeat('x', 5000));
+
+        $cataloguer->propose('Título: X', [['path' => $file, 'name' => 'nota.txt']], [
+            ['path' => $image, 'mediaType' => 'image/png', 'name' => 'foto.png', 'size' => 5000],
+        ]);
+
+        $this->assertSame([], $visionLlm->calls);
     }
 }
 

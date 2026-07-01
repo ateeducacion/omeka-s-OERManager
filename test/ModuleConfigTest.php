@@ -97,6 +97,7 @@ final class ModuleConfigTest extends TestCase
             \OERManager\Service\Ai\TermResolverInterface::class,
             \OERManager\Service\Content\MediaSourceInterface::class,
             \OERManager\Service\Content\ContentExtractor::class,
+            \OERManager\Service\Content\MediaVisionExtractor::class,
             \OERManager\Service\Ai\CurricularClassifier::class,
             \OERManager\Service\Ai\TagClassifier::class,
             \OERManager\Service\Ai\AiCataloguer::class,

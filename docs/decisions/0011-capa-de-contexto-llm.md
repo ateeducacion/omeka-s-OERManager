@@ -93,10 +93,27 @@ Faseado con TDD real en host (puertos/adaptadores, núcleo puro). Estado (2026-0
   clasificación y expone `ficha`/`distillation` en el debug; factoría del 2º cliente
   LLM (`EXTRACTION_MODEL` cae a `MODEL`) + factoría de `ContextDistiller` en
   `module.config.php`. 105 tests verdes, lint PSR-12.
-- **Pendiente:** Fase 5 (`MediaVisionExtractor` + gating por
-  `vision_enabled`/capacidad del proveedor) y Fase 6 (`ConfigForm` con campos de
-  extracción/visión + `OmekaMediaSource` reconociendo imágenes + verificación en
-  contenedor).
+- **Fase 5 (hecha):** `MediaVisionExtractor` — filtro heurístico PURO de imágenes
+  (`selectImages()`: descarta ruido por nombre `logo|icon|sprite|bg|thumb…` con
+  lookaround + tamaño mínimo/máximo; ordena por tamaño y toma top-N) y `describe()`
+  que envía top-N imágenes + PDF escaneado como bloques `image`/`document` al modelo
+  de extracción y devuelve la descripción. Doble puerta: master toggle `vision_enabled`
+  (off por defecto) + capacidad del proveedor (`supportsImages()/supportsPdf()`);
+  `TraceableInterface` (registra `images`/`pdfs` o el motivo de omisión:
+  `disabled`/`provider_no_vision`/`no_candidates`). `PromptBuilder::buildVisionPrompt()`
+  (fiel, no-clasificador, texto visible como dato-no-instrucción). `AiCataloguer`
+  enruta las imágenes y rescata los PDF `pdf_unreadable`/`pdf_empty` a la visión, y la
+  ficha viaja a `ItemContext::visionDescriptions`.
+- **Fase 6 (hecha):** `OmekaMediaSource::imagesFor()` localiza las imágenes del item
+  (jpg/png/gif/webp) con su tamaño, aparte de la cascada de texto; `ConfigForm` añade
+  los campos `EXTRACTION_MODEL`, `vision_enabled` (off) y `vision_max_images` (default
+  3), persistidos en `Module::getConfigForm()/handleConfigForm()`; `module.config.php`
+  registra la factoría de `MediaVisionExtractor` (gating por settings) y la inyecta en
+  `AiCataloguer`; `IndexController` pasa `imagesFor()` a `propose()`. **120 tests
+  verdes, lint PSR-12.**
+- **Pendiente:** solo la **verificación funcional en contenedor** (diferida, como
+  TASK-010/015): item con PDF escaneado y con imágenes (#3181) — que la ficha y la
+  visión lleguen a los pasos, y que baje el coste de tokens del clasificador.
 
 ## Fuentes
 
