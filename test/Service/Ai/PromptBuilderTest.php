@@ -62,6 +62,20 @@ final class PromptBuilderTest extends TestCase
         $this->assertMatchesRegularExpression('/varios|todos los que|cero o más/u', mb_strtolower($multi['user']));
     }
 
+    public function testGuidanceIsAppendedToInstructionsWhenProvided(): void
+    {
+        $guidance = 'Ante la duda, sé INCLUSIVO con las etapas.';
+        $prompt = (new PromptBuilder())->buildSelectionPrompt('Etapa educativa', ['Primaria', 'ESO'], 'c', 0, $guidance);
+        $this->assertStringContainsString($guidance, $prompt['user']);
+    }
+
+    public function testGuidanceIsAbsentByDefault(): void
+    {
+        // Sin guía (default): no se cuela texto de inclusividad en pasos como materia/saberes.
+        $prompt = (new PromptBuilder())->buildSelectionPrompt('Saberes', ['A', 'B'], 'c', 0);
+        $this->assertStringNotContainsString('INCLUSIVO', $prompt['user']);
+    }
+
     public function testBuildsWithEmptyCandidates(): void
     {
         $prompt = (new PromptBuilder())->buildSelectionPrompt('Asignatura', [], 'contenido', 1);
@@ -153,6 +167,37 @@ final class PromptBuilderTest extends TestCase
         // El contenido va entre las marcas de datos.
         $this->assertStringContainsString('<<<CONTENIDO>>>', $prompt['user']);
         $this->assertStringContainsString('recurso', $prompt['user']);
+    }
+
+    public function testDistillationPromptIncludesNoiseGuidance(): void
+    {
+        // TASK-022: el crudo real arrastra ruido técnico (ids de interfaz,
+        // licencias, texto de editores); el destilador debe ignorarlo.
+        $prompt = (new PromptBuilder())->buildDistillationPrompt('recurso');
+        $system = mb_strtolower($prompt['system']);
+        $this->assertStringContainsString('ruido', $system);
+        $this->assertMatchesRegularExpression('/ignór|ignora|descarta/u', $system);
+    }
+
+    public function testDistillationPromptRequestsCitedLevelSection(): void
+    {
+        // TASK-022: sección estable «Nivel citado textualmente» — la única
+        // inferencia curricular permitida es la literal (ADR-0011).
+        $prompt = (new PromptBuilder())->buildDistillationPrompt('recurso');
+        $this->assertStringContainsString('Nivel citado textualmente', $prompt['system']);
+        $this->assertStringContainsString('No consta', $prompt['system']);
+    }
+
+    public function testDistillationPromptIncludesFewShotExamples(): void
+    {
+        // TASK-022: few-shot con casos reales del catálogo del propietario
+        // (#4674 figuras planas con nivel literal; #3181 Netex con ruido).
+        $prompt = (new PromptBuilder())->buildDistillationPrompt('recurso');
+        $this->assertStringContainsString('EJEMPLO', $prompt['system']);
+        $this->assertStringContainsString('FIGURAS PLANAS', $prompt['system']);
+        $this->assertStringContainsString('célula', $prompt['system']);
+        // El ejemplo con nivel literal lo cita; el otro dice «No consta».
+        $this->assertStringContainsString('1º ESO', $prompt['system']);
     }
 
     public function testDistillationPromptNeutralizesClosingDelimiter(): void

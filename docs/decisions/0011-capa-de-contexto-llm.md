@@ -115,9 +115,46 @@ Faseado con TDD real en host (puertos/adaptadores, núcleo puro). Estado (2026-0
   TASK-010/015): item con PDF escaneado y con imágenes (#3181) — que la ficha y la
   visión lleguen a los pasos, y que baje el coste de tokens del clasificador.
 
+## Afinado (TASK-022, 2026-07-07)
+
+Diagnóstico con **6 REAs reales** del catálogo (`resource_class_id=4758`) pasados por
+el `ContentExtractor` real en el host: la ficha (señal primaria de los pasos gruesos)
+salía mala no solo por el prompt sino porque **el crudo que la alimenta estaba roto**.
+Dos frentes, sin relajar ninguna defensa de seguridad de la Fase 5:
+
+- **Endurecimiento del `ContentExtractor`:** (a) **denylist de rutas vendor** en ZIP
+  (`noise_path_segments`: ckeditor, plugins, fonts, lib…), saltadas ANTES de consumir
+  `max_zip_entries` — sin esto, el caso #37129 (SCORM 41 MB) llenaba los 24k chars con
+  samples de CKEditor y texto demo «Apollo 11», y el contenido real (al final del ZIP)
+  ni se leía; (b) **reparto equitativo del presupuesto** entre piezas (water-filling)
+  en vez de truncado head-first: una fuente ruidosa ya no expulsa la señal de las demás,
+  y una fuente única conserva el presupuesto completo; (c) **filtro reforzado** en
+  `meaningfulText()`: descarta identificadores de interfaz de herramientas de autor
+  (`imagelink_<hash>`, `interface_view_581-001`, `navigationSectionInteracted`,
+  `ntx-text-…`) y reglas CSS embebidas (`!important`, selectores) que antes se colaban
+  por el filtro JSON.
+- **Prompt del destilador guiado por casos reales:** instrucción explícita de **ignorar
+  el ruido técnico**; nueva sección estable **«Nivel citado textualmente»** (copia el
+  nivel/curso/materia literal o «No consta») que da señal directa a los pasos gruesos y
+  al sesgo de inclusividad de etapa (ADR-0010 §Afinado TASK-019); y **few-shot** con 2
+  ejemplos reales compactos (#4674 con nivel literal; #3181 Netex ruidoso) en
+  `PromptBuilder::DISTILLATION_EXAMPLES`.
+
+Corpus de evaluación en `test/fixtures/distiller-corpus/` (extracto real + ficha de
+referencia por item) con el protocolo de medición funcional en contenedor (tasa de
+acuerdo ficha↔referencia, criterio ADR-0012). Golden en host: `ContentExtractorTest`
+(extracción limpia sobre ZIPs con estructura vendor) y `PromptBuilderTest` (guía + few-shot
+presentes; invariantes fiel/no-clasificador intactos). **151 tests verdes, lint PSR-12.**
+
+Guías al propietario derivadas del diagnóstico: activar `vision_enabled` (#40442 es un
+PDF escaneado sin capa de texto; #3181 es infográfico → solo señal visual); completar
+metadatos mínimos (#4359 no tiene ni título); subir `max_tokens` si la ficha se corta
+tras el few-shot. La verificación funcional en contenedor sigue diferida.
+
 ## Fuentes
 
 - Brainstorming con el propietario, 2026-06-30.
+- Diagnóstico TASK-022 con REAs reales (`localhost:8080`, `resource_class_id=4758`), 2026-07-07.
 - Diseño: docs/superpowers/specs/2026-06-30-refactor-contexto-llm-design.md.
 - ADR-0008 (conexión LLM), ADR-0010 (anclaje bottom-up), ADR-0007 (IA propone/curador
   confirma), spec de extracción de medios (2026-06-29) §5 (visión).

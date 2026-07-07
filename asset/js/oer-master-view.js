@@ -558,7 +558,7 @@
                 var messages = {
                     csrf: Omeka.jsTranslate('Token de seguridad caducado: recarga la página.'),
                     disabled: Omeka.jsTranslate('La asistencia IA no está configurada.'),
-                    llm: Omeka.jsTranslate('El proveedor de IA no respondió correctamente.'),
+                    llm: Omeka.jsTranslate('El proveedor de IA no respondió correctamente. El motivo exacto está en el log de Omeka.'),
                     not_found: Omeka.jsTranslate('No se encontró el recurso.'),
                     unexpected: Omeka.jsTranslate('Error inesperado al consultar la IA.')
                 };

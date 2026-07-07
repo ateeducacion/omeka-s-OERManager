@@ -130,6 +130,9 @@ class Module extends AbstractModule
             LlmSettings::CONTENT_TOKEN_CAP,
             LlmSettings::DEFAULT_CONTENT_TOKEN_CAP
         );
+        // Perfil de inferencia compartido (paridad entre proveedores).
+        $data[LlmSettings::TEMPERATURE] = $settings->get(LlmSettings::TEMPERATURE);
+        $data[LlmSettings::MAX_TOKENS] = $settings->get(LlmSettings::MAX_TOKENS, LlmSettings::DEFAULT_MAX_TOKENS);
         // Capa de contexto del LLM (ADR-0011): extracción/visión.
         $data[LlmSettings::EXTRACTION_MODEL] = $settings->get(LlmSettings::EXTRACTION_MODEL);
         $data[LlmSettings::VISION_ENABLED] = (bool) $settings->get(LlmSettings::VISION_ENABLED);
@@ -168,6 +171,11 @@ class Module extends AbstractModule
         $settings->set(LlmSettings::MODEL, trim((string) ($params[LlmSettings::MODEL] ?? '')));
         $cap = (int) ($params[LlmSettings::CONTENT_TOKEN_CAP] ?? 0);
         $settings->set(LlmSettings::CONTENT_TOKEN_CAP, $cap > 0 ? $cap : LlmSettings::DEFAULT_CONTENT_TOKEN_CAP);
+
+        // Perfil de inferencia compartido: temperatura vacía/no válida = no enviar.
+        $temperature = LlmSettings::parseTemperature($params[LlmSettings::TEMPERATURE] ?? null);
+        $settings->set(LlmSettings::TEMPERATURE, null === $temperature ? '' : (string) $temperature);
+        $settings->set(LlmSettings::MAX_TOKENS, LlmSettings::parseMaxTokens($params[LlmSettings::MAX_TOKENS] ?? null));
 
         // Capa de contexto del LLM (ADR-0011): modelo de extracción + visión. La
         // visión arranca apagada (egress de binarios a un tercero); el modelo de

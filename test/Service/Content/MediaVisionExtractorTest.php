@@ -216,6 +216,37 @@ final class MediaVisionExtractorTest extends TestCase
         $this->assertMatchesRegularExpression('/no infieras|no propongas/u', $system);
     }
 
+    public function testPassesTemperatureToLlmWhenConfigured(): void
+    {
+        // Perfil de inferencia compartido (paridad entre proveedores).
+        $llm = new FakeLlmClient(['descripción']);
+        $ext = new MediaVisionExtractor(
+            $llm,
+            new PromptBuilder(),
+            true,
+            3,
+            10,
+            MediaVisionExtractor::DEFAULT_MAX_IMAGE_BYTES,
+            1024,
+            0.2
+        );
+
+        $ext->describe([$this->imageFile('foto.png', 5000)], []);
+
+        $this->assertSame(0.2, $llm->calls[0]['options']['temperature']);
+    }
+
+    public function testOmitsTemperatureWhenNotConfigured(): void
+    {
+        // Sin temperatura configurada NO se envía (los Opus 4.6+ la rechazan).
+        $llm = new FakeLlmClient(['descripción']);
+        $ext = $this->extractor($llm);
+
+        $ext->describe([$this->imageFile('foto.png', 5000)], []);
+
+        $this->assertArrayNotHasKey('temperature', $llm->calls[0]['options']);
+    }
+
     public function testIsTraceable(): void
     {
         $llm = new FakeLlmClient(['descripción visual']);

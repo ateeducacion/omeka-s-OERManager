@@ -266,7 +266,11 @@ class IndexController extends AbstractActionController
                 $this->mediaSource->imagesFor($id)
             );
         } catch (LlmException $e) {
-            // Error del proveedor LLM: mensaje genérico (sin clave ni contenido).
+            // Error del proveedor LLM: el detalle saneado (status + mensaje del
+            // proveedor, nunca la clave) va al log; al front solo el código
+            // genérico. Sin esto un 400 de parámetros (p. ej. un modelo que
+            // rechaza temperature) es indiagnosticable.
+            $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
             return new JsonModel(['error' => 'llm']);
         } catch (\Exception $e) {
             $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());

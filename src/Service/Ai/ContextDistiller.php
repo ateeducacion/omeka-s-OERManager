@@ -8,13 +8,14 @@ use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Llm\LlmClientInterface;
 
 /**
- * Destilador fiel del contexto del item (ADR-0011). El LLM de extracción (barato,
- * vision-capable) lee el crudo (metadatos + texto de medios + descripciones de
- * visión) y produce una FICHA estructurada (tema, conceptos clave, vocabulario,
- * qué enseña el recurso). NO infiere currículo: no propone etapa/materia/curso
- * salvo que esté literal en el recurso; la inferencia curricular es del
- * clasificador (con grafo, ADR-0010). Conservador: prima la fidelidad sobre el
- * ahorro de tokens.
+ * Destilador fiel del contexto del item (ADR-0011, afinado TASK-022). El LLM de
+ * extracción (barato, vision-capable) lee el crudo (metadatos + texto de medios +
+ * descripciones de visión) y produce una FICHA estructurada (tema, conceptos
+ * clave, vocabulario, qué enseña, nivel citado textualmente), calibrada con
+ * few-shot de casos reales del catálogo. NO infiere currículo: no propone
+ * etapa/materia/curso salvo que esté literal en el recurso; la inferencia
+ * curricular es del clasificador (con grafo, ADR-0010). Conservador: prima la
+ * fidelidad sobre el ahorro de tokens.
  *
  * El contenido del recurso viaja como dato no-instrucción (spec §6, igual que en
  * la selección). Puro: usa LlmClientInterface (inyectado, fake en tests) y
@@ -27,13 +28,16 @@ final class ContextDistiller implements TraceableInterface
     private array $trace = [];
 
     private int $maxTokens;
+    private ?float $temperature;
 
     public function __construct(
         private LlmClientInterface $llm,
         private PromptBuilder $prompts,
-        int $maxTokens = 1024
+        int $maxTokens = 1024,
+        ?float $temperature = null
     ) {
         $this->maxTokens = $maxTokens;
+        $this->temperature = $temperature;
     }
 
     /**
@@ -51,15 +55,19 @@ final class ContextDistiller implements TraceableInterface
             return '';
         }
         $prompt = $this->prompts->buildDistillationPrompt($raw);
-        $response = $this->llm->chat(
-            [['role' => 'user', 'content' => $prompt['user']]],
-            ['system' => $prompt['system'], 'max_tokens' => $this->maxTokens]
-        );
+        // Perfil de inferencia compartido: temperatura solo si está configurada
+        // (los Opus 4.6+ la rechazan); se traza para comparar entre proveedores.
+        $options = ['system' => $prompt['system'], 'max_tokens' => $this->maxTokens];
+        if (null !== $this->temperature) {
+            $options['temperature'] = $this->temperature;
+        }
+        $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $ficha = trim($response->text());
         $this->trace[] = [
             'step' => 'distillation',
             'system' => $prompt['system'],
             'user' => $prompt['user'],
+            'llm_options' => array_diff_key($options, ['system' => '']),
             'response' => $response->text(),
             'ficha' => $ficha,
         ];

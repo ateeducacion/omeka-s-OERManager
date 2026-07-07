@@ -28,19 +28,36 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     /** Tope de hojas mergeadas presentadas al LLM (coste de tokens, NFR-004/NFR-008). */
     private const LEAF_CAP = 200;
 
+    /**
+     * Sesgo de inclusividad SOLO para la etapa acotadora (Fase A.1). La etapa no
+     * se escribe (ADR-0009); solo delimita qué saberes/criterios llegan a las
+     * fases B/C. Una etapa omitida deja fuera sus contenidos, que ya no podrán
+     * proponerse; incluir una de más es inocuo (las hojas se eligen por
+     * descripción y curso/materia se derivan abajo, ADR-0010). Por eso, ante duda
+     * de nivel, se prima el recall. Este sesgo NO se aplica a materia ni a las
+     * hojas: ahí la precisión sí importa (materia/curso salen de las hojas).
+     */
+    private const ETAPA_GUIDANCE = 'Ante la duda sobre el nivel educativo, sé INCLUSIVO: si el recurso podría '
+        . 'encajar en varias etapas, selecciónalas TODAS. Es preferible incluir una etapa de más que dejar '
+        . 'fuera la correcta, porque los contenidos (saberes y criterios) de las etapas no elegidas no podrán '
+        . 'proponerse después. Excluye solo las etapas claramente inaplicables.';
+
     /** @var array<int,array<string,mixed>> */
     private array $trace = [];
 
     private int $maxTokens;
+    private ?float $temperature;
 
     public function __construct(
         private LlmClientInterface $llm,
         private TermResolverInterface $resolver,
         private PromptBuilder $prompts,
         private ResponseParser $parser,
-        int $maxTokens = 1024
+        int $maxTokens = 1024,
+        ?float $temperature = null
     ) {
         $this->maxTokens = $maxTokens;
+        $this->temperature = $temperature;
     }
 
     public function classify(ItemContext $context): array
@@ -118,19 +135,28 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      * @param array<int,array<string,mixed>> $candidates
      * @return int[] índices 1-based devueltos por el LLM
      */
-    private function ask(array $candidates, string $label, string $content, int $maxSelections): array
-    {
-        $prompt = $this->prompts->buildSelectionPrompt($label, $candidates, $content, $maxSelections);
-        $response = $this->llm->chat(
-            [['role' => 'user', 'content' => $prompt['user']]],
-            ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
-        );
+    private function ask(
+        array $candidates,
+        string $label,
+        string $content,
+        int $maxSelections,
+        string $guidance = ''
+    ): array {
+        $prompt = $this->prompts->buildSelectionPrompt($label, $candidates, $content, $maxSelections, $guidance);
+        // Perfil de inferencia compartido: temperatura solo si está configurada
+        // (los Opus 4.6+ la rechazan); se traza para comparar entre proveedores.
+        $options = ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens];
+        if (null !== $this->temperature) {
+            $options['temperature'] = $this->temperature;
+        }
+        $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $indices = $this->parser->parseIndices($response->text());
         $this->trace[] = [
             'step' => $label,
             'candidates' => count($candidates),
             'system' => $prompt['system'],
             'user' => $prompt['user'],
+            'llm_options' => array_diff_key($options, ['system' => '']),
             'response' => $response->text(),
             'selected_indices' => $indices,
         ];
@@ -148,7 +174,10 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         if (!$candidates) {
             return [];
         }
-        return $this->mapIndicesToIds($this->ask($candidates, 'Etapa educativa', $content, 0), $candidates);
+        return $this->mapIndicesToIds(
+            $this->ask($candidates, 'Etapa educativa', $content, 0, self::ETAPA_GUIDANCE),
+            $candidates
+        );
     }
 
     /**

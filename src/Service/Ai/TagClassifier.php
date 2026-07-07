@@ -19,15 +19,18 @@ final class TagClassifier implements ClassifierInterface, TraceableInterface
     private array $trace = [];
 
     private int $maxTokens;
+    private ?float $temperature;
 
     public function __construct(
         private LlmClientInterface $llm,
         private TermResolverInterface $resolver,
         private PromptBuilder $prompts,
         private ResponseParser $parser,
-        int $maxTokens = 1024
+        int $maxTokens = 1024,
+        ?float $temperature = null
     ) {
         $this->maxTokens = $maxTokens;
+        $this->temperature = $temperature;
     }
 
     public function getTrace(): array
@@ -53,16 +56,20 @@ final class TagClassifier implements ClassifierInterface, TraceableInterface
             $context->fineText(),
             0
         );
-        $response = $this->llm->chat(
-            [['role' => 'user', 'content' => $prompt['user']]],
-            ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens]
-        );
+        // Perfil de inferencia compartido: temperatura solo si está configurada
+        // (los Opus 4.6+ la rechazan); se traza para comparar entre proveedores.
+        $options = ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens];
+        if (null !== $this->temperature) {
+            $options['temperature'] = $this->temperature;
+        }
+        $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $indices = $this->parser->parseIndices($response->text());
         $this->trace[] = [
             'step' => 'Ejes temáticos',
             'candidates' => count($candidates),
             'system' => $prompt['system'],
             'user' => $prompt['user'],
+            'llm_options' => array_diff_key($options, ['system' => '']),
             'response' => $response->text(),
             'selected_indices' => $indices,
         ];

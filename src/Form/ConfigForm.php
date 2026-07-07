@@ -150,6 +150,42 @@ class ConfigForm extends Form
             ],
         ]);
 
+        // Perfil de inferencia compartido (paridad entre proveedores): sin fijarlo,
+        // cada proveedor aplica sus defaults y los resultados divergen entre
+        // ejecuciones y entre proveedores (ficha destilada y selecciones).
+        $this->add([
+            'name' => LlmSettings::TEMPERATURE,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Temperatura (ambos proveedores)', // @translate
+                'info' => 'Se envía idéntica en todas las llamadas; 0–0.2 da resultados repetibles en '
+                    . 'modelos que la aceptan (p. ej. Haiku 4.5, Sonnet 4.6). OJO: Sonnet 5, Opus 4.6+ '
+                    . 'y Fable 5 la RECHAZAN con error 400 — con esos modelos déjala en blanco '
+                    . '(= no enviar; ambos proveedores usan su default).', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::TEMPERATURE,
+                'min' => 0,
+                'max' => 2,
+                'step' => 0.1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::MAX_TOKENS,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Tope de tokens de la respuesta (max_tokens)', // @translate
+                'info' => 'Tope de salida por llamada, idéntico en ambos proveedores. Si el modelo '
+                    . 'razona o la ficha es larga y se agota, la respuesta llega truncada.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::MAX_TOKENS,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
         $this->addVisionFields();
     }
 

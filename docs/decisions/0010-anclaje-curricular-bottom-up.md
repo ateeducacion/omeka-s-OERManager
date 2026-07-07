@@ -68,6 +68,34 @@ corría. TASK-018 afina la **Fase A** sin tocar el mapeo RDF (ADR-0004) ni el gr
 - **No bug — criterios vacíos:** que los criterios salgan `[]` sigue siendo coherente
   con el §5 de esta decisión (los criterios LOMLOE son competenciales/genéricos).
 
+## Afinado (TASK-019, 2026-07-03)
+
+Sesgo de **inclusividad en la etapa acotadora** (Fase A.1), sin tocar el mapeo RDF
+(ADR-0004) ni el grafo (ADR-0009):
+
+- **Problema.** La etapa solo acota (nunca se escribe, ADR-0009): delimita qué
+  saberes/criterios llegan a las Fases B/C. Una etapa **omitida** deja fuera sus
+  contenidos, que ya no podrán proponerse (falso negativo silencioso). El
+  multi-select de A.1 (TASK-018) lo permite, pero no lo incentivaba.
+- **Decisión.** El prompt del paso de etapa incluye una guía explícita: **ante
+  duda de nivel, seleccionar TODAS las etapas plausibles** — es preferible incluir
+  una de más (inocuo: las hojas se eligen por descripción y curso/materia se
+  derivan abajo, §1) que dejar fuera la correcta. Se prima el **recall** del embudo.
+- **Acotación del sesgo.** La guía se aplica **solo** a la etapa. NO a materia ni a
+  las hojas (saberes/criterios), donde la precisión sí importa porque `schema:about`
+  y `lrmi:educationalLevel` se derivan de ellas: sobre-incluir ahí degradaría la
+  clasificación escrita. Implementado como parámetro opcional `guidance` en
+  `PromptBuilder::buildSelectionPrompt`, pasado únicamente desde `pickEtapaIds`
+  (`CurricularClassifier::ETAPA_GUIDANCE`); trazable en `llm_options`/prompt del panel.
+- **Por qué aquí y no invertir etapa↔materia.** Se estudió mover la materia al
+  primer paso (razón: la materia es «el qué», más identificable). Descartado: en el
+  grafo LOMLOE la materia es un nodo **etapa-dependiente** (`listSubjectFamilies`
+  está acotado por etapa; no hay índice global), la etapa es el corte coarse más
+  barato y fiable (~4-6 candidatos cerrados) y **poda** la lista de materias, y la
+  ambigüedad materia-clara/etapa-dudosa ya la absorbe la derivación de la Fase D con
+  A.1 multi-select. Invertir solo reordena el embudo (no cambia la salida) y
+  reintroduce ambigüedad. El sesgo de recall ataca el punto débil real sin reordenar.
+
 ## Limitaciones conocidas
 
 - ~~**Materia única (v1):**~~ superada por TASK-018 (etapa y materia multi-select; ver «Afinado» arriba).

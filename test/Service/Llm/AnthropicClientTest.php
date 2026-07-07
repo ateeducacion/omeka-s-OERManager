@@ -92,6 +92,15 @@ final class AnthropicClientTest extends TestCase
         $this->assertArrayNotHasKey('temperature', $transport->decodedBody());
     }
 
+    public function testSendsTemperatureWhenExplicitlyConfigured(): void
+    {
+        // Perfil de inferencia compartido: si el admin fija temperatura, se envía.
+        $transport = new FakeTransport($this->okResult());
+        $client = new AnthropicClient($transport, ['api_key' => 'k', 'model' => 'm']);
+        $client->chat([['role' => 'user', 'content' => 'x']], ['temperature' => 0.2]);
+        $this->assertSame(0.2, $transport->decodedBody()['temperature']);
+    }
+
     public function testParsesTextAndTokenUsage(): void
     {
         $transport = new FakeTransport($this->okResult('{"about":["Matemáticas"]}', 12, 8));

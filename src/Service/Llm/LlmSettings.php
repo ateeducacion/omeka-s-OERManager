@@ -28,9 +28,48 @@ final class LlmSettings
     /** Tope de imágenes enviadas a visión por item. */
     public const VISION_MAX_IMAGES = 'oermanager_llm_vision_max_images';
 
+    /**
+     * Perfil de inferencia compartido entre proveedores (paridad): un único valor
+     * de temperatura y max_tokens que TODOS los pasos envían idéntico por ambos
+     * adaptadores; sin él cada proveedor aplica sus defaults y los resultados
+     * divergen (misma causa del no-determinismo etapa/materia visto en TASK-018).
+     * Temperatura vacía = NO enviar (los Opus 4.6+ la rechazan con 400).
+     */
+    public const TEMPERATURE = 'oermanager_llm_temperature';
+    public const MAX_TOKENS = 'oermanager_llm_max_tokens';
+
     public const PROVIDER_ANTHROPIC = 'anthropic';
     public const PROVIDER_OPENAI = 'openai';
 
     public const DEFAULT_CONTENT_TOKEN_CAP = 6000;
     public const DEFAULT_VISION_MAX_IMAGES = 3;
+    public const DEFAULT_MAX_TOKENS = 1024;
+
+    /**
+     * Temperatura del perfil: null = no enviar (default del proveedor). Acepta
+     * numérico en [0, 2] (el subconjunto común es 0-1; Anthropic rechaza >1).
+     */
+    public static function parseTemperature(mixed $raw): ?float
+    {
+        if (null === $raw) {
+            return null;
+        }
+        $value = trim((string) $raw);
+        if ('' === $value || !is_numeric($value)) {
+            return null;
+        }
+        $temperature = (float) $value;
+        return ($temperature >= 0.0 && $temperature <= 2.0) ? $temperature : null;
+    }
+
+    /** max_tokens del perfil: entero positivo o el default. */
+    public static function parseMaxTokens(mixed $raw): int
+    {
+        $value = trim((string) $raw);
+        if (!is_numeric($value)) {
+            return self::DEFAULT_MAX_TOKENS;
+        }
+        $maxTokens = (int) $value;
+        return $maxTokens > 0 ? $maxTokens : self::DEFAULT_MAX_TOKENS;
+    }
 }

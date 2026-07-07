@@ -104,20 +104,29 @@ return [
                 );
                 return new Service\Content\ContentExtractor(['max_total_chars' => max(2000, $cap * 4)]);
             },
+            // Perfil de inferencia compartido (paridad entre proveedores): el mismo
+            // max_tokens + temperature en TODOS los pasos y por ambos adaptadores;
+            // temperatura vacía = no enviar (default del proveedor).
             Service\Ai\CurricularClassifier::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\CurricularClassifier(
                     $container->get(Service\Llm\LlmClientInterface::class),
                     $container->get(Service\Ai\TermResolverInterface::class),
                     $container->get(Service\Ai\PromptBuilder::class),
-                    $container->get(Service\Ai\ResponseParser::class)
+                    $container->get(Service\Ai\ResponseParser::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
                 );
             },
             Service\Ai\TagClassifier::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\TagClassifier(
                     $container->get(Service\Llm\LlmClientInterface::class),
                     $container->get(Service\Ai\TermResolverInterface::class),
                     $container->get(Service\Ai\PromptBuilder::class),
-                    $container->get(Service\Ai\ResponseParser::class)
+                    $container->get(Service\Ai\ResponseParser::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
                 );
             },
             // Cliente LLM de extracción (barato, vision-capable; ADR-0011). Reusa
@@ -147,9 +156,12 @@ return [
             },
             // Destilador fiel (ADR-0011): ficha del recurso con el modelo de extracción.
             Service\Ai\ContextDistiller::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\ContextDistiller(
                     $container->get('OERManager\Llm\ExtractionClient'),
-                    $container->get(Service\Ai\PromptBuilder::class)
+                    $container->get(Service\Ai\PromptBuilder::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
                 );
             },
             // Extractor de visión (ADR-0011): top-N imágenes + rescate de PDF escaneado
@@ -165,6 +177,12 @@ return [
                     (int) $settings->get(
                         Service\Llm\LlmSettings::VISION_MAX_IMAGES,
                         Service\Llm\LlmSettings::DEFAULT_VISION_MAX_IMAGES
+                    ),
+                    maxTokens: Service\Llm\LlmSettings::parseMaxTokens(
+                        $settings->get(Service\Llm\LlmSettings::MAX_TOKENS)
+                    ),
+                    temperature: Service\Llm\LlmSettings::parseTemperature(
+                        $settings->get(Service\Llm\LlmSettings::TEMPERATURE)
                     )
                 );
             },

@@ -106,6 +106,30 @@ final class ContextDistillerTest extends TestCase
         $this->assertArrayNotHasKey('json', $llm->calls[0]['options']);
     }
 
+    public function testPassesTemperatureToLlmWhenConfigured(): void
+    {
+        // Perfil de inferencia compartido (paridad entre proveedores): la
+        // temperatura configurada viaja en la llamada y queda en el trace.
+        $llm = new FakeLlmClient(['ficha']);
+        $distiller = new ContextDistiller($llm, new PromptBuilder(), 1024, 0.2);
+
+        $distiller->distill(new ItemContext('M', 'X'));
+
+        $this->assertSame(0.2, $llm->calls[0]['options']['temperature']);
+        $this->assertSame(0.2, $distiller->getTrace()[0]['llm_options']['temperature']);
+    }
+
+    public function testOmitsTemperatureWhenNotConfigured(): void
+    {
+        // Sin temperatura configurada NO se envía (los Opus 4.6+ la rechazan).
+        $llm = new FakeLlmClient(['ficha']);
+        $distiller = new ContextDistiller($llm, new PromptBuilder());
+
+        $distiller->distill(new ItemContext('M', 'X'));
+
+        $this->assertArrayNotHasKey('temperature', $llm->calls[0]['options']);
+    }
+
     public function testIsTraceable(): void
     {
         $llm = new FakeLlmClient(['ficha fiel']);

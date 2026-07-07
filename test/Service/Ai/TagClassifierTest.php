@@ -52,4 +52,27 @@ final class TagClassifierTest extends TestCase
         $llm = new FakeLlmClient(['{"selected":[]}']);
         $this->assertSame([], $this->make($resolver, $llm)->classify(new ItemContext('contenido', '')));
     }
+
+    public function testPassesTemperatureToLlmWhenConfigured(): void
+    {
+        // Perfil de inferencia compartido (paridad entre proveedores).
+        $resolver = new FakeTermResolver(['dcterms:relation' => [['id' => 50, 'title' => 'Patrimonio']]]);
+        $llm = new FakeLlmClient(['{"selected":[1]}']);
+        $classifier = new TagClassifier($llm, $resolver, new PromptBuilder(), new ResponseParser(), 1024, 0.2);
+
+        $classifier->classify(new ItemContext('contenido', ''));
+
+        $this->assertSame(0.2, $llm->calls[0]['options']['temperature']);
+    }
+
+    public function testOmitsTemperatureWhenNotConfigured(): void
+    {
+        // Sin temperatura configurada NO se envía (los Opus 4.6+ la rechazan).
+        $resolver = new FakeTermResolver(['dcterms:relation' => [['id' => 50, 'title' => 'Patrimonio']]]);
+        $llm = new FakeLlmClient(['{"selected":[1]}']);
+
+        $this->make($resolver, $llm)->classify(new ItemContext('contenido', ''));
+
+        $this->assertArrayNotHasKey('temperature', $llm->calls[0]['options']);
+    }
 }

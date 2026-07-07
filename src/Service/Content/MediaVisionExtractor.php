@@ -50,7 +50,8 @@ final class MediaVisionExtractor implements TraceableInterface
         private int $maxImages = 3,
         private int $minImageBytes = self::DEFAULT_MIN_IMAGE_BYTES,
         private int $maxImageBytes = self::DEFAULT_MAX_IMAGE_BYTES,
-        private int $maxTokens = 1024
+        private int $maxTokens = 1024,
+        private ?float $temperature = null
     ) {
     }
 
@@ -139,16 +140,20 @@ final class MediaVisionExtractor implements TraceableInterface
 
         $prompt = $this->prompts->buildVisionPrompt();
         $content = array_merge([['type' => 'text', 'text' => $prompt['user']]], $blocks);
-        $response = $this->llm->chat(
-            [['role' => 'user', 'content' => $content]],
-            ['system' => $prompt['system'], 'max_tokens' => $this->maxTokens]
-        );
+        // Perfil de inferencia compartido: temperatura solo si está configurada
+        // (los Opus 4.6+ la rechazan); se traza para comparar entre proveedores.
+        $options = ['system' => $prompt['system'], 'max_tokens' => $this->maxTokens];
+        if (null !== $this->temperature) {
+            $options['temperature'] = $this->temperature;
+        }
+        $response = $this->llm->chat([['role' => 'user', 'content' => $content]], $options);
         $description = trim($response->text());
         $this->trace[] = [
             'step' => 'vision',
             'images' => $imageCount,
             'pdfs' => $pdfCount,
             'system' => $prompt['system'],
+            'llm_options' => array_diff_key($options, ['system' => '']),
             'description' => $description,
         ];
         return '' === $description ? [] : [$description];

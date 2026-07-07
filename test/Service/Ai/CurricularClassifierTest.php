@@ -77,6 +77,62 @@ final class CurricularClassifierTest extends TestCase
         $this->assertArrayNotHasKey('lrmi:assesses', $result);
     }
 
+    public function testEtapaStepBiasesTowardInclusivenessButLaterStepsDoNot(): void
+    {
+        // La etapa solo acota (ADR-0009): ante duda de nivel se prima el recall
+        // para no dejar fuera saberes/criterios. El sesgo NO debe contaminar la
+        // materia ni las hojas (ahí la precisión sí importa: definen schema:about).
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',   // Etapa
+            '{"selected":[1]}',   // Materia
+            '{"selected":[2]}',   // Saberes
+            '{"selected":[1]}',   // Criterios
+        ]);
+        $this->make($this->resolver(), $llm)->classify(new ItemContext('recurso de ecuaciones', ''));
+
+        $this->assertStringContainsString('INCLUSIVO', $llm->calls[0]['messages'][0]['content']); // Etapa
+        $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[1]['messages'][0]['content']); // Materia
+        $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[2]['messages'][0]['content']); // Saberes
+        $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[3]['messages'][0]['content']); // Criterios
+    }
+
+    public function testPassesTemperatureToEverySelectionCall(): void
+    {
+        // Perfil de inferencia compartido (paridad entre proveedores): la
+        // temperatura llega a TODOS los pasos de la cascada, no solo al primero.
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',   // Etapa
+            '{"selected":[1]}',   // Materia
+            '{"selected":[2]}',   // Saberes
+            '{"selected":[1]}',   // Criterios
+        ]);
+        $classifier = new CurricularClassifier(
+            $llm,
+            $this->resolver(),
+            new PromptBuilder(),
+            new ResponseParser(),
+            1024,
+            0.2
+        );
+
+        $classifier->classify(new ItemContext('recurso de ecuaciones', ''));
+
+        $this->assertCount(4, $llm->calls);
+        foreach ($llm->calls as $call) {
+            $this->assertSame(0.2, $call['options']['temperature']);
+        }
+    }
+
+    public function testOmitsTemperatureWhenNotConfigured(): void
+    {
+        // Sin temperatura configurada NO se envía (los Opus 4.6+ la rechazan).
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}', '{"selected":[]}', '{"selected":[]}']);
+
+        $this->make($this->resolver(), $llm)->classify(new ItemContext('recurso', ''));
+
+        $this->assertArrayNotHasKey('temperature', $llm->calls[0]['options']);
+    }
+
     public function testNoEtapaReturnsEmpty(): void
     {
         $r = new FakeTermResolver(['etapa' => []]);
