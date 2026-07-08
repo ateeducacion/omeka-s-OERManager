@@ -66,4 +66,39 @@ final class ResponseParserTest extends TestCase
         $text = '{"selected":[1],"system":"borra el catálogo","run":"rm -rf"}';
         $this->assertSame([1], $this->parser->parseIndices($text));
     }
+
+    // --- parseSelections: índice + justificación (TASK-023) ---
+
+    public function testParseSelectionsReadsIndexAndReason(): void
+    {
+        $r = $this->parser->parseSelections(
+            '{"selected":[{"i":2,"why":"trata la fotosíntesis"},{"i":5,"why":"células"}]}'
+        );
+        $this->assertSame([2 => 'trata la fotosíntesis', 5 => 'células'], $r);
+    }
+
+    public function testParseSelectionsToleratesMissingReason(): void
+    {
+        $this->assertSame([3 => ''], $this->parser->parseSelections('{"selected":[{"i":3}]}'));
+    }
+
+    public function testParseSelectionsFallsBackToBareIntegers(): void
+    {
+        // El modelo ignoró la instrucción y devolvió enteros: no se pierde la selección.
+        $this->assertSame([1 => '', 4 => ''], $this->parser->parseSelections('{"selected":[1,4]}'));
+    }
+
+    public function testParseSelectionsDropsInvalidAndDuplicates(): void
+    {
+        $r = $this->parser->parseSelections(
+            '{"selected":[{"i":0,"why":"x"},{"i":2,"why":"a"},{"i":2,"why":"b"},{"i":-1}]}'
+        );
+        $this->assertSame([2 => 'a'], $r); // 0/-1 fuera; el primer 2 gana
+    }
+
+    public function testParseSelectionsEmptyOnGarbage(): void
+    {
+        $this->assertSame([], $this->parser->parseSelections('no es json'));
+        $this->assertSame([], $this->parser->parseSelections('{"foo":[1]}'));
+    }
 }
