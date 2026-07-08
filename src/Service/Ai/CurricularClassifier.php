@@ -45,6 +45,14 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     /** @var array<int,array<string,mixed>> */
     private array $trace = [];
 
+    /**
+     * Justificación por hoja elegida (TASK-023): dimensión => {itemId => texto}.
+     * Solo lrmi:teaches/lrmi:assesses; se resetea al inicio de cada classify().
+     *
+     * @var array<string,array<int,string>>
+     */
+    private array $justifications = [];
+
     private int $maxTokens;
     private ?float $temperature;
 
@@ -62,6 +70,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
 
     public function classify(ItemContext $context): array
     {
+        $this->justifications = [];
+
         // Pasos gruesos (etapa/materia/bloque) con la ficha; pasos finos
         // (saberes/criterios) con ficha + crudo de medios (ADR-0011).
         $coarse = $context->coarseText();
@@ -90,7 +100,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         if (count($teaches) > self::BLOCK_THRESHOLD) {
             $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $coarse);
         }
-        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine);
+        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
             $this->collectLineage($teachesRows, $courseIds, $subjectIds);
@@ -104,7 +114,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
                 static fn (array $c): bool => isset($courseIds[(int) ($c['courseId'] ?? 0)])
             ));
         }
-        $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine);
+        $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine, self::ASSESSES);
         if ($assessesRows) {
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
             $this->collectLineage($assessesRows, $courseIds, $subjectIds);
@@ -124,6 +134,17 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     public function getTrace(): array
     {
         return $this->trace;
+    }
+
+    /**
+     * Justificación por saber/criterio elegido (TASK-023). Solo lrmi:teaches/
+     * lrmi:assesses; poblado durante classify().
+     *
+     * @return array<string,array<int,string>> dimensión => {itemId => texto}
+     */
+    public function getJustifications(): array
+    {
+        return $this->justifications;
     }
 
     public function clearTrace(): void
@@ -272,15 +293,72 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     }
 
     /**
+     * Selección de hojas (saberes/criterios) CON justificación (TASK-023): pide al
+     * LLM el porqué de cada elección y lo guarda por itemId. Devuelve las filas
+     * elegidas (igual que antes); la justificación queda en $this->justifications.
+     *
      * @param array<int,array<string,mixed>> $candidates
      * @return array<int,array<string,mixed>> filas elegidas
      */
-    private function selectRows(string $label, array $candidates, string $content): array
+    private function selectRows(string $label, array $candidates, string $content, string $dimension): array
     {
         if (!$candidates) {
             return [];
         }
-        return $this->mapIndicesToRows($this->ask($candidates, $label, $content, 0), $candidates);
+        $map = $this->askWithReasons($candidates, $label, $content);
+        $this->captureJustifications($dimension, $map, $candidates);
+        return $this->mapIndicesToRows(array_keys($map), $candidates);
+    }
+
+    /**
+     * Como ask() pero pidiendo justificación por candidato (contrato con "why").
+     * Devuelve el mapa índice 1-based => justificación; traza igual que ask().
+     *
+     * @param array<int,array<string,mixed>> $candidates
+     * @return array<int,string>
+     */
+    private function askWithReasons(array $candidates, string $label, string $content): array
+    {
+        $prompt = $this->prompts->buildSelectionPrompt($label, $candidates, $content, 0, '', true);
+        $options = ['system' => $prompt['system'], 'json' => true, 'max_tokens' => $this->maxTokens];
+        if (null !== $this->temperature) {
+            $options['temperature'] = $this->temperature;
+        }
+        $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
+        $map = $this->parser->parseSelections($response->text());
+        $this->trace[] = [
+            'step' => $label,
+            'candidates' => count($candidates),
+            'system' => $prompt['system'],
+            'user' => $prompt['user'],
+            'llm_options' => array_diff_key($options, ['system' => '']),
+            'response' => $response->text(),
+            'selected_indices' => array_keys($map),
+        ];
+        return $map;
+    }
+
+    /**
+     * Guarda la justificación por itemId de la hoja elegida (TASK-023). Respeta el
+     * dedup por id de mapIndicesToRows (el primer índice de un id gana) e ignora las
+     * justificaciones vacías.
+     *
+     * @param array<int,string> $map índice 1-based => justificación
+     * @param array<int,array<string,mixed>> $candidates
+     */
+    private function captureJustifications(string $dimension, array $map, array $candidates): void
+    {
+        $candidates = array_values($candidates);
+        foreach ($map as $index => $why) {
+            $position = $index - 1;
+            if ('' === $why || !isset($candidates[$position])) {
+                continue;
+            }
+            $id = (int) ($candidates[$position]['id'] ?? 0);
+            if ($id > 0 && !isset($this->justifications[$dimension][$id])) {
+                $this->justifications[$dimension][$id] = $why;
+            }
+        }
     }
 
     /**

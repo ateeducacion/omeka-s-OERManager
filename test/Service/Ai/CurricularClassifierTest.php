@@ -96,6 +96,51 @@ final class CurricularClassifierTest extends TestCase
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[3]['messages'][0]['content']); // Criterios
     }
 
+    public function testCollectsJustificationsForLeavesByItemId(): void
+    {
+        // TASK-023: los pasos finos devuelven {"i":n,"why":"…"}; el porqué se
+        // guarda por itemId de la hoja elegida (id 31 saber, id 40 criterio).
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',                                    // Etapa
+            '{"selected":[1]}',                                    // Materia
+            '{"selected":[{"i":2,"why":"trata ecuaciones"}]}',    // Saberes → id 31
+            '{"selected":[{"i":1,"why":"resuelve ecuaciones"}]}', // Criterios → id 40
+        ]);
+        $classifier = $this->make($this->resolver(), $llm);
+        $classifier->classify(new ItemContext('recurso de ecuaciones', ''));
+        $j = $classifier->getJustifications();
+        $this->assertSame('trata ecuaciones', $j['lrmi:teaches'][31]);
+        $this->assertSame('resuelve ecuaciones', $j['lrmi:assesses'][40]);
+    }
+
+    public function testJustificationsResetAcrossClassifyCalls(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}',
+            '{"selected":[{"i":2,"why":"x"}]}', '{"selected":[]}',
+            '{"selected":[1]}', '{"selected":[1]}',
+            '{"selected":[]}', '{"selected":[]}',
+        ]);
+        $c = $this->make($this->resolver(), $llm);
+        $c->classify(new ItemContext('a', ''));
+        $c->classify(new ItemContext('b', ''));
+        $this->assertSame([], $c->getJustifications()['lrmi:teaches'] ?? []);
+    }
+
+    public function testDegradesWhenLeafStepOmitsReason(): void
+    {
+        // El LLM ignora la instrucción y devuelve enteros: la selección se
+        // conserva; simplemente no hay justificación para ese id.
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}',
+            '{"selected":[2]}', '{"selected":[]}',
+        ]);
+        $c = $this->make($this->resolver(), $llm);
+        $result = $c->classify(new ItemContext('x', ''));
+        $this->assertSame([31], $result['lrmi:teaches']); // selección intacta
+        $this->assertSame([], $c->getJustifications()['lrmi:teaches'] ?? []);
+    }
+
     public function testPassesTemperatureToEverySelectionCall(): void
     {
         // Perfil de inferencia compartido (paridad entre proveedores): la
