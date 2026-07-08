@@ -76,6 +76,24 @@ final class PromptBuilderTest extends TestCase
         $this->assertStringNotContainsString('INCLUSIVO', $prompt['user']);
     }
 
+    public function testSelectionPromptWithReasonAsksForWhy(): void
+    {
+        // TASK-023: pasos finos piden {"i":n,"why":"…"} con justificación breve.
+        $p = (new PromptBuilder())->buildSelectionPrompt('Saberes básicos', ['A', 'B'], 'c', 0, '', true);
+        $joined = $p['user'] . $p['system'];
+        $this->assertStringContainsString('"i"', $joined);
+        $this->assertStringContainsString('"why"', $joined);
+        $this->assertMatchesRegularExpression('/justific|motivo|por qué/u', mb_strtolower($p['system']));
+    }
+
+    public function testSelectionPromptWithoutReasonKeepsPlainContract(): void
+    {
+        // Sin el flag, el contrato actual {"selected":[n]} no cambia.
+        $p = (new PromptBuilder())->buildSelectionPrompt('Curso', ['A'], 'c', 1);
+        $this->assertStringNotContainsString('"why"', $p['user'] . $p['system']);
+        $this->assertStringContainsString('selected', $p['user'] . $p['system']);
+    }
+
     public function testBuildsWithEmptyCandidates(): void
     {
         $prompt = (new PromptBuilder())->buildSelectionPrompt('Asignatura', [], 'contenido', 1);
