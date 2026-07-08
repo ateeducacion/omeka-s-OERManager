@@ -213,11 +213,12 @@ class IndexController extends AbstractActionController
 
         $id = (int) $this->params()->fromPost('id');
         $alignment = $this->collectAlignment();
+        $justifications = $this->collectJustifications();
         $identity = $this->identity();
         $contributor = $identity ? $identity->getName() : 'unknown';
 
         try {
-            $result = $this->recatalogService->apply($id, $alignment, $contributor);
+            $result = $this->recatalogService->apply($id, $alignment, $contributor, $justifications);
         } catch (PermissionDeniedException $e) {
             return new JsonModel(['updated' => false, 'error' => 'denied']);
         } catch (\RuntimeException $e) {
@@ -279,6 +280,7 @@ class IndexController extends AbstractActionController
 
         return new JsonModel([
             'alignment' => $this->enrichLabels($proposal['alignment']),
+            'justifications' => $proposal['justifications'] ?? [],
             'content' => $proposal['content'],
             'debug' => $proposal['debug'],
         ]);
@@ -462,5 +464,33 @@ class IndexController extends AbstractActionController
             }
         }
         return $alignment;
+    }
+
+    /**
+     * Recoge del POST la justificación IA por saber/criterio (TASK-023): mapa
+     * term => {itemId => texto}, solo para lrmi:teaches/lrmi:assesses. El POST es
+     * manipulable, así que se castea el id a int, se acota el texto y se descartan
+     * las entradas vacías; la integridad del alineamiento la garantiza aparte
+     * RecatalogService::invalidTargets().
+     *
+     * @return array<string,array<int,string>>
+     */
+    private function collectJustifications(): array
+    {
+        $posted = (array) $this->params()->fromPost('justification', []);
+        $out = [];
+        foreach (['lrmi:teaches', 'lrmi:assesses'] as $term) {
+            if (!isset($posted[$term]) || !is_array($posted[$term])) {
+                continue;
+            }
+            foreach ($posted[$term] as $id => $text) {
+                $itemId = (int) $id;
+                $reason = trim(mb_substr((string) $text, 0, 200));
+                if ($itemId > 0 && '' !== $reason) {
+                    $out[$term][$itemId] = $reason;
+                }
+            }
+        }
+        return $out;
     }
 }
