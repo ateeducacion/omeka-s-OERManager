@@ -28,7 +28,7 @@ final class AiCataloguer
     /**
      * @param array<int,array{path:string,mediaType?:string,name?:string}> $files
      * @param array<int,array{path:string,mediaType?:string,name?:string,size?:int}> $images
-     * @return array{alignment:array<string,int[]>,content:array{truncated:bool,empty:bool,sources:string[],skipped:array<string,string>},debug:array<string,mixed>}
+     * @return array{alignment:array<string,int[]>,justifications:array<string,array<int,string>>,content:array{truncated:bool,empty:bool,sources:string[],skipped:array<string,string>},debug:array<string,mixed>}
      */
     public function propose(string $metadataText, array $files, array $images = []): array
     {
@@ -68,6 +68,11 @@ final class AiCataloguer
 
         return [
             'alignment' => $alignment,
+            // Justificación por saber/criterio (TASK-023): el clasificador
+            // curricular la expone si la soporta; los ejes no la llevan.
+            'justifications' => method_exists($this->curricular, 'getJustifications')
+                ? $this->curricular->getJustifications()
+                : [],
             'content' => [
                 'truncated' => $media->isTruncated(),
                 'empty' => $context->isEmpty(),

@@ -79,6 +79,53 @@ final class AiCataloguerTest extends TestCase
         $this->assertStringContainsString('álgebra', $tags->received[0]);
     }
 
+    public function testExposesJustificationsFromCurricular(): void
+    {
+        // TASK-023: el orquestador expone las justificaciones del clasificador
+        // curricular (saberes/criterios) en el resultado.
+        $curricular = new FakeClassifier(
+            ['lrmi:teaches' => [30]],
+            ['lrmi:teaches' => [30 => 'trata el álgebra']]
+        );
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision(),
+            $this->distiller('Ficha'),
+            $curricular,
+            new FakeClassifier([])
+        );
+        $file = $this->dir . '/n.txt';
+        file_put_contents($file, 'Contenido de álgebra.');
+
+        $out = $cataloguer->propose('Título: X', [['path' => $file, 'name' => 'n.txt']]);
+
+        $this->assertSame(['lrmi:teaches' => [30 => 'trata el álgebra']], $out['justifications']);
+    }
+
+    public function testJustificationsEmptyWhenClassifierLacksThem(): void
+    {
+        // Un clasificador sin getJustifications (como TagClassifier) no rompe.
+        $curricular = new class implements \OERManager\Service\Ai\ClassifierInterface {
+            public function classify(\OERManager\Service\Content\ItemContext $context): array
+            {
+                return ['schema:about' => [20]];
+            }
+        };
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision(),
+            $this->distiller('Ficha'),
+            $curricular,
+            new FakeClassifier([])
+        );
+        $file = $this->dir . '/n.txt';
+        file_put_contents($file, 'Contenido.');
+
+        $out = $cataloguer->propose('Título: X', [['path' => $file, 'name' => 'n.txt']]);
+
+        $this->assertSame([], $out['justifications']);
+    }
+
     public function testDistillationFeedsFichaIntoContext(): void
     {
         // La ficha del destilador entra en el ItemContext (visible en el texto fino
