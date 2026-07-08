@@ -51,10 +51,16 @@
 
     // Chip de término seleccionado con el marcado de Chosen de Omeka
     // (chosen-container-multi), para integración visual nativa.
-    function buildSearchChoice(id, title) {
-        return $('<li>')
+    function buildSearchChoice(id, title, justification) {
+        var $choice = $('<li>')
             .addClass('search-choice')
-            .attr('data-id', id)
+            .attr('data-id', id);
+        // Justificación IA (TASK-023): viaja oculta con el chip hasta el apply;
+        // no se muestra (decisión del propietario).
+        if (justification) {
+            $choice.attr('data-justification', justification);
+        }
+        return $choice
             .append($('<span>').text(title))
             .append(
                 $('<a>')
@@ -297,6 +303,20 @@
                     pairs.push({ name: 'alignment[' + term + '][]', value: id });
                 });
             }
+            // Justificación IA (TASK-023): solo saberes/criterios; se emite el
+            // texto oculto de cada chip que la lleve (los añadidos a mano no).
+            if (term === 'lrmi:teaches' || term === 'lrmi:assesses') {
+                $dim.find('.chosen-choices .search-choice').each(function () {
+                    var $choice = $(this);
+                    var why = $choice.attr('data-justification');
+                    if (why) {
+                        pairs.push({
+                            name: 'justification[' + term + '][' + $choice.data('id') + ']',
+                            value: why
+                        });
+                    }
+                });
+            }
         });
         return pairs;
     }
@@ -522,18 +542,23 @@
     // Pre-rellena el panel con la propuesta IA: por dimensión, añade los chips
     // propuestos que no estén ya seleccionados y marca la dimensión modificada.
     // No escribe nada: el curador revisa y confirma (preview/apply de 4a).
-    function applyAiProposal($panel, alignment) {
+    function applyAiProposal($panel, alignment, justifications) {
+        var justMap = justifications || {};
         var added = 0;
         Object.keys(alignment || {}).forEach(function (term) {
             var $dim = $panel.find('.oer-recatalog-dim[data-term="' + term + '"]');
             if (!$dim.length) {
                 return;
             }
+            var termJust = justMap[term] || {};
             (alignment[term] || []).forEach(function (candidate) {
                 if ($dim.find('.chosen-choices .search-choice[data-id="' + candidate.id + '"]').length) {
                     return;
                 }
-                $dim.find('.search-field').before(buildSearchChoice(candidate.id, candidate.title));
+                // La justificación (solo saberes/criterios) viaja oculta en el chip.
+                $dim.find('.search-field').before(
+                    buildSearchChoice(candidate.id, candidate.title, termJust[candidate.id])
+                );
                 markDirty($dim);
                 added += 1;
             });
@@ -565,7 +590,7 @@
                 $diff.text(messages[response.error] || response.error);
                 return;
             }
-            var added = applyAiProposal($panel, response.alignment);
+            var added = applyAiProposal($panel, response.alignment, response.justifications);
             var note = added
                 ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
                 : Omeka.jsTranslate('La IA no propuso cambios nuevos.');
