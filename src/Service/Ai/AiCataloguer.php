@@ -93,10 +93,12 @@ final class AiCataloguer
     }
 
     /**
-     * PDF cuyo contenido no pudo leerse como texto (escaneado, sin capa de texto):
+     * PDF cuyo contenido no pudo leerse como texto (escaneado, sin capa de texto,
+     * o perdido por una plataforma sin `iconv //TRANSLIT` — TASK-024b):
      * candidatos a rescate por visión. Se identifican por su motivo de salto
-     * (pdf_unreadable/pdf_empty) y se cruzan con los ficheros locales para recuperar
-     * la ruta del binario; las entradas internas de un ZIP no tienen ruta y se omiten.
+     * (pdf_unreadable/pdf_empty/pdf_iconv_unsupported) y se cruzan con los ficheros
+     * locales para recuperar la ruta del binario; las entradas internas de un ZIP no
+     * tienen ruta y se omiten.
      *
      * @param array<int,array{path:string,mediaType?:string,name?:string}> $files
      * @param array<string,string> $skipped nombre => motivo
@@ -112,7 +114,7 @@ final class AiCataloguer
             }
             $name = (string) ($file['name'] ?? basename($path));
             $reason = $skipped[$name] ?? '';
-            if (!in_array($reason, ['pdf_unreadable', 'pdf_empty'], true)) {
+            if (!in_array($reason, ['pdf_unreadable', 'pdf_empty', 'pdf_iconv_unsupported'], true)) {
                 continue;
             }
             $rescue[] = [

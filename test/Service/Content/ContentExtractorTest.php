@@ -79,6 +79,34 @@ final class ContentExtractorTest extends TestCase
         $this->assertArrayHasKey('broken.pdf', $content->skipped());
     }
 
+    /**
+     * TASK-024(b): en Alpine/musl `iconv` no soporta `//TRANSLIT`, así que
+     * smalot/pdfparser pierde el texto de las codificaciones que pasan por ahí
+     * —entre ellas WinAnsiEncoding, la más común en PDF— y devuelve vacío.
+     * Reportarlo como `pdf_empty` MIENTE: no es que el PDF no tenga texto, es
+     * que esta plataforma no sabe leerlo. El motivo debe distinguirlos.
+     */
+    public function testEmptyPdfOnPlatformWithoutTranslitIsReportedAsIconvUnsupported(): void
+    {
+        $file = $this->tempFile('sin-texto.pdf', self::minimalPdf(''));
+        $extractor = new ContentExtractor(['iconv_translit_supported' => false]);
+
+        $content = $extractor->extract('', [['path' => $file]]);
+
+        $this->assertSame('pdf_iconv_unsupported', $content->skipped()['sin-texto.pdf'] ?? null);
+    }
+
+    /** No regresión: en una plataforma sana, un PDF sin texto sigue siendo `pdf_empty`. */
+    public function testEmptyPdfOnHealthyPlatformIsStillReportedAsEmpty(): void
+    {
+        $file = $this->tempFile('sin-texto.pdf', self::minimalPdf(''));
+        $extractor = new ContentExtractor(['iconv_translit_supported' => true]);
+
+        $content = $extractor->extract('', [['path' => $file]]);
+
+        $this->assertSame('pdf_empty', $content->skipped()['sin-texto.pdf'] ?? null);
+    }
+
     public function testZipEntryIsExtracted(): void
     {
         $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);

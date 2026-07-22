@@ -9,6 +9,7 @@ use OERManager\Service\Ai\ContextDistiller;
 use OERManager\Service\Ai\PromptBuilder;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
+use OERManager\Test\Service\Content\ContentExtractorTest;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -228,6 +229,34 @@ final class AiCataloguerTest extends TestCase
         $this->assertStringContainsString('Examen escaneado de matemáticas', $out['debug']['content_text']);
         $this->assertSame(1, $out['debug']['vision'][0]['pdfs']);
         $this->assertCount(1, $visionLlm->calls);
+    }
+
+    /**
+     * TASK-024(b): en una plataforma sin `//TRANSLIT` (musl) el PDF vuelve vacío
+     * aunque tenga capa de texto. Ese motivo debe rescatarse por visión igual
+     * que `pdf_empty`, o el item se queda sin señal alguna.
+     */
+    public function testPdfLostToBrokenIconvIsRescuedThroughVision(): void
+    {
+        $visionLlm = new FakeLlmClient(['Lámina de figuras planas']);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(['iconv_translit_supported' => false]),
+            $this->vision($visionLlm, true),
+            $this->distiller('Ficha'),
+            new FakeClassifier([]),
+            new FakeClassifier([])
+        );
+
+        $pdf = $this->dir . '/winansi.pdf';
+        file_put_contents($pdf, ContentExtractorTest::minimalPdf(''));
+
+        $out = $cataloguer->propose('', [
+            ['path' => $pdf, 'mediaType' => 'application/pdf', 'name' => 'winansi.pdf'],
+        ]);
+
+        $this->assertSame('pdf_iconv_unsupported', $out['content']['skipped']['winansi.pdf'] ?? null);
+        $this->assertSame(1, $out['debug']['vision'][0]['pdfs']);
+        $this->assertStringContainsString('Lámina de figuras planas', $out['debug']['content_text']);
     }
 
     public function testVisionDisabledByDefaultSkipsTheLlm(): void

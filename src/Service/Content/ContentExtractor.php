@@ -37,6 +37,12 @@ final class ContentExtractor
         // size/comp_size por encima de esto (y con tamaño relevante) = zip-bomb.
         'max_compression_ratio' => 100,
         'max_pdf_bytes' => 20971520, // 20 MB
+        // ¿Soporta la plataforma `iconv(..., 'UTF-8//TRANSLIT//IGNORE', ...)`?
+        // null = detectar en runtime. En musl (Alpine) NO existe y smalot pierde
+        // el texto de WinAnsiEncoding —la codificación más común en PDF—, así
+        // que el PDF vuelve vacío sin estarlo (TASK-024b). Inyectable para poder
+        // probar en host las dos ramas: el host tiene glibc y nunca vería la rota.
+        'iconv_translit_supported' => null,
         // Tope de nodos del recorrido JSON (anti-JSON patológico/profundo).
         'max_json_nodes' => 5000,
         // Longitud mínima para aceptar un string suelto (sin varias palabras).
@@ -180,10 +186,27 @@ final class ContentExtractor
         }
         $text = trim($this->normalizeWhitespace($text));
         if ('' === $text) {
-            $this->skip($name, 'pdf_empty');
+            // Distinguir «este PDF no tiene texto» de «esta plataforma no sabe
+            // leerlo» (TASK-024b): sin `//TRANSLIT` el parser devuelve vacío
+            // aunque el PDF tenga una capa de texto perfecta.
+            $this->skip($name, $this->supportsIconvTranslit() ? 'pdf_empty' : 'pdf_iconv_unsupported');
             return null;
         }
         return $text;
+    }
+
+    /**
+     * Sonda de la plataforma, evaluada una sola vez. En musl devuelve `false`
+     * para cualquier conversión con `//TRANSLIT`; se usa ASCII puro para no
+     * depender de la codificación de este fichero.
+     */
+    private function supportsIconvTranslit(): bool
+    {
+        if (null === $this->limits['iconv_translit_supported']) {
+            $this->limits['iconv_translit_supported']
+                = false !== @iconv('CP1252', 'UTF-8//TRANSLIT//IGNORE', 'a');
+        }
+        return (bool) $this->limits['iconv_translit_supported'];
     }
 
     private function readTextFile(string $path, string $ext): ?string
