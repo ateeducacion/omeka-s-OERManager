@@ -4,6 +4,8 @@ namespace OERManager;
 
 use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
+use Laminas\ModuleManager\Feature\InitProviderInterface;
+use Laminas\ModuleManager\ModuleManagerInterface;
 use Laminas\Mvc\Controller\AbstractController;
 use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
@@ -18,8 +20,34 @@ use Omeka\Module\AbstractModule;
  * (items lrmi:LearningResource). Vista maestra (TASK-003), integridad
  * (TASK-005) y re-catalogador curricular/tags (TASK-004).
  */
-class Module extends AbstractModule
+class Module extends AbstractModule implements InitProviderInterface
 {
+    /**
+     * Registra el autoloader de las dependencias propias del módulo
+     * (smalot/pdfparser, TASK-010).
+     *
+     * Omeka NO autocarga el `vendor/` de un módulo y el core no trae pdfparser:
+     * sin esto la clase no existe en runtime, `ContentExtractor::parsePdf()`
+     * captura el Error y marca TODO PDF como `pdf_unreadable` en silencio
+     * (defecto hallado en la verificación en contenedor de TASK-019/022,
+     * 2026-07-22). Los tests del host no lo detectaban porque `test/phpunit.xml`
+     * bootstrapea `vendor/autoload.php` directamente.
+     *
+     * `Omeka\Module\AbstractModule` solo implementa `ConfigProviderInterface`, y
+     * el `InitTrigger` de Laminas solo invoca `init()` sobre un
+     * `InitProviderInterface`: por eso la interfaz se declara explícitamente.
+     *
+     * El guard mantiene el módulo cargable si se distribuye sin `vendor/`
+     * (`composer.json` §archive.exclude): la extracción de PDF se degrada, pero
+     * el módulo no revienta.
+     */
+    public function init(ModuleManagerInterface $manager): void
+    {
+        if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+            require_once __DIR__ . '/vendor/autoload.php';
+        }
+    }
+
     public function getConfig()
     {
         return include __DIR__ . '/config/module.config.php';
