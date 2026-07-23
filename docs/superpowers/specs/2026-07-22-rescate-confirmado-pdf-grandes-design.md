@@ -107,8 +107,22 @@ Las entradas internas de un ZIP no tienen ruta propia y se omiten, como ya hace
 ### 3. `AiCataloguer::rescuablePdfs()`
 
 Admite `pdf_too_large` **solo** cuando la decisión es `include`. Los motivos
-`pdf_unreadable`/`pdf_empty` siguen rescatándose siempre y sin preguntar: son
-ficheros pequeños, ya dentro del tope de parseo.
+`pdf_unreadable`/`pdf_empty`/`pdf_iconv_unsupported` (este último de TASK-024b)
+siguen rescatándose siempre y sin preguntar: son ficheros pequeños, ya dentro del
+tope de parseo.
+
+### 3b. `MediaVisionExtractor` — tope de envío unificado
+
+**Descubierto al aterrizar el spec (no estaba previsto):** `MediaVisionExtractor`
+ya tenía una constante privada `MAX_PDF_BYTES = 20 MB` que gobierna el envío real
+del documento en `binaryBlock()`. Si se dejara intacta, un PDF de 25 MB
+confirmado por el curador **se caería en silencio** dentro del extractor
+(`$size > $maxBytes → null`) — la función nacería muerta. Por eso el tope de
+visión debe ser **una sola fuente de verdad** inyectada en los dos sitios que lo
+usan: `MediaVisionExtractor` (que reemplaza su const privada por un parámetro de
+constructor `maxPdfBytes`) y `AiCataloguer::classifyOversizePdfs` (que decide
+confirmable vs fuera de alcance). La factoría lee el setting una vez y lo pasa a
+ambos, así son consistentes por construcción.
 
 ### 4. `AiCataloguer::propose(..., string $largePdfDecision = 'ask')`
 
@@ -131,9 +145,13 @@ si y solo si hay al menos un PDF **confirmable** y la decisión es `ask`.
 
 ### 5. `ConfigForm` / `Module`
 
-Setting `oermanager_llm_vision_max_pdf_bytes`, default `33554432`. Validación:
-entero positivo; vacío o inválido → default. Texto de ayuda que distinga
-explícitamente este tope (envío al proveedor) del de parseo (seguridad).
+Setting `oermanager_llm_vision_max_pdf_bytes`, default `33554432` (32 MB).
+Parser puro `LlmSettings::parseVisionMaxPdfBytes()` (entero positivo; vacío o
+inválido → default), simétrico a `parseMaxTokens`. Campo en el ConfigForm con
+texto de ayuda que distinga explícitamente este tope (envío al proveedor, en MB)
+del de parseo (20 MB, guarda de seguridad no expuesta). El valor se inyecta desde
+la factoría a `MediaVisionExtractor` (send-gate) y a `AiCataloguer`
+(clasificación) — misma fuente, ver §3b.
 
 ### 6. `IndexController::aiProposeAction`
 
