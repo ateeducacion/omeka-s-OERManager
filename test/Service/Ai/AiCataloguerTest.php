@@ -281,5 +281,130 @@ final class AiCataloguerTest extends TestCase
 
         $this->assertSame([], $visionLlm->calls);
     }
+
+    // --- TASK-025: rescate confirmado de PDF grandes ---
+
+    /** Extractor que marca todo PDF como pdf_too_large (tope de parseo minúsculo). */
+    private function oversizeCataloguer(FakeLlmClient $visionLlm, bool $enabled, int $catCap): AiCataloguer
+    {
+        return new AiCataloguer(
+            new ContentExtractor(['max_pdf_bytes' => 10]),
+            new MediaVisionExtractor($visionLlm, new PromptBuilder(), $enabled, 3, 10, 5242880, 1024, null, 100000),
+            $this->distiller('Ficha'),
+            new FakeClassifier([]),
+            new FakeClassifier([]),
+            $catCap
+        );
+    }
+
+    private function bigPdf(string $name, int $claimedSize): array
+    {
+        $path = $this->dir . '/' . $name;
+        file_put_contents($path, '%PDF-1.4 binario que pasa del tope de parseo');
+        return ['path' => $path, 'mediaType' => 'application/pdf', 'name' => $name, 'size' => $claimedSize];
+    }
+
+    public function testConfirmablePdfInAskModeReturnsNeedsConfirmationWithoutAnyLlmCall(): void
+    {
+        $visionLlm = new FakeLlmClient(['no debería llegar']);
+        $distillLlm = new FakeLlmClient(['tampoco']);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(['max_pdf_bytes' => 10]),
+            new MediaVisionExtractor($visionLlm, new PromptBuilder(), true, 3, 10, 5242880, 1024, null, 100000),
+            new ContextDistiller($distillLlm, new PromptBuilder()),
+            new FakeClassifier([]),
+            new FakeClassifier([]),
+            33554432
+        );
+
+        $out = $cataloguer->propose('', [$this->bigPdf('grande.pdf', 25165824)], [], 'ask');
+
+        $names = array_column($out['needs_confirmation']['confirmable'], 'name');
+        $this->assertSame(['grande.pdf'], $names);
+        // El corte ocurre ANTES de cualquier llamada: ni destilación ni visión.
+        $this->assertSame([], $visionLlm->calls);
+        $this->assertSame([], $distillLlm->calls);
+        $this->assertSame([], $out['alignment']);
+    }
+
+    public function testConfirmablePdfWithIncludeReachesVision(): void
+    {
+        $visionLlm = new FakeLlmClient(['Contenido del PDF grande.']);
+        $cataloguer = $this->oversizeCataloguer($visionLlm, true, 33554432);
+
+        $out = $cataloguer->propose('', [$this->bigPdf('grande.pdf', 25165824)], [], 'include');
+
+        $this->assertArrayNotHasKey('needs_confirmation', $out);
+        $this->assertSame(1, $out['debug']['vision'][0]['pdfs']);
+        $this->assertCount(1, $visionLlm->calls);
+    }
+
+    public function testConfirmablePdfWithSkipDoesNotReachVisionAndProposeCompletes(): void
+    {
+        $visionLlm = new FakeLlmClient(['no debería llegar']);
+        $cataloguer = $this->oversizeCataloguer($visionLlm, true, 33554432);
+
+        $out = $cataloguer->propose('Título con señal', [$this->bigPdf('grande.pdf', 25165824)], [], 'skip');
+
+        $this->assertArrayNotHasKey('needs_confirmation', $out);
+        $this->assertSame([], $visionLlm->calls);
+        $this->assertSame('pdf_too_large', $out['content']['skipped']['grande.pdf'] ?? null);
+    }
+
+    public function testPdfOverConfirmationCapIsReportedButNotOffered(): void
+    {
+        // El PDF supera el tope de confirmación (cap del cataloguer = 20): fuera
+        // de alcance. No se ofrece confirmación; el propose sigue de largo.
+        $visionLlm = new FakeLlmClient(['no']);
+        $cataloguer = $this->oversizeCataloguer($visionLlm, true, 20);
+
+        $out = $cataloguer->propose('Título', [$this->bigPdf('enorme.pdf', 41943040)], [], 'ask');
+
+        $this->assertArrayNotHasKey('needs_confirmation', $out);
+        $names = array_column($out['content']['too_large_pdfs'], 'name');
+        $this->assertSame(['enorme.pdf'], $names);
+    }
+
+    public function testConfirmablePdfNotOfferedWhenVisionDisabled(): void
+    {
+        // Doble puerta: sin visión no hay rescate posible → no se pregunta.
+        $visionLlm = new FakeLlmClient(['no']);
+        $cataloguer = $this->oversizeCataloguer($visionLlm, false, 33554432);
+
+        $out = $cataloguer->propose('Título', [$this->bigPdf('grande.pdf', 25165824)], [], 'ask');
+
+        $this->assertArrayNotHasKey('needs_confirmation', $out);
+    }
+
+    public function testUnknownDecisionIsTreatedAsAsk(): void
+    {
+        $visionLlm = new FakeLlmClient(['no']);
+        $cataloguer = $this->oversizeCataloguer($visionLlm, true, 33554432);
+
+        $out = $cataloguer->propose('', [$this->bigPdf('grande.pdf', 25165824)], [], 'lo-que-sea');
+
+        $this->assertArrayHasKey('needs_confirmation', $out);
+    }
+
+    public function testClassifyOversizePdfsSplitsAtTheCap(): void
+    {
+        $cataloguer = $this->oversizeCataloguer(new FakeLlmClient(), true, 33554432);
+        $files = [
+            ['path' => '/x/a.pdf', 'name' => 'borde.pdf', 'size' => 33554432],  // == cap → confirmable
+            ['path' => '/x/b.pdf', 'name' => 'pasa.pdf', 'size' => 33554433],   // cap+1 → fuera
+        ];
+        // 'interno.pdf' está saltado pero no tiene fichero (entrada interna de un
+        // ZIP, sin ruta propia) → se omite de ambas listas.
+        $skipped = [
+            'borde.pdf' => 'pdf_too_large',
+            'pasa.pdf' => 'pdf_too_large',
+            'interno.pdf' => 'pdf_too_large',
+        ];
+
+        $out = $cataloguer->classifyOversizePdfs($files, $skipped);
+
+        $this->assertSame(['borde.pdf'], array_column($out['confirmable'], 'name'));
+        $this->assertSame(['pasa.pdf'], array_column($out['too_large'], 'name'));
+    }
 }
 

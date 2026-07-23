@@ -168,6 +168,10 @@ class Module extends AbstractModule implements InitProviderInterface
             LlmSettings::VISION_MAX_IMAGES,
             LlmSettings::DEFAULT_VISION_MAX_IMAGES
         );
+        $data[LlmSettings::VISION_MAX_PDF_BYTES] = $settings->get(
+            LlmSettings::VISION_MAX_PDF_BYTES,
+            LlmSettings::DEFAULT_VISION_MAX_PDF_BYTES
+        );
         $form->setData($data);
         return $renderer->formCollection($form);
     }
@@ -214,6 +218,11 @@ class Module extends AbstractModule implements InitProviderInterface
         $settings->set(
             LlmSettings::VISION_MAX_IMAGES,
             $maxImages > 0 ? $maxImages : LlmSettings::DEFAULT_VISION_MAX_IMAGES
+        );
+        // Tope de envío de PDF a visión, separado del de parseo (TASK-025).
+        $settings->set(
+            LlmSettings::VISION_MAX_PDF_BYTES,
+            LlmSettings::parseVisionMaxPdfBytes($params[LlmSettings::VISION_MAX_PDF_BYTES] ?? null)
         );
 
         // Clave API write-only: solo se sobrescribe si llega un valor no vacío.

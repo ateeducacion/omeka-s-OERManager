@@ -50,4 +50,20 @@ final class LlmSettingsTest extends TestCase
         $this->assertSame(4096, LlmSettings::parseMaxTokens('4096'));
         $this->assertSame(2048, LlmSettings::parseMaxTokens(2048));
     }
+
+    public function testParseVisionMaxPdfBytesDefaultsWhenEmptyOrInvalid(): void
+    {
+        $d = LlmSettings::DEFAULT_VISION_MAX_PDF_BYTES;
+        $this->assertSame($d, LlmSettings::parseVisionMaxPdfBytes(''));
+        $this->assertSame($d, LlmSettings::parseVisionMaxPdfBytes(null));
+        $this->assertSame($d, LlmSettings::parseVisionMaxPdfBytes(0));
+        $this->assertSame($d, LlmSettings::parseVisionMaxPdfBytes(-1));
+        $this->assertSame($d, LlmSettings::parseVisionMaxPdfBytes('abc'));
+    }
+
+    public function testParseVisionMaxPdfBytesAcceptsPositiveInt(): void
+    {
+        $this->assertSame(33554432, LlmSettings::parseVisionMaxPdfBytes('33554432'));
+        $this->assertSame(20971520, LlmSettings::parseVisionMaxPdfBytes(20971520));
+    }
 }

@@ -41,9 +41,15 @@ final class LlmSettings
     public const PROVIDER_ANTHROPIC = 'anthropic';
     public const PROVIDER_OPENAI = 'openai';
 
+    public const VISION_MAX_PDF_BYTES = 'oermanager_llm_vision_max_pdf_bytes';
+
     public const DEFAULT_CONTENT_TOKEN_CAP = 6000;
     public const DEFAULT_VISION_MAX_IMAGES = 3;
     public const DEFAULT_MAX_TOKENS = 1024;
+    // Tope del PDF (binario) enviado a la visión, separado del tope de PARSEO
+    // (ContentExtractor::max_pdf_bytes, 20 MB, guarda anti PDF-bomb). 32 MB = el
+    // límite documentado de PDF de entrada de Anthropic (TASK-025).
+    public const DEFAULT_VISION_MAX_PDF_BYTES = 33554432;
 
     /**
      * Temperatura del perfil: null = no enviar (default del proveedor). Acepta
@@ -71,5 +77,16 @@ final class LlmSettings
         }
         $maxTokens = (int) $value;
         return $maxTokens > 0 ? $maxTokens : self::DEFAULT_MAX_TOKENS;
+    }
+
+    /** Tope de PDF para la visión (bytes): entero positivo o el default. */
+    public static function parseVisionMaxPdfBytes(mixed $raw): int
+    {
+        $value = trim((string) $raw);
+        if (!is_numeric($value)) {
+            return self::DEFAULT_VISION_MAX_PDF_BYTES;
+        }
+        $bytes = (int) $value;
+        return $bytes > 0 ? $bytes : self::DEFAULT_VISION_MAX_PDF_BYTES;
     }
 }

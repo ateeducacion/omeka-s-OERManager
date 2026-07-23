@@ -46,10 +46,15 @@ final class OmekaMediaSource implements MediaSourceInterface
             if (null === $path || !is_file($path)) {
                 continue;
             }
+            // `size` lo consume AiCataloguer para decidir si un PDF grande es
+            // confirmable por visión o queda fuera de alcance (TASK-025), sin que
+            // el orquestador toque el sistema de ficheros.
+            $size = filesize($path);
             $files[] = [
                 'path' => $path,
                 'mediaType' => (string) $media->mediaType(),
                 'name' => (string) ($media->source() ?: $filename),
+                'size' => false === $size ? 0 : $size,
             ];
         }
         return $files;

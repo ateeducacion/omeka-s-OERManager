@@ -37,8 +37,13 @@ final class MediaVisionExtractor implements TraceableInterface
     public const DEFAULT_MIN_IMAGE_BYTES = 8192; // 8 KB
     /** Tope por imagen enviada al proveedor (Anthropic acota ~5 MB por imagen). */
     public const DEFAULT_MAX_IMAGE_BYTES = 5242880; // 5 MB
-    /** Tope del PDF escaneado enviado como documento nativo. */
-    private const MAX_PDF_BYTES = 20971520; // 20 MB
+    /**
+     * Tope por defecto del PDF (binario) enviado como documento nativo. Separado
+     * del tope de PARSEO (ContentExtractor, 20 MB, guarda anti PDF-bomb): este
+     * gobierna el ENVÍO al proveedor, no el parseo local. Inyectable (TASK-025):
+     * misma fuente de verdad que el tope de confirmación de AiCataloguer.
+     */
+    public const DEFAULT_MAX_PDF_BYTES = 33554432; // 32 MB
 
     /** @var array<int,array<string,mixed>> */
     private array $trace = [];
@@ -51,7 +56,8 @@ final class MediaVisionExtractor implements TraceableInterface
         private int $minImageBytes = self::DEFAULT_MIN_IMAGE_BYTES,
         private int $maxImageBytes = self::DEFAULT_MAX_IMAGE_BYTES,
         private int $maxTokens = 1024,
-        private ?float $temperature = null
+        private ?float $temperature = null,
+        private int $maxPdfBytes = self::DEFAULT_MAX_PDF_BYTES
     ) {
     }
 
@@ -89,6 +95,16 @@ final class MediaVisionExtractor implements TraceableInterface
      * @param array<int,array{path?:string,mediaType?:string,name?:string}> $pdfs
      * @return string[]
      */
+    /**
+     * ¿Puede esta configuración rescatar un PDF por visión? Doble puerta: master
+     * toggle encendido Y proveedor con soporte de PDF nativo. AiCataloguer la
+     * consulta para no ofrecer al curador una confirmación imposible (TASK-025).
+     */
+    public function canRescuePdf(): bool
+    {
+        return $this->enabled && $this->llm->supportsPdf();
+    }
+
     public function describe(array $images, array $pdfs): array
     {
         $this->trace = [];
@@ -120,7 +136,7 @@ final class MediaVisionExtractor implements TraceableInterface
                     'document',
                     (string) ($pdf['path'] ?? ''),
                     'application/pdf',
-                    self::MAX_PDF_BYTES
+                    $this->maxPdfBytes
                 );
                 if (null !== $block) {
                     $blocks[] = $block;

@@ -260,11 +260,15 @@ class IndexController extends AbstractActionController
             return new JsonModel(['error' => 'not_found']);
         }
 
+        // Decisión sobre PDF grandes (TASK-025): ask (default) / include / skip.
+        // Un valor desconocido lo normaliza a ask el propio propose.
+        $largePdf = (string) $this->params()->fromPost('large_pdf', 'ask');
         try {
             $proposal = $this->aiCataloguer->propose(
                 $this->itemMetadataText($item),
                 $this->mediaSource->filesFor($id),
-                $this->mediaSource->imagesFor($id)
+                $this->mediaSource->imagesFor($id),
+                $largePdf
             );
         } catch (LlmException $e) {
             // Error del proveedor LLM: el detalle saneado (status + mensaje del
@@ -276,6 +280,16 @@ class IndexController extends AbstractActionController
         } catch (\Exception $e) {
             $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
             return new JsonModel(['error' => 'unexpected']);
+        }
+
+        // El propose cortó pidiendo confirmación de un PDF grande (TASK-025): se
+        // devuelve tal cual, sin alineamiento, para que el panel pregunte y
+        // reintente con la decisión del curador.
+        if (isset($proposal['needs_confirmation'])) {
+            return new JsonModel([
+                'needs_confirmation' => $proposal['needs_confirmation'],
+                'content' => $proposal['content'],
+            ]);
         }
 
         return new JsonModel([

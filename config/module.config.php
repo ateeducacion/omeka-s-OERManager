@@ -183,16 +183,26 @@ return [
                     ),
                     temperature: Service\Llm\LlmSettings::parseTemperature(
                         $settings->get(Service\Llm\LlmSettings::TEMPERATURE)
+                    ),
+                    // Tope de envío de PDF a la visión (TASK-025): misma fuente
+                    // que el tope de confirmación de AiCataloguer, para que un PDF
+                    // confirmado no se caiga en silencio dentro del extractor.
+                    maxPdfBytes: Service\Llm\LlmSettings::parseVisionMaxPdfBytes(
+                        $settings->get(Service\Llm\LlmSettings::VISION_MAX_PDF_BYTES)
                     )
                 );
             },
             Service\Ai\AiCataloguer::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\AiCataloguer(
                     $container->get(Service\Content\ContentExtractor::class),
                     $container->get(Service\Content\MediaVisionExtractor::class),
                     $container->get(Service\Ai\ContextDistiller::class),
                     $container->get(Service\Ai\CurricularClassifier::class),
-                    $container->get(Service\Ai\TagClassifier::class)
+                    $container->get(Service\Ai\TagClassifier::class),
+                    Service\Llm\LlmSettings::parseVisionMaxPdfBytes(
+                        $settings->get(Service\Llm\LlmSettings::VISION_MAX_PDF_BYTES)
+                    )
                 );
             },
         ],

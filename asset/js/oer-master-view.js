@@ -566,17 +566,36 @@
         return added;
     }
 
-    $(document).on('click', '.oer-recatalog-ai', function () {
-        var $button = $(this);
-        var $panel = $button.closest('.oer-recatalog');
-        var $diff = $panel.find('.oer-recatalog-diff')
-            .text(Omeka.jsTranslate('Consultando a la IA…'));
+    // Tamaño legible para el aviso de confirmación de PDF grandes (TASK-025).
+    function humanBytes(bytes) {
+        var mb = (bytes || 0) / (1024 * 1024);
+        return (mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10) + ' MB';
+    }
+
+    // TASK-025: el propose cortó pidiendo confirmar el envío de un PDF grande a
+    // visión (coste/latencia). Se pregunta al curador; su respuesta reintenta el
+    // propose con include/skip. `tooLarge` (fuera de tope) solo se informa.
+    function confirmLargePdf($panel, $button, $diff, info) {
+        var confirmable = (info && info.confirmable) || [];
+        var names = confirmable.map(function (p) {
+            return p.name + ' (' + humanBytes(p.size) + ')';
+        }).join(', ');
+        var msg = Omeka.jsTranslate('El recurso tiene un PDF grande que solo puede leerse por visión '
+            + '(coste y latencia adicionales): ') + names + '. '
+            + Omeka.jsTranslate('¿Incluirlo en el análisis?');
+        var decision = window.confirm(msg) ? 'include' : 'skip';
+        runProposal($panel, $button, $diff, decision);
+    }
+
+    function runProposal($panel, $button, $diff, largePdf) {
+        $diff.text(Omeka.jsTranslate('Consultando a la IA…'));
         $button.prop('disabled', true);
         $.post(
             $('#oer-master-view-table').data('ai-propose-url'),
             {
                 id: $panel.data('item-id'),
-                csrf: $('#oer-master-view-table').data('recatalog-csrf')
+                csrf: $('#oer-master-view-table').data('recatalog-csrf'),
+                large_pdf: largePdf || 'ask'
             }
         ).done(function (response) {
             if (response.error) {
@@ -588,6 +607,13 @@
                     unexpected: Omeka.jsTranslate('Error inesperado al consultar la IA.')
                 };
                 $diff.text(messages[response.error] || response.error);
+                $button.prop('disabled', false);
+                return;
+            }
+            // Corte por PDF grande: preguntar y reintentar (no libera el botón:
+            // lo hará el reintento).
+            if (response.needs_confirmation) {
+                confirmLargePdf($panel, $button, $diff, response.needs_confirmation);
                 return;
             }
             var added = applyAiProposal($panel, response.alignment, response.justifications);
@@ -600,6 +626,11 @@
             if (response.content && response.content.empty) {
                 note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
             }
+            var tooLarge = (response.content && response.content.too_large_pdfs) || [];
+            if (tooLarge.length) {
+                note += ' ' + Omeka.jsTranslate('PDF omitido por exceder el tope de visión: ')
+                    + tooLarge.map(function (p) { return p.name + ' (' + humanBytes(p.size) + ')'; }).join(', ') + '.';
+            }
             $diff.text(note);
 
             // Debug de calidad (TASK-015): intercambio completo con el LLM al console.
@@ -608,10 +639,17 @@
                 $panel.find('.oer-ai-debug').remove();
                 $panel.find('.oer-recatalog-diff').after(buildAiDebugPanel(response.debug, response.content));
             }
+            $button.prop('disabled', false);
         }).fail(function () {
             $diff.text(Omeka.jsTranslate('No se pudo consultar a la IA.'));
-        }).always(function () {
             $button.prop('disabled', false);
         });
+    }
+
+    $(document).on('click', '.oer-recatalog-ai', function () {
+        var $button = $(this);
+        var $panel = $button.closest('.oer-recatalog');
+        var $diff = $panel.find('.oer-recatalog-diff');
+        runProposal($panel, $button, $diff, 'ask');
     });
 })(jQuery);

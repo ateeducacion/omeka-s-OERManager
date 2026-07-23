@@ -232,5 +232,24 @@ class ConfigForm extends Form
                 'step' => 1,
             ],
         ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_MAX_PDF_BYTES,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Tope de PDF para visión (bytes)', // @translate
+                'info' => 'Tamaño máximo del PDF que se ENVÍA al proveedor como '
+                    . 'documento para visión (por defecto 33554432 = 32 MB, el '
+                    . 'límite de Anthropic). Es distinto del tope de parseo interno '
+                    . '(20 MB, guarda de seguridad, no configurable): un PDF entre '
+                    . 'ambos topes se rescata por visión previa confirmación del '
+                    . 'curador; por encima de este, no.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::VISION_MAX_PDF_BYTES,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
     }
 }

@@ -173,6 +173,54 @@ final class MediaVisionExtractorTest extends TestCase
         $this->assertSame('application/pdf', $docBlocks[0]['media_type']);
     }
 
+    public function testPdfOverInjectedCapIsNotSent(): void
+    {
+        // TASK-025: el tope de PDF de la visión es inyectable (misma fuente que
+        // el tope de confirmación de AiCataloguer). Un PDF por encima no se envía.
+        $llm = new FakeLlmClient(['no debería llegar']);
+        $ext = new MediaVisionExtractor(
+            $llm,
+            new PromptBuilder(),
+            true,
+            3,
+            MediaVisionExtractor::DEFAULT_MIN_IMAGE_BYTES,
+            5242880,
+            1024,
+            null,
+            maxPdfBytes: 10
+        );
+        $pdf = ['path' => $this->dir . '/grande.pdf', 'mediaType' => 'application/pdf', 'name' => 'grande.pdf'];
+        file_put_contents($pdf['path'], '%PDF-1.4 este binario pasa de 10 bytes');
+
+        $out = $ext->describe([], [$pdf]);
+
+        $this->assertSame([], $out);
+        $this->assertCount(0, $llm->calls);
+    }
+
+    public function testPdfWithinInjectedCapIsSent(): void
+    {
+        $llm = new FakeLlmClient(['Texto del PDF grande rescatado.']);
+        $ext = new MediaVisionExtractor(
+            $llm,
+            new PromptBuilder(),
+            true,
+            3,
+            MediaVisionExtractor::DEFAULT_MIN_IMAGE_BYTES,
+            5242880,
+            1024,
+            null,
+            maxPdfBytes: 1000000
+        );
+        $pdf = ['path' => $this->dir . '/ok.pdf', 'mediaType' => 'application/pdf', 'name' => 'ok.pdf'];
+        file_put_contents($pdf['path'], '%PDF-1.4 pequeño');
+
+        $out = $ext->describe([], [$pdf]);
+
+        $this->assertSame(['Texto del PDF grande rescatado.'], $out);
+        $this->assertCount(1, $llm->calls);
+    }
+
     public function testSkipsImagesWhenProviderLacksImageSupport(): void
     {
         $llm = new FakeLlmClient(['no']);
