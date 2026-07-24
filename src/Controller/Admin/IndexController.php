@@ -11,13 +11,14 @@ use Laminas\View\Model\ViewModel;
 use OERManager\ColumnType\AlignmentStatus;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
+use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
-use OERManager\Service\Llm\LlmException;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
 use Omeka\Api\Representation\ItemRepresentation;
+use Omeka\Job\Dispatcher;
 use Omeka\Permissions\Exception\PermissionDeniedException;
 use Omeka\Settings\Settings;
 
@@ -43,6 +44,8 @@ class IndexController extends AbstractActionController
     private MediaSourceInterface $mediaSource;
     private EvaluationScorer $scorer;
     private Settings $settings;
+    private Dispatcher $jobDispatcher;
+    private ProposalStore $proposalStore;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -52,7 +55,9 @@ class IndexController extends AbstractActionController
         AiCataloguer $aiCataloguer,
         MediaSourceInterface $mediaSource,
         EvaluationScorer $scorer,
-        Settings $settings
+        Settings $settings,
+        Dispatcher $jobDispatcher,
+        ProposalStore $proposalStore
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -62,6 +67,8 @@ class IndexController extends AbstractActionController
         $this->mediaSource = $mediaSource;
         $this->scorer = $scorer;
         $this->settings = $settings;
+        $this->jobDispatcher = $jobDispatcher;
+        $this->proposalStore = $proposalStore;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -263,41 +270,83 @@ class IndexController extends AbstractActionController
         // Decisión sobre PDF grandes (TASK-025): ask (default) / include / skip.
         // Un valor desconocido lo normaliza a ask el propio propose.
         $largePdf = (string) $this->params()->fromPost('large_pdf', 'ask');
+
+        // Async (TASK-020): el propose encadena 7-9 llamadas al LLM y puede agotar
+        // el timeout del proxy (504, NFR-010). Se ejecuta como Job en 2º plano; el
+        // navegador sondea el estado. Aquí solo se despacha y se devuelve el jobId.
+        $this->proposalStore->sweepOld(3600); // limpia huérfanos oportunistamente
         try {
-            $proposal = $this->aiCataloguer->propose(
-                $this->itemMetadataText($item),
-                $this->mediaSource->filesFor($id),
-                $this->mediaSource->imagesFor($id),
-                $largePdf
-            );
-        } catch (LlmException $e) {
-            // Error del proveedor LLM: el detalle saneado (status + mensaje del
-            // proveedor, nunca la clave) va al log; al front solo el código
-            // genérico. Sin esto un 400 de parámetros (p. ej. un modelo que
-            // rechaza temperature) es indiagnosticable.
-            $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
-            return new JsonModel(['error' => 'llm']);
-        } catch (\Exception $e) {
-            $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
-            return new JsonModel(['error' => 'unexpected']);
-        }
-
-        // El propose cortó pidiendo confirmación de un PDF grande (TASK-025): se
-        // devuelve tal cual, sin alineamiento, para que el panel pregunte y
-        // reintente con la decisión del curador.
-        if (isset($proposal['needs_confirmation'])) {
-            return new JsonModel([
-                'needs_confirmation' => $proposal['needs_confirmation'],
-                'content' => $proposal['content'],
+            $job = $this->jobDispatcher->dispatch(\OERManager\Job\AiProposeJob::class, [
+                'item' => $id,
+                'large_pdf' => $largePdf,
             ]);
+        } catch (\Exception $e) {
+            $this->logger->err('OERManager ai propose dispatch item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['error' => 'dispatch']);
         }
 
-        return new JsonModel([
-            'alignment' => $this->enrichLabels($proposal['alignment']),
-            'justifications' => $proposal['justifications'] ?? [],
-            'content' => $proposal['content'],
-            'debug' => $proposal['debug'],
-        ]);
+        return new JsonModel(['jobId' => (int) $job->getId()]);
+    }
+
+    /**
+     * Polling del propose asíncrono (TASK-020): devuelve el estado vivo del Job.
+     * Cruza el fichero de resultado con el estado nativo del Job para no colgar el
+     * sondeo si el Job muriera sin escribir (p. ej. PhpCli mal configurado).
+     */
+    public function aiProposeStatusAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return new JsonModel(['error' => 'method']);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        $jobId = (int) $this->params()->fromPost('jobId');
+        if ($jobId <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        // Control de acceso PRIMERO: la API de jobs acota por ACL (dueño/admin).
+        try {
+            $job = $this->api()->read('jobs', $jobId)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+
+        $state = $this->proposalStore->read($jobId);
+        if (null !== $state) {
+            return new JsonModel($state); // in_progress / completed / error / stopped
+        }
+        // Sin fichero: cruzar con el estado nativo para no colgar el polling.
+        $native = (string) $job->status();
+        if (in_array($native, ['error', 'stopped'], true)) {
+            return new JsonModel(['status' => 'error', 'code' => 'job_' . $native]);
+        }
+        return new JsonModel(['status' => 'in_progress', 'step' => 'Iniciando…', 'done' => 0, 'total' => 5]);
+    }
+
+    /**
+     * Cancela un propose asíncrono en marcha (TASK-020). Dispatcher::stop solo pone
+     * el estado STOPPING; el Job lo ve entre fases y aborta sin propuesta parcial.
+     */
+    public function aiProposeCancelAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return new JsonModel(['error' => 'method']);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        $jobId = (int) $this->params()->fromPost('jobId');
+        if ($jobId <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        try {
+            $this->api()->read('jobs', $jobId); // valida propiedad por ACL
+            $this->jobDispatcher->stop($jobId);
+        } catch (\Exception $e) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+        return new JsonModel(['stopped' => true]);
     }
 
     /**
@@ -414,31 +463,6 @@ class IndexController extends AbstractActionController
         return implode("\n", array_values(array_unique($parts)));
     }
 
-    /**
-     * Resuelve los ids propuestos a {id,title} para que el panel pinte los chips.
-     *
-     * @param array<string,int[]> $alignment
-     * @return array<string,array<int,array{id:int,title:string}>>
-     */
-    private function enrichLabels(array $alignment): array
-    {
-        $out = [];
-        foreach ($alignment as $term => $ids) {
-            $list = [];
-            foreach ($ids as $id) {
-                try {
-                    $title = (string) $this->api()->read('items', (int) $id)->getContent()->displayTitle();
-                } catch (\Exception $e) {
-                    continue;
-                }
-                $list[] = ['id' => (int) $id, 'title' => $title];
-            }
-            if ($list) {
-                $out[$term] = $list;
-            }
-        }
-        return $out;
-    }
 
     /**
      * Alineamiento curricular/tags actual del item (verdad-terreno de evaluación).

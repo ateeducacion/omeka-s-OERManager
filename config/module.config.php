@@ -30,7 +30,9 @@ return [
                     $container->get(Service\Ai\AiCataloguer::class),
                     $container->get(Service\Content\MediaSourceInterface::class),
                     $container->get(Service\Ai\EvaluationScorer::class),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class)
                 );
             },
         ],
