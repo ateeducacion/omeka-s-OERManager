@@ -129,6 +129,9 @@
         if (aiEnabled()) {
             $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai')
                 .text(Omeka.jsTranslate('Proponer con IA')));
+            // Cancelar el propose asíncrono en marcha (TASK-020).
+            $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai-cancel')
+                .text(Omeka.jsTranslate('Cancelar')));
         }
         $actions
             .append($('<button>').attr('type', 'button').addClass('oer-recatalog-preview')
@@ -573,7 +576,7 @@
     }
 
     // TASK-025: el propose cortó pidiendo confirmar el envío de un PDF grande a
-    // visión (coste/latencia). Se pregunta al curador; su respuesta reintenta el
+    // visión (coste/latencia). Se pregunta al curador; su respuesta relanza el
     // propose con include/skip. `tooLarge` (fuera de tope) solo se informa.
     function confirmLargePdf($panel, $button, $diff, info) {
         var confirmable = (info && info.confirmable) || [];
@@ -584,72 +587,125 @@
             + '(coste y latencia adicionales): ') + names + '. '
             + Omeka.jsTranslate('¿Incluirlo en el análisis?');
         var decision = window.confirm(msg) ? 'include' : 'skip';
-        runProposal($panel, $button, $diff, decision);
+        startProposal($panel, $button, $diff, decision);
     }
 
-    function runProposal($panel, $button, $diff, largePdf) {
-        $diff.text(Omeka.jsTranslate('Consultando a la IA…'));
-        $button.prop('disabled', true);
-        $.post(
-            $('#oer-master-view-table').data('ai-propose-url'),
-            {
-                id: $panel.data('item-id'),
-                csrf: $('#oer-master-view-table').data('recatalog-csrf'),
-                large_pdf: largePdf || 'ask'
+    // Async (TASK-020): el propose corre como Job en 2º plano; el navegador sondea.
+    var POLL_MS = 3000;
+    var POLL_MAX = 240; // ~12 min de techo de sondeo
+
+    function jobKey(itemId) { return 'oer-ai-job-' + itemId; }
+
+    function pollStatus($panel, $button, $diff, jobId, attempt) {
+        if (attempt > POLL_MAX) {
+            $diff.text(Omeka.jsTranslate('La propuesta tarda demasiado. Reintenta más tarde.'));
+            $button.prop('disabled', false);
+            return;
+        }
+        $.post($('#oer-master-view-table').data('ai-propose-status-url'), {
+            jobId: jobId,
+            csrf: $('#oer-master-view-table').data('recatalog-csrf')
+        }).done(function (r) {
+            if (r.status === 'in_progress') {
+                $diff.text(Omeka.jsTranslate('Analizando… ') + (r.step || '') +
+                    (r.total ? ' (' + r.done + '/' + r.total + ')' : ''));
+                setTimeout(function () { pollStatus($panel, $button, $diff, jobId, attempt + 1); }, POLL_MS);
+                return;
             }
-        ).done(function (response) {
-            if (response.error) {
+            localStorage.removeItem(jobKey($panel.data('item-id')));
+            $button.prop('disabled', false);
+            if (r.status === 'stopped') { $diff.text(Omeka.jsTranslate('Propuesta cancelada.')); return; }
+            if (r.status === 'error' || r.error) {
+                $diff.text(Omeka.jsTranslate('El proveedor de IA falló. Revisa el log de Omeka.'));
+                return;
+            }
+            handleProposalPayload($panel, $button, $diff, r.payload);
+        }).fail(function () {
+            setTimeout(function () { pollStatus($panel, $button, $diff, jobId, attempt + 1); }, POLL_MS);
+        });
+    }
+
+    function handleProposalPayload($panel, $button, $diff, response) {
+        if (response.needs_confirmation) {
+            confirmLargePdf($panel, $button, $diff, response.needs_confirmation);
+            return;
+        }
+        var added = applyAiProposal($panel, response.alignment, response.justifications);
+        var note = added
+            ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
+            : Omeka.jsTranslate('La IA no propuso cambios nuevos.');
+        if (response.content && response.content.truncated) {
+            note += ' ' + Omeka.jsTranslate('(contenido truncado al límite configurado).');
+        }
+        if (response.content && response.content.empty) {
+            note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
+        }
+        var tooLarge = (response.content && response.content.too_large_pdfs) || [];
+        if (tooLarge.length) {
+            note += ' ' + Omeka.jsTranslate('PDF omitido por exceder el tope de visión: ')
+                + tooLarge.map(function (p) { return p.name + ' (' + humanBytes(p.size) + ')'; }).join(', ') + '.';
+        }
+        $diff.text(note);
+        if (response.debug) {
+            logAiDebug($panel.data('item-id'), response.debug, response.content);
+            $panel.find('.oer-ai-debug').remove();
+            $panel.find('.oer-recatalog-diff').after(buildAiDebugPanel(response.debug, response.content));
+        }
+    }
+
+    function startProposal($panel, $button, $diff, largePdf) {
+        var itemId = $panel.data('item-id');
+        $diff.text(Omeka.jsTranslate('Enviando…'));
+        $button.prop('disabled', true);
+        $.post($('#oer-master-view-table').data('ai-propose-url'), {
+            id: itemId,
+            csrf: $('#oer-master-view-table').data('recatalog-csrf'),
+            large_pdf: largePdf || 'ask'
+        }).done(function (r) {
+            if (r.error) {
                 var messages = {
                     csrf: Omeka.jsTranslate('Token de seguridad caducado: recarga la página.'),
                     disabled: Omeka.jsTranslate('La asistencia IA no está configurada.'),
-                    llm: Omeka.jsTranslate('El proveedor de IA no respondió correctamente. El motivo exacto está en el log de Omeka.'),
                     not_found: Omeka.jsTranslate('No se encontró el recurso.'),
-                    unexpected: Omeka.jsTranslate('Error inesperado al consultar la IA.')
+                    dispatch: Omeka.jsTranslate('No se pudo iniciar el análisis en segundo plano.')
                 };
-                $diff.text(messages[response.error] || response.error);
+                $diff.text(messages[r.error] || r.error);
                 $button.prop('disabled', false);
                 return;
             }
-            // Corte por PDF grande: preguntar y reintentar (no libera el botón:
-            // lo hará el reintento).
-            if (response.needs_confirmation) {
-                confirmLargePdf($panel, $button, $diff, response.needs_confirmation);
-                return;
-            }
-            var added = applyAiProposal($panel, response.alignment, response.justifications);
-            var note = added
-                ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
-                : Omeka.jsTranslate('La IA no propuso cambios nuevos.');
-            if (response.content && response.content.truncated) {
-                note += ' ' + Omeka.jsTranslate('(contenido truncado al límite configurado).');
-            }
-            if (response.content && response.content.empty) {
-                note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
-            }
-            var tooLarge = (response.content && response.content.too_large_pdfs) || [];
-            if (tooLarge.length) {
-                note += ' ' + Omeka.jsTranslate('PDF omitido por exceder el tope de visión: ')
-                    + tooLarge.map(function (p) { return p.name + ' (' + humanBytes(p.size) + ')'; }).join(', ') + '.';
-            }
-            $diff.text(note);
-
-            // Debug de calidad (TASK-015): intercambio completo con el LLM al console.
-            if (response.debug) {
-                logAiDebug($panel.data('item-id'), response.debug, response.content);
-                $panel.find('.oer-ai-debug').remove();
-                $panel.find('.oer-recatalog-diff').after(buildAiDebugPanel(response.debug, response.content));
-            }
-            $button.prop('disabled', false);
+            localStorage.setItem(jobKey(itemId), r.jobId);
+            pollStatus($panel, $button, $diff, r.jobId, 0);
         }).fail(function () {
             $diff.text(Omeka.jsTranslate('No se pudo consultar a la IA.'));
             $button.prop('disabled', false);
         });
     }
 
+    // Botón «Cancelar» del propose en marcha (TASK-020).
+    $(document).on('click', '.oer-recatalog-ai-cancel', function () {
+        var $panel = $(this).closest('.oer-recatalog');
+        var jobId = localStorage.getItem(jobKey($panel.data('item-id')));
+        if (!jobId) { return; }
+        $.post($('#oer-master-view-table').data('ai-propose-cancel-url'), {
+            jobId: jobId,
+            csrf: $('#oer-master-view-table').data('recatalog-csrf')
+        });
+        $panel.find('.oer-recatalog-diff').text(Omeka.jsTranslate('Cancelando…'));
+    });
+
     $(document).on('click', '.oer-recatalog-ai', function () {
         var $button = $(this);
         var $panel = $button.closest('.oer-recatalog');
         var $diff = $panel.find('.oer-recatalog-diff');
-        runProposal($panel, $button, $diff, 'ask');
+        var itemId = $panel.data('item-id');
+        // Guardia de doble arranque: si ya hay un job pendiente, reengancha en
+        // vez de duplicar (doble clic, reapertura del panel).
+        var pending = localStorage.getItem(jobKey(itemId));
+        if (pending) {
+            $button.prop('disabled', true);
+            pollStatus($panel, $button, $diff, pending, 0);
+            return;
+        }
+        startProposal($panel, $button, $diff, 'ask');
     });
 })(jQuery);
