@@ -205,6 +205,19 @@ return [
                     )
                 );
             },
+            // Ensambla itemId → payload del navegador; lo reutiliza el AiProposeJob
+            // en 2º plano (TASK-020).
+            Service\Ai\ProposeRunner::class => function ($container) {
+                return new Service\Ai\ProposeRunner(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Ai\AiCataloguer::class),
+                    $container->get(Service\Content\MediaSourceInterface::class)
+                );
+            },
+            // Canal de estado/resultado del propose asíncrono (fichero privado, TASK-020).
+            Service\Ai\ProposalStore::class => function ($container) {
+                return new Service\Ai\ProposalStore(sys_get_temp_dir() . '/oer-manager-proposals');
+            },
         ],
     ],
     'form_elements' => [
