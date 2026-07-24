@@ -58,9 +58,13 @@ aquí, pero la infra de Job se diseña reutilizable.
 3. **Abandono de pestaña / recuperación:** el resultado se **conserva hasta un TTL**
    (no se borra en la primera lectura), así que al volver (mismo navegador) se
    recupera. Cross-navegador no se recupera (raro; documentado).
-4. **Cancelar:** botón «Cancelar» → para el Job (API de Omeka). El Job comprueba la
-   señal de parada **entre pasos** (`shouldStop()`); corta en cuanto termina el paso
-   en curso y escribe `{status:'stopped'}`.
+4. **Cancelar:** botón «Cancelar» → para el Job (`Dispatcher::stop($jobId)`, que
+   solo pone el estado `STOPPING` — verificado en el core). El Job comprueba la
+   señal **entre fases** (`AbstractJob::shouldStop()`, que hace una **consulta
+   fresca a BD**, así que ve la parada puesta por el proceso web); en cuanto termina
+   la fase en curso **aborta limpio** y escribe `{status:'stopped'}`. **No se
+   muestra una propuesta parcial** (un alineamiento a medias confundiría al
+   curador): cancelar = sin propuesta.
 5. **Robustez del fichero / huérfanos:** escritura **atómica** (temp + `rename`);
    **barrido por TTL** (`sweepOld`) lanzado de forma oportunista en cada nuevo
    propose limpia huérfanos (pestaña cerrada, job muerto). Ficheros JSON pequeños en
@@ -78,7 +82,10 @@ Canal de estado/resultado entre el Job y el polling (dos procesos PHP distintos)
 - `sweepOld(int $ttlSeconds): void` — borra ficheros más viejos que el TTL.
 
 Directorio base **privado** e inyectable (`sys_get_temp_dir().'/oer-manager-proposals/'`
-en producción; temporal en los tests). Nombre `{jobId}.json`.
+en producción; temporal en los tests). Nombre `{jobId}.json`. **TTL por defecto 1
+hora** (holgado para la recuperación tras abandono, §4.3; el propose más lento
+medido fue ~10 min). El `sweepOld` corre de forma oportunista al despachar cada
+propose (§5.5), así que no hace falta un cron.
 
 ### 5.2 `Service\Ai\ProgressReporter` (interfaz) + implementaciones
 
@@ -90,48 +97,71 @@ Cómo la tubería larga informa de su fase y consulta si debe parar. Interfaz m�
 Implementaciones:
 - **`JobProgressReporter`** (producción): `report` escribe el estado en
   `ProposalStore`; `shouldStop` consulta `AbstractJob::shouldStop()` del Job.
-- **Null object** (`NullProgressReporter`): no-op; es el default para el resto de
-  callers y los tests de host — así el cableado del progreso es **opcional** y no
-  rompe nada existente.
+- **Null object** (`NullProgressReporter`): no-op (`report` no hace nada,
+  `shouldStop` siempre `false`); es el default para el resto de callers y los tests
+  de host — así el cableado del progreso es **opcional** y no rompe nada existente.
+
+La excepción de parada `JobStoppedException` (namespace del módulo) la lanza
+`AiCataloguer` cuando `shouldStop()` es cierto en un límite de fase; el
+`AiProposeJob` la captura y escribe `stopped`.
 
 Se pasa **opcional** a `AiCataloguer::propose(..., ?ProgressReporter $progress = null)`.
 `propose` llama `report()` al entrar en cada fase y comprueba `shouldStop()` en los
-límites de fase; si para, devuelve lo obtenido hasta ahí y el Job marca `stopped`.
-Los clasificadores **no cambian de firma**: el reporte es de grano de fase, emitido
-desde `AiCataloguer`, que ya orquesta las fases. (Cancelar *dentro* de la cascada
-curricular —grano fino— queda como mejora futura; hoy corta al acabar la fase.)
+límites de fase; **si para, lanza una excepción de parada** que el Job traduce a
+`stopped` (no se devuelve ni usa una propuesta parcial, §4.4). Los clasificadores
+**no cambian de firma**: el reporte es de grano de fase, emitido desde
+`AiCataloguer`, que ya orquesta las fases. (Cancelar *dentro* de la cascada
+curricular —grano fino— es mejora futura; hoy corta al acabar la fase.)
+
+`done/total` es **aproximado y dinámico**: el total de fases varía (la visión solo
+si hay imágenes/PDF rescatable; los bloques solo a veces). El reporter calcula el
+total conocido al arrancar y las etiquetas de paso son la señal principal; el
+número es orientativo, no una barra exacta.
 
 ### 5.3 `Service\Ai\ProposeRunner`
 
 «itemId + decisión (+ progress) → payload completo para el navegador». Centraliza
 lo que hoy está disperso en el controlador: leer el item, `itemMetadataText`,
 `filesFor`/`imagesFor`, `AiCataloguer::propose`, y `enrichLabels`. Devuelve el mismo
-payload que hoy (incluido `needs_confirmation`). Lo usan el Job y el controlador.
+payload que hoy (incluido `needs_confirmation`). **Lo usa el `AiProposeJob`** (el
+`aiProposeAction` ya no ejecuta el propose, solo despacha). La acción de evaluación
+(`aiEvaluate`, herramienta de dev síncrona) puede reutilizar `itemMetadataText` de
+aquí, pero no requiere el enriquecido; queda como está por ahora.
 
 ### 5.4 `Job\AiProposeJob` (extends `Omeka\Job\AbstractJob`)
 
 `perform()`:
 1. Args `{itemId, largePdfDecision}`.
 2. `$progress = new JobProgressReporter($store, $this->job)`.
-3. `$payload = $runner->run($itemId, $largePdfDecision, $progress)`.
-4. `$store->write($jobId, ['status'=>'completed', 'payload'=>$payload])`.
-5. Si `shouldStop` cortó → `['status'=>'stopped']`. Si `LlmException`/error →
-   `['status'=>'error','code'=>…]` (limpio y **reintentable**, NFR-010a, sin filtrar
-   la clave). El Job queda además en el estado nativo de Omeka correspondiente.
+3. `try { $payload = $runner->run($itemId, $largePdfDecision, $progress); $store->write($jobId, ['status'=>'completed','payload'=>$payload]); }`
+4. `catch (JobStoppedException) { $store->write($jobId, ['status'=>'stopped']); }`
+5. `catch (LlmException|\Throwable $e) { $store->write($jobId, ['status'=>'error','code'=>…]); }`
+   — estado limpio y **reintentable** (NFR-010a), sin filtrar la clave; relanza si
+   procede para que el Job quede en el estado nativo de error de Omeka.
 
-Identidad: el Job tiene **owner** (quien lo despachó) → la ACL del propose se
-preserva.
+Identidad: el Job corre en un proceso CLI **impersonando a su owner** (mecanismo
+nativo de Omeka), así que las llamadas a la API dentro del propose (leer item,
+`enrichLabels`) usan la ACL del curador. Verificado que Omeka fija la identidad del
+job por su owner.
 
 ### 5.5 `IndexController`
 
 - `aiProposeAction`: CSRF/ACL/`aiEnabled`/id **síncronos** (instantáneos). Lanza
   `sweepOld` oportunista; **despacha** `AiProposeJob`; devuelve `{jobId}`. Si el
   despacho falla, error limpio.
-- `aiProposeStatusAction` (polling): CSRF; lee el Job **por la API** (`read('jobs',
-  $jobId)` → **acotado por ACL**: solo el dueño/admin). Devuelve `read($jobId)` del
-  store (progreso, resultado, error o stopped). Si el Job existe pero aún no hay
-  fichero → `in_progress` de arranque.
-- `aiProposeCancelAction`: CSRF; **para** el Job (dueño/admin) vía la API/dispatcher.
+- `aiProposeStatusAction` (polling): CSRF; **primero** lee el Job por la API
+  (`read('jobs', $jobId)` → **acotado por ACL**: lanza si no es dueño/admin);
+  **solo después** de pasar ese control lee el fichero. Combina las dos fuentes,
+  que es lo que hace el estado robusto:
+  - fichero con `completed`/`error`/`stopped` → se devuelve tal cual;
+  - fichero con `in_progress` → progreso (paso `done/total`);
+  - **sin fichero pero el Job en estado nativo `error`/`stopped`** (murió sin
+    escribir, p. ej. PhpCli no arrancó o el proceso cascó) → **`error`
+    reintentable**, no un `in_progress` eterno;
+  - sin fichero y Job `starting`/`in_progress` → `in_progress` de arranque.
+  Este cruce evita que un Job muerto deje el polling colgado indefinidamente.
+- `aiProposeCancelAction`: CSRF; verifica propiedad del Job por la API y **para** con
+  `Dispatcher::stop($jobId)`.
 - Rutas nuevas: `/ai-propose-status`, `/ai-propose-cancel`.
 
 ### 5.6 JS (`asset/js/oer-master-view.js`)
@@ -145,6 +175,10 @@ preserva.
 - **cancelar:** POST `ai-propose-cancel`; deja de sondear.
 - **reenganche:** al abrir el panel de un item, si hay jobId en localStorage,
   reanuda el sondeo (recupera progreso o resultado dentro del TTL).
+- **guardia de doble arranque:** si ya hay un jobId pendiente para ese item (en
+  localStorage y sin terminar), no se lanza un segundo Job: el botón queda
+  deshabilitado / se reengancha al existente. Evita jobs duplicados por doble clic o
+  reapertura.
 - **tope de sondeos:** límite de tiempo/intentos; si se excede, deja de preguntar y
   ofrece reintentar (no cuelga la UI).
 
@@ -168,15 +202,32 @@ preserva.
   otro dispositivo no está cubierto (raro).
 - **Cancelar es de grano de fase:** un cancel durante la cascada curricular espera a
   que termine la fase. Grano fino = mejora futura.
+- **Crecimiento de la tabla `job`:** cada propose crea un registro de Job en Omeka
+  (y el caso de confirmación de PDF grande, §4/TASK-025, crea **dos**: uno para el
+  `ask` y otro para el `include`/`skip`; el `ask` es casi instantáneo, sin LLM). Es
+  el comportamiento nativo de cualquier Job de Omeka; se confía en la poda de Jobs
+  de Omeka (EasyAdmin) para el mantenimiento. No es un problema del módulo, pero
+  conviene tenerlo presente en instalaciones con proposes muy frecuentes.
+- **Base verificada contra el core (2026-07-24):** `dispatch()` persiste el Job y
+  devuelve su id **antes** de lanzar el proceso; `PhpCli` ejecuta en background
+  (`… > /dev/null 2>&1 &`); `shouldStop()` relee el estado por DQL (ve la parada de
+  otro proceso); `Dispatcher::stop()` existe. El único riesgo vivo es la
+  auto-detección de `phpcli_path` (verificar en contenedor).
 
 ## 8. Pruebas
 
-- **Host (TDD real):** `ProposalStore` (escritura atómica; `read` idempotente;
-  `sweepOld` respeta el TTL); `AiCataloguer::propose` con un `ProgressReporter` fake
-  (reporta las fases esperadas; para al `shouldStop()` y devuelve lo parcial).
-- **Contenedor (glue):** el Job en 2º plano de verdad, despacho, polling con
-  progreso, cancelación, reenganche, y **que PhpCli arranca** — arnés de
-  `test/container/`.
+- **Host (TDD real):** `ProposalStore` (escritura atómica; `read` idempotente; que
+  dos writes seguidos no dejan fichero corrupto; `sweepOld` respeta el TTL);
+  `AiCataloguer::propose` con un `ProgressReporter` fake (reporta las fases
+  esperadas; **al `shouldStop()` lanza `JobStoppedException` y NO produce
+  propuesta**; el reporter null-object no altera el comportamiento actual → no
+  regresión de los 177 tests).
+- **Contenedor (glue):** el Job en 2º plano de verdad, despacho que devuelve id al
+  instante, polling con progreso, cancelación efectiva, reenganche, el **cruce
+  estado-nativo/fichero** ante un Job que no arranca, y **que PhpCli arranca** —
+  arnés de `test/container/`. **Primer paso de la implementación en contenedor:
+  confirmar que un Job trivial corre en 2º plano** (des-riesga `phpcli_path` antes
+  de construir lo demás).
 
 ## 9. Fuera de alcance (YAGNI)
 
