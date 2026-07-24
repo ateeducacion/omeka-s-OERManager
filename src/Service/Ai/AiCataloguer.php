@@ -41,8 +41,10 @@ final class AiCataloguer
         string $metadataText,
         array $files,
         array $images = [],
-        string $largePdfDecision = 'ask'
+        string $largePdfDecision = 'ask',
+        ?ProgressReporter $progress = null
     ): array {
+        $progress ??= new NullProgressReporter();
         if ($this->curricular instanceof TraceableInterface) {
             $this->curricular->clearTrace();
         }
@@ -51,6 +53,11 @@ final class AiCataloguer
         }
         $this->distiller->clearTrace();
         $this->vision->clearTrace();
+
+        // Progreso por fases (TASK-020): total aproximado; las etiquetas son la
+        // señal principal, el número es orientativo (algunas fases son condicionales).
+        $total = 5;
+        $progress->report('Extrayendo contenido', 1, $total);
 
         // Extrae SOLO el texto de los medios (sin prefijar metadatos): el contexto
         // los mantiene separados con su procedencia (ADR-0011), y el truncado por
@@ -86,11 +93,17 @@ final class AiCataloguer
         // extractor; off-by-default => no-op sin red. El PDF sin capa de texto se
         // detecta por su motivo de salto.
         $rescuable = $this->rescuablePdfs($files, $media->skipped(), $largePdfDecision);
+        $this->stopIfRequested($progress);
+        if ([] !== $images || [] !== $rescuable) {
+            $progress->report('Analizando imágenes y PDF', 2, $total);
+        }
         $visionDescriptions = $this->vision->describe($images, $rescuable);
         $context = new ItemContext($metadataText, $media->text(), '', $visionDescriptions);
 
         // Destilación (ADR-0011): el modelo barato produce una ficha fiel que usan
         // los pasos gruesos; los pasos finos conservan el crudo de medios.
+        $this->stopIfRequested($progress);
+        $progress->report('Destilando ficha', 3, $total);
         $ficha = $this->distiller->distill($context);
         if ('' !== $ficha) {
             $context = $context->withFicha($ficha);
@@ -99,7 +112,15 @@ final class AiCataloguer
         $alignment = [];
         // Sin señal no hay nada que clasificar: no se gasta ni un token.
         if (!$context->isEmpty()) {
-            $alignment = $this->curricular->classify($context) + $this->tags->classify($context);
+            $this->stopIfRequested($progress);
+            $progress->report('Clasificación curricular', 4, $total);
+            $curricular = $this->curricular->classify($context);
+
+            $this->stopIfRequested($progress);
+            $progress->report('Ejes temáticos', 5, $total);
+            $tags = $this->tags->classify($context);
+
+            $alignment = $curricular + $tags;
         }
 
         return [
@@ -121,6 +142,17 @@ final class AiCataloguer
                     ? $this->tags->getTrace() : [],
             ],
         ];
+    }
+
+    /**
+     * Aborta el propose si el curador pidió cancelar (TASK-020). Se comprueba en
+     * los límites de fase; corta al terminar la fase en curso, sin propuesta parcial.
+     */
+    private function stopIfRequested(ProgressReporter $progress): void
+    {
+        if ($progress->shouldStop()) {
+            throw new JobStoppedException();
+        }
     }
 
     /**

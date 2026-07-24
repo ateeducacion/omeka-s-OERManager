@@ -406,5 +406,67 @@ final class AiCataloguerTest extends TestCase
         $this->assertSame(['borde.pdf'], array_column($out['confirmable'], 'name'));
         $this->assertSame(['pasa.pdf'], array_column($out['too_large'], 'name'));
     }
+
+    // --- TASK-020: progreso por fases y cancelación ---
+
+    public function testReportsPhasesToProgressReporter(): void
+    {
+        $reporter = new RecordingProgressReporter();
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision(),
+            $this->distiller('Ficha'),
+            new FakeClassifier(['schema:about' => [20]]),
+            new FakeClassifier([])
+        );
+        $file = $this->dir . '/nota.txt';
+        file_put_contents($file, 'Contenido sobre álgebra.');
+
+        $cataloguer->propose('Meta', [['path' => $file, 'name' => 'nota.txt']], [], 'ask', $reporter);
+
+        $this->assertContains('Extrayendo contenido', $reporter->steps);
+        $this->assertContains('Destilando ficha', $reporter->steps);
+        $this->assertContains('Clasificación curricular', $reporter->steps);
+        $this->assertContains('Ejes temáticos', $reporter->steps);
+    }
+
+    public function testStopBetweenPhasesThrowsAndProducesNoProposal(): void
+    {
+        // Parar tras el primer report(): el propose debe abortar sin clasificar.
+        $reporter = new RecordingProgressReporter(stopAfter: 1);
+        $curricular = new FakeClassifier(['schema:about' => [20]]);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            $this->vision(),
+            $this->distiller('Ficha'),
+            $curricular,
+            new FakeClassifier([])
+        );
+        $file = $this->dir . '/nota.txt';
+        file_put_contents($file, 'Contenido.');
+
+        $this->expectException(\OERManager\Service\Ai\JobStoppedException::class);
+        $cataloguer->propose('Meta', [['path' => $file, 'name' => 'nota.txt']], [], 'ask', $reporter);
+    }
+}
+
+final class RecordingProgressReporter implements \OERManager\Service\Ai\ProgressReporter
+{
+    /** @var string[] */
+    public array $steps = [];
+
+    public function __construct(private int $stopAfter = PHP_INT_MAX)
+    {
+    }
+
+    public function report(string $step, int $done, int $total): void
+    {
+        $this->steps[] = $step;
+    }
+
+    public function shouldStop(): bool
+    {
+        return count($this->steps) >= $this->stopAfter;
+    }
 }
 
