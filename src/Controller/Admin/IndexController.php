@@ -267,10 +267,6 @@ class IndexController extends AbstractActionController
             return new JsonModel(['error' => 'not_found']);
         }
 
-        // Decisión sobre PDF grandes (TASK-025): ask (default) / include / skip.
-        // Un valor desconocido lo normaliza a ask el propio propose.
-        $largePdf = (string) $this->params()->fromPost('large_pdf', 'ask');
-
         // Async (TASK-020): el propose encadena 7-9 llamadas al LLM y puede agotar
         // el timeout del proxy (504, NFR-010). Se ejecuta como Job en 2º plano; el
         // navegador sondea el estado. Aquí solo se despacha y se devuelve el jobId.
@@ -278,7 +274,6 @@ class IndexController extends AbstractActionController
         try {
             $job = $this->jobDispatcher->dispatch(\OERManager\Job\AiProposeJob::class, [
                 'item' => $id,
-                'large_pdf' => $largePdf,
             ]);
         } catch (\Exception $e) {
             $this->logger->err('OERManager ai propose dispatch item ' . $id . ': ' . $e->getMessage());
@@ -312,12 +307,23 @@ class IndexController extends AbstractActionController
             return new JsonModel(['error' => 'not_found']);
         }
 
+        $native = (string) $job->status();
+        $finished = in_array($native, ['completed', 'error', 'stopped'], true);
+
         $state = $this->proposalStore->read($jobId);
         if (null !== $state) {
+            // Un `in_progress` con el Job YA terminado es un estado zombi: el Job
+            // murió sin escribir su resultado (OOM, proceso matado). Antes se
+            // devolvía tal cual y el navegador seguía sondeando «Analizando…»
+            // hasta el techo de 12 min: otro cuelgue sin causa visible (TASK-026).
+            // El Job escribe SIEMPRE su estado final antes de terminar, así que
+            // terminado + in_progress solo puede significar que se murió.
+            if ($finished && 'in_progress' === ($state['status'] ?? '')) {
+                return new JsonModel(['status' => 'error', 'code' => 'job_died']);
+            }
             return new JsonModel($state); // in_progress / completed / error / stopped
         }
         // Sin fichero: cruzar con el estado nativo para no colgar el polling.
-        $native = (string) $job->status();
         if (in_array($native, ['error', 'stopped'], true)) {
             return new JsonModel(['status' => 'error', 'code' => 'job_' . $native]);
         }
