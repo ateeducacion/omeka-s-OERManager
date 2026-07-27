@@ -27,12 +27,11 @@ class AiProposeJob extends AbstractJob
 
         $jobId = (int) $this->job->getId();
         $itemId = (int) $this->getArg('item', 0);
-        $largePdf = (string) $this->getArg('large_pdf', 'ask');
 
         $progress = new JobProgressReporter($store, $this, $jobId);
 
         try {
-            $payload = $runner->run($itemId, $largePdf, $progress);
+            $payload = $runner->run($itemId, $progress);
             $store->write($jobId, ['status' => 'completed', 'payload' => $payload]);
         } catch (JobStoppedException $e) {
             $store->write($jobId, ['status' => 'stopped']);

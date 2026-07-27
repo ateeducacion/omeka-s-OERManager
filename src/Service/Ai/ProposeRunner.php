@@ -23,23 +23,15 @@ final class ProposeRunner
     }
 
     /** @return array<string,mixed> */
-    public function run(int $itemId, string $largePdfDecision, ?ProgressReporter $progress = null): array
+    public function run(int $itemId, ?ProgressReporter $progress = null): array
     {
         $item = $this->api->read('items', $itemId)->getContent();
         $proposal = $this->cataloguer->propose(
             $this->itemMetadataText($item),
             $this->mediaSource->filesFor($itemId),
             $this->mediaSource->imagesFor($itemId),
-            $largePdfDecision,
             $progress
         );
-
-        if (isset($proposal['needs_confirmation'])) {
-            return [
-                'needs_confirmation' => $proposal['needs_confirmation'],
-                'content' => $proposal['content'],
-            ];
-        }
 
         return [
             'alignment' => $this->enrichLabels($proposal['alignment']),

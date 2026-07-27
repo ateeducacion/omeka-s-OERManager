@@ -57,7 +57,8 @@ final class MediaVisionExtractor implements TraceableInterface
         private int $maxImageBytes = self::DEFAULT_MAX_IMAGE_BYTES,
         private int $maxTokens = 1024,
         private ?float $temperature = null,
-        private int $maxPdfBytes = self::DEFAULT_MAX_PDF_BYTES
+        private int $maxPdfBytes = self::DEFAULT_MAX_PDF_BYTES,
+        private ?PdfRasterizerInterface $rasterizer = null
     ) {
     }
 
@@ -95,16 +96,6 @@ final class MediaVisionExtractor implements TraceableInterface
      * @param array<int,array{path?:string,mediaType?:string,name?:string}> $pdfs
      * @return string[]
      */
-    /**
-     * ¿Puede esta configuración rescatar un PDF por visión? Doble puerta: master
-     * toggle encendido Y proveedor con soporte de PDF nativo. AiCataloguer la
-     * consulta para no ofrecer al curador una confirmación imposible (TASK-025).
-     */
-    public function canRescuePdf(): bool
-    {
-        return $this->enabled && $this->llm->supportsPdf();
-    }
-
     public function describe(array $images, array $pdfs): array
     {
         $this->trace = [];
@@ -130,18 +121,28 @@ final class MediaVisionExtractor implements TraceableInterface
             }
         }
         $pdfCount = 0;
-        if ($this->llm->supportsPdf()) {
-            foreach ($pdfs as $pdf) {
-                $block = $this->binaryBlock(
-                    'document',
-                    (string) ($pdf['path'] ?? ''),
-                    'application/pdf',
-                    $this->maxPdfBytes
-                );
-                if (null !== $block) {
-                    $blocks[] = $block;
-                    $pdfCount++;
-                }
+        $pageCount = 0;
+        foreach ($pdfs as $pdf) {
+            $path = (string) ($pdf['path'] ?? '');
+            // Camino preferente (TASK-026): rasterizar en local y enviar páginas
+            // como imágenes. Cuesta un render de ~1 s por página en vez de subir
+            // decenas de MB, y no depende de que el proveedor lea PDF nativo.
+            $pages = $this->rasterizedBlocks($path, (string) ($pdf['name'] ?? basename($path)));
+            if ([] !== $pages) {
+                array_push($blocks, ...$pages);
+                $pageCount += count($pages);
+                $pdfCount++;
+                continue;
+            }
+            // Respaldo: sin rasterizador utilizable, el binario nativo (ADR-0011/0012)
+            // sigue siendo la única vía, y sí queda sujeta al tope de envío.
+            if (!$this->llm->supportsPdf()) {
+                continue;
+            }
+            $block = $this->binaryBlock('document', $path, 'application/pdf', $this->maxPdfBytes);
+            if (null !== $block) {
+                $blocks[] = $block;
+                $pdfCount++;
             }
         }
 
@@ -168,11 +169,39 @@ final class MediaVisionExtractor implements TraceableInterface
             'step' => 'vision',
             'images' => $imageCount,
             'pdfs' => $pdfCount,
+            'pdf_pages' => $pageCount,
             'system' => $prompt['system'],
             'llm_options' => array_diff_key($options, ['system' => '']),
             'description' => $description,
+            // Se enviaron bloques y el proveedor no devolvió texto: no es «no había
+            // nada que ver», es una respuesta inútil. Antes se aceptaba en silencio
+            // y el curador solo veía «la IA no propuso cambios» (TASK-026).
+            'empty_response' => '' === $description,
         ];
         return '' === $description ? [] : [$description];
+    }
+
+    /**
+     * Páginas del PDF rasterizadas como bloques de imagen. Vacío si no hay
+     * rasterizador, si el proveedor no lee imágenes o si el render no dio nada
+     * (sin ext-imagick o PDF que el motor no abre) → quien llama cae al binario.
+     *
+     * @return array<int,array{type:string,media_type:string,data:string}>
+     */
+    private function rasterizedBlocks(string $path, string $name): array
+    {
+        if (null === $this->rasterizer || !$this->llm->supportsImages()) {
+            return [];
+        }
+        $blocks = [];
+        foreach ($this->rasterizer->rasterize($path, $name) as $page) {
+            $blocks[] = [
+                'type' => 'image',
+                'media_type' => (string) ($page['mediaType'] ?? 'image/jpeg'),
+                'data' => base64_encode((string) ($page['data'] ?? '')),
+            ];
+        }
+        return $blocks;
     }
 
     /**

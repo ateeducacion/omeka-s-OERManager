@@ -10,9 +10,10 @@
  * SOLO LECTURA: ejecuta `propose`, nunca `apply`. No escribe en el catálogo.
  *
  * Uso (dentro del contenedor):
- *   php modules/OERManager/test/container/propose-harness.php <itemId> <salida.json> [large_pdf]
+ *   php modules/OERManager/test/container/propose-harness.php <itemId> <salida.json>
  *
- * large_pdf (TASK-025): ask (default) | include | skip.
+ * Desde TASK-026 el rescate de PDF grandes ya no se confirma: el PDF se rasteriza
+ * en local, así que el argumento `large_pdf` desapareció.
  */
 
 chdir('/var/www/html');
@@ -27,9 +28,8 @@ $mediaSource = $services->get(\OERManager\Service\Content\MediaSourceInterface::
 
 $id = (int) ($argv[1] ?? 0);
 $out = (string) ($argv[2] ?? '');
-$largePdf = (string) ($argv[3] ?? 'ask');
 if ($id <= 0 || '' === $out) {
-    fwrite(STDERR, "uso: php propose-harness.php <itemId> <salida.json> [large_pdf]\n");
+    fwrite(STDERR, "uso: php propose-harness.php <itemId> <salida.json>\n");
     exit(2);
 }
 
@@ -59,8 +59,7 @@ try {
     $proposal = $cataloguer->propose(
         $metadataText,
         $mediaSource->filesFor($id),
-        $mediaSource->imagesFor($id),
-        $largePdf
+        $mediaSource->imagesFor($id)
     );
 } catch (\Throwable $e) {
     file_put_contents($out, json_encode([

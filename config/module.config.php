@@ -186,25 +186,28 @@ return [
                     temperature: Service\Llm\LlmSettings::parseTemperature(
                         $settings->get(Service\Llm\LlmSettings::TEMPERATURE)
                     ),
-                    // Tope de envío de PDF a la visión (TASK-025): misma fuente
-                    // que el tope de confirmación de AiCataloguer, para que un PDF
-                    // confirmado no se caiga en silencio dentro del extractor.
+                    // Tope de envío del BINARIO del PDF (camino de respaldo): solo
+                    // gobierna el bloque `document` nativo, que ya casi no se usa
+                    // porque el PDF viaja rasterizado (TASK-026).
                     maxPdfBytes: Service\Llm\LlmSettings::parseVisionMaxPdfBytes(
                         $settings->get(Service\Llm\LlmSettings::VISION_MAX_PDF_BYTES)
-                    )
+                    ),
+                    rasterizer: $container->get(Service\Content\PdfRasterizerInterface::class)
                 );
             },
+            // Rasterizador de PDF (TASK-026): convierte las primeras páginas en JPEG
+            // con el mismo Imagick que usa Omeka para las derivadas. Sin la extensión
+            // devuelve vacío y la visión cae al camino nativo del proveedor.
+            Service\Content\PdfRasterizerInterface::class => function () {
+                return new Service\Content\ImagickPdfRasterizer();
+            },
             Service\Ai\AiCataloguer::class => function ($container) {
-                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\AiCataloguer(
                     $container->get(Service\Content\ContentExtractor::class),
                     $container->get(Service\Content\MediaVisionExtractor::class),
                     $container->get(Service\Ai\ContextDistiller::class),
                     $container->get(Service\Ai\CurricularClassifier::class),
-                    $container->get(Service\Ai\TagClassifier::class),
-                    Service\Llm\LlmSettings::parseVisionMaxPdfBytes(
-                        $settings->get(Service\Llm\LlmSettings::VISION_MAX_PDF_BYTES)
-                    )
+                    $container->get(Service\Ai\TagClassifier::class)
                 );
             },
             // Ensambla itemId → payload del navegador; lo reutiliza el AiProposeJob

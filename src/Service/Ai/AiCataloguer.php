@@ -22,26 +22,19 @@ final class AiCataloguer
         private MediaVisionExtractor $vision,
         private ContextDistiller $distiller,
         private ClassifierInterface $curricular,
-        private ClassifierInterface $tags,
-        // Tope de confirmación de PDF grandes (TASK-025): misma fuente de verdad
-        // que el tope de envío de MediaVisionExtractor (§3b del spec). PDF entre
-        // el tope de parseo (20 MB) y este → confirmable por el curador; por
-        // encima → fuera de alcance (no se ofrece).
-        private int $visionMaxPdfBytes = MediaVisionExtractor::DEFAULT_MAX_PDF_BYTES
+        private ClassifierInterface $tags
     ) {
     }
 
     /**
      * @param array<int,array{path:string,mediaType?:string,name?:string,size?:int}> $files
      * @param array<int,array{path:string,mediaType?:string,name?:string,size?:int}> $images
-     * @param string $largePdfDecision ask (default) | include | skip — TASK-025
      * @return array<string,mixed>
      */
     public function propose(
         string $metadataText,
         array $files,
         array $images = [],
-        string $largePdfDecision = 'ask',
         ?ProgressReporter $progress = null
     ): array {
         $progress ??= new NullProgressReporter();
@@ -64,35 +57,11 @@ final class AiCataloguer
         // presupuesto protege el contenido del medio.
         $media = $this->extractor->extract('', $files);
 
-        // PDF grandes (TASK-025): los que superan el tope de PARSEO (pdf_too_large)
-        // pueden rescatarse por visión, que no parsea sino que manda el binario. Se
-        // clasifican en confirmables (<= tope de visión) y fuera de alcance. Si hay
-        // confirmables, la visión puede rescatarlos y el curador no ha decidido, se
-        // CORTA aquí —antes de gastar un solo token— y se pide confirmación.
-        $oversize = $this->classifyOversizePdfs($files, $media->skipped());
-        // Cualquier decisión que no sea explícitamente include/skip = «aún no
-        // decidido» (ask): un booleano no distinguiría «no preguntado» de «dijo
-        // que no», y un valor basura del POST no debe saltarse la confirmación.
-        $undecided = !in_array($largePdfDecision, ['include', 'skip'], true);
-        if (
-            $undecided
-            && [] !== $oversize['confirmable']
-            && $this->vision->canRescuePdf()
-        ) {
-            return [
-                'needs_confirmation' => $oversize,
-                'alignment' => [],
-                'justifications' => [],
-                'content' => $this->contentBlock($media, false, $oversize['too_large']),
-                'debug' => [],
-            ];
-        }
-
         // Visión (ADR-0011): rescata las imágenes (top-N) y los PDF escaneados que el
         // ContentExtractor no pudo leer. Gobernada por el toggle/proveedor dentro del
         // extractor; off-by-default => no-op sin red. El PDF sin capa de texto se
         // detecta por su motivo de salto.
-        $rescuable = $this->rescuablePdfs($files, $media->skipped(), $largePdfDecision);
+        $rescuable = $this->rescuablePdfs($files, $media->skipped());
         $this->stopIfRequested($progress);
         if ([] !== $images || [] !== $rescuable) {
             $progress->report('Analizando imágenes y PDF', 2, $total);
@@ -130,7 +99,7 @@ final class AiCataloguer
             'justifications' => method_exists($this->curricular, 'getJustifications')
                 ? $this->curricular->getJustifications()
                 : [],
-            'content' => $this->contentBlock($media, $context->isEmpty(), $oversize['too_large']),
+            'content' => $this->contentBlock($media, $context->isEmpty()),
             'debug' => [
                 'content_text' => $context->fineText(),
                 'ficha' => $ficha,
@@ -162,21 +131,19 @@ final class AiCataloguer
      * cruzan con los ficheros locales para recuperar la ruta del binario; las
      * entradas internas de un ZIP no tienen ruta y se omiten.
      *
-     * `pdf_too_large` (TASK-025) solo se rescata cuando el curador lo ha confirmado
-     * (decisión `include`): es un fichero grande cuyo envío tiene coste, a
-     * diferencia de los demás motivos, que son ficheros pequeños ya bajo el tope de
-     * parseo y se rescatan siempre.
+     * `pdf_too_large` entra en la lista SIN confirmación del curador (TASK-026): el
+     * tope de parseo es una guarda de memoria del parseo local, y la visión ya no
+     * sube el binario —rasteriza las primeras páginas—, así que un PDF de 28 MB
+     * cuesta lo mismo que cualquier item con imágenes. La confirmación de TASK-025
+     * existía por el coste de subir el original y deja de tener motivo.
      *
      * @param array<int,array{path?:string,mediaType?:string,name?:string,size?:int}> $files
      * @param array<string,string> $skipped nombre => motivo
      * @return array<int,array{path:string,mediaType:string,name:string}>
      */
-    private function rescuablePdfs(array $files, array $skipped, string $largePdfDecision = 'ask'): array
+    private function rescuablePdfs(array $files, array $skipped): array
     {
-        $reasons = ['pdf_unreadable', 'pdf_empty', 'pdf_iconv_unsupported'];
-        if ('include' === $largePdfDecision) {
-            $reasons[] = 'pdf_too_large';
-        }
+        $reasons = ['pdf_unreadable', 'pdf_empty', 'pdf_iconv_unsupported', 'pdf_too_large'];
         $rescue = [];
         foreach ($files as $file) {
             $path = (string) ($file['path'] ?? '');
@@ -197,51 +164,18 @@ final class AiCataloguer
     }
 
     /**
-     * Clasifica los PDF marcados `pdf_too_large` (superan el tope de PARSEO) en
-     * confirmables por el curador (tamaño <= tope de visión, rescatables enviando
-     * el binario) y fuera de alcance (por encima del tope de visión, que el
-     * proveedor rechazaría). PURA: usa el `size` de la entrada, no toca disco. Las
-     * entradas saltadas sin fichero (internas de ZIP) se omiten. (TASK-025)
+     * Bloque `content` común a todos los retornos. `skipped` (nombre => motivo) ya
+     * da al panel el detalle de qué medio no aportó y por qué.
      *
-     * @param array<int,array{path?:string,name?:string,size?:int}> $files
-     * @param array<string,string> $skipped nombre => motivo
-     * @return array{confirmable:array<int,array{name:string,size:int}>,too_large:array<int,array{name:string,size:int}>}
-     */
-    public function classifyOversizePdfs(array $files, array $skipped): array
-    {
-        $confirmable = [];
-        $tooLarge = [];
-        foreach ($files as $file) {
-            $name = (string) ($file['name'] ?? basename((string) ($file['path'] ?? '')));
-            if ('pdf_too_large' !== ($skipped[$name] ?? '') || '' === $name) {
-                continue;
-            }
-            $size = (int) ($file['size'] ?? 0);
-            $entry = ['name' => $name, 'size' => $size];
-            if ($size <= $this->visionMaxPdfBytes) {
-                $confirmable[] = $entry;
-            } else {
-                $tooLarge[] = $entry;
-            }
-        }
-        return ['confirmable' => $confirmable, 'too_large' => $tooLarge];
-    }
-
-    /**
-     * Bloque `content` común a todos los retornos, con los PDF fuera de alcance
-     * expuestos para que el panel los explique (TASK-025).
-     *
-     * @param array<int,array{name:string,size:int}> $tooLargePdfs
      * @return array<string,mixed>
      */
-    private function contentBlock(ExtractedContent $media, bool $empty, array $tooLargePdfs): array
+    private function contentBlock(ExtractedContent $media, bool $empty): array
     {
         return [
             'truncated' => $media->isTruncated(),
             'empty' => $empty,
             'sources' => $media->sources(),
             'skipped' => $media->skipped(),
-            'too_large_pdfs' => $tooLargePdfs,
         ];
     }
 }

@@ -569,27 +569,6 @@
         return added;
     }
 
-    // Tamaño legible para el aviso de confirmación de PDF grandes (TASK-025).
-    function humanBytes(bytes) {
-        var mb = (bytes || 0) / (1024 * 1024);
-        return (mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10) + ' MB';
-    }
-
-    // TASK-025: el propose cortó pidiendo confirmar el envío de un PDF grande a
-    // visión (coste/latencia). Se pregunta al curador; su respuesta relanza el
-    // propose con include/skip. `tooLarge` (fuera de tope) solo se informa.
-    function confirmLargePdf($panel, $button, $diff, info) {
-        var confirmable = (info && info.confirmable) || [];
-        var names = confirmable.map(function (p) {
-            return p.name + ' (' + humanBytes(p.size) + ')';
-        }).join(', ');
-        var msg = Omeka.jsTranslate('El recurso tiene un PDF grande que solo puede leerse por visión '
-            + '(coste y latencia adicionales): ') + names + '. '
-            + Omeka.jsTranslate('¿Incluirlo en el análisis?');
-        var decision = window.confirm(msg) ? 'include' : 'skip';
-        startProposal($panel, $button, $diff, decision);
-    }
-
     // Async (TASK-020): el propose corre como Job en 2º plano; el navegador sondea.
     var POLL_MS = 3000;
     var POLL_MAX = 240; // ~12 min de techo de sondeo
@@ -626,10 +605,6 @@
     }
 
     function handleProposalPayload($panel, $button, $diff, response) {
-        if (response.needs_confirmation) {
-            confirmLargePdf($panel, $button, $diff, response.needs_confirmation);
-            return;
-        }
         var added = applyAiProposal($panel, response.alignment, response.justifications);
         var note = added
             ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
@@ -640,11 +615,6 @@
         if (response.content && response.content.empty) {
             note = Omeka.jsTranslate('Sin contenido textual que clasificar (metadatos/medios vacíos).');
         }
-        var tooLarge = (response.content && response.content.too_large_pdfs) || [];
-        if (tooLarge.length) {
-            note += ' ' + Omeka.jsTranslate('PDF omitido por exceder el tope de visión: ')
-                + tooLarge.map(function (p) { return p.name + ' (' + humanBytes(p.size) + ')'; }).join(', ') + '.';
-        }
         $diff.text(note);
         if (response.debug) {
             logAiDebug($panel.data('item-id'), response.debug, response.content);
@@ -653,14 +623,13 @@
         }
     }
 
-    function startProposal($panel, $button, $diff, largePdf) {
+    function startProposal($panel, $button, $diff) {
         var itemId = $panel.data('item-id');
         $diff.text(Omeka.jsTranslate('Enviando…'));
         $button.prop('disabled', true);
         $.post($('#oer-master-view-table').data('ai-propose-url'), {
             id: itemId,
-            csrf: $('#oer-master-view-table').data('recatalog-csrf'),
-            large_pdf: largePdf || 'ask'
+            csrf: $('#oer-master-view-table').data('recatalog-csrf')
         }).done(function (r) {
             if (r.error) {
                 var messages = {
@@ -706,6 +675,6 @@
             pollStatus($panel, $button, $diff, pending, 0);
             return;
         }
-        startProposal($panel, $button, $diff, 'ask');
+        startProposal($panel, $button, $diff);
     });
 })(jQuery);

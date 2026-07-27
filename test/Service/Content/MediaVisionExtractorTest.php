@@ -41,10 +41,23 @@ final class MediaVisionExtractorTest extends TestCase
         return ['path' => '/store/' . $name, 'mediaType' => 'image/png', 'name' => $name, 'size' => $size] + $overrides;
     }
 
-    private function extractor(FakeLlmClient $llm, bool $enabled = true, int $maxImages = 3): MediaVisionExtractor
-    {
+    private function extractor(
+        FakeLlmClient $llm,
+        bool $enabled = true,
+        int $maxImages = 3,
+        ?FakePdfRasterizer $rasterizer = null,
+        int $maxPdfBytes = MediaVisionExtractor::DEFAULT_MAX_PDF_BYTES
+    ): MediaVisionExtractor {
         // minImageBytes bajo para no descartar los ficheros pequeños de los tests.
-        return new MediaVisionExtractor($llm, new PromptBuilder(), $enabled, $maxImages, 10);
+        return new MediaVisionExtractor(
+            $llm,
+            new PromptBuilder(),
+            $enabled,
+            $maxImages,
+            10,
+            maxPdfBytes: $maxPdfBytes,
+            rasterizer: $rasterizer
+        );
     }
 
     private function imageFile(string $name, int $bytes): array
@@ -52,6 +65,14 @@ final class MediaVisionExtractorTest extends TestCase
         $path = $this->dir . '/' . $name;
         file_put_contents($path, str_repeat('x', $bytes));
         return ['path' => $path, 'mediaType' => 'image/png', 'name' => $name, 'size' => $bytes];
+    }
+
+    /** @return array{path:string,mediaType:string,name:string} */
+    private function pdfFile(string $name, string $bytes): array
+    {
+        $path = $this->dir . '/' . $name;
+        file_put_contents($path, $bytes);
+        return ['path' => $path, 'mediaType' => 'application/pdf', 'name' => $name];
     }
 
     // --- Filtro heurístico (puro) ---
@@ -157,68 +178,87 @@ final class MediaVisionExtractorTest extends TestCase
         $this->assertSame(base64_encode(str_repeat('x', 5000)), $imageBlocks[0]['data']);
     }
 
-    public function testRescuesScannedPdfAsDocumentBlock(): void
+    public function testRasterizesScannedPdfIntoImageBlocks(): void
     {
+        // TASK-026: el PDF ya NO viaja como binario; se rasteriza en local (Imagick)
+        // y viajan sus páginas como imágenes, que es lo que el proveedor sabe leer
+        // barato. El original de 28 MB dejaba de ser una subida de 38 MB en base64.
         $llm = new FakeLlmClient(['Texto del PDF escaneado: examen de matemáticas.']);
-        $ext = $this->extractor($llm);
-        $pdf = ['path' => $this->dir . '/escaneado.pdf', 'mediaType' => 'application/pdf', 'name' => 'escaneado.pdf'];
-        file_put_contents($pdf['path'], '%PDF-1.4 binario');
+        $raster = new FakePdfRasterizer(['pagina-1-jpeg', 'pagina-2-jpeg']);
+        $ext = $this->extractor($llm, rasterizer: $raster);
+        $pdf = $this->pdfFile('escaneado.pdf', '%PDF-1.4 binario');
 
         $out = $ext->describe([], [$pdf]);
 
         $this->assertSame(['Texto del PDF escaneado: examen de matemáticas.'], $out);
+        $this->assertSame([['path' => $pdf['path'], 'name' => 'escaneado.pdf']], $raster->calls);
+        $content = $llm->calls[0]['messages'][0]['content'];
+        $this->assertCount(0, array_filter($content, static fn ($b) => 'document' === $b['type']));
+        $imageBlocks = array_values(array_filter($content, static fn ($b) => 'image' === $b['type']));
+        $this->assertCount(2, $imageBlocks);
+        $this->assertSame('image/jpeg', $imageBlocks[0]['media_type']);
+        $this->assertSame(base64_encode('pagina-1-jpeg'), $imageBlocks[0]['data']);
+    }
+
+    public function testOversizePdfIsRasterizedInsteadOfSkipped(): void
+    {
+        // Regresión del cuelgue (TASK-026): un PDF por encima del tope de ENVÍO del
+        // binario se rescata igualmente, porque rasterizado no se envía el binario.
+        $llm = new FakeLlmClient(['Infografía del alcaraván: alimentación y hábitat.']);
+        $raster = new FakePdfRasterizer(['pagina-unica']);
+        $ext = $this->extractor($llm, rasterizer: $raster, maxPdfBytes: 10);
+        $pdf = $this->pdfFile('grande.pdf', '%PDF-1.4 este binario pasa de 10 bytes');
+
+        $out = $ext->describe([], [$pdf]);
+
+        $this->assertSame(['Infografía del alcaraván: alimentación y hábitat.'], $out);
+        $this->assertCount(1, $llm->calls);
+        $this->assertCount(1, $raster->calls);
+    }
+
+    public function testFallsBackToDocumentBlockWhenRasterizerYieldsNothing(): void
+    {
+        // Sin ext-imagick (o con un PDF que Imagick no sabe abrir) el rasterizador
+        // devuelve vacío: se conserva el camino nativo de documento (ADR-0011/0012).
+        $llm = new FakeLlmClient(['Texto del PDF escaneado.']);
+        $ext = $this->extractor($llm, rasterizer: new FakePdfRasterizer([]));
+        $pdf = $this->pdfFile('escaneado.pdf', '%PDF-1.4 binario');
+
+        $out = $ext->describe([], [$pdf]);
+
+        $this->assertSame(['Texto del PDF escaneado.'], $out);
         $content = $llm->calls[0]['messages'][0]['content'];
         $docBlocks = array_values(array_filter($content, static fn ($b) => 'document' === $b['type']));
         $this->assertCount(1, $docBlocks);
         $this->assertSame('application/pdf', $docBlocks[0]['media_type']);
     }
 
-    public function testPdfOverInjectedCapIsNotSent(): void
+    public function testFallbackBinaryStillHonoursSendCap(): void
     {
-        // TASK-025: el tope de PDF de la visión es inyectable (misma fuente que
-        // el tope de confirmación de AiCataloguer). Un PDF por encima no se envía.
+        // El tope de envío sigue gobernando el ÚNICO camino que sube el binario.
         $llm = new FakeLlmClient(['no debería llegar']);
-        $ext = new MediaVisionExtractor(
-            $llm,
-            new PromptBuilder(),
-            true,
-            3,
-            MediaVisionExtractor::DEFAULT_MIN_IMAGE_BYTES,
-            5242880,
-            1024,
-            null,
-            maxPdfBytes: 10
-        );
-        $pdf = ['path' => $this->dir . '/grande.pdf', 'mediaType' => 'application/pdf', 'name' => 'grande.pdf'];
-        file_put_contents($pdf['path'], '%PDF-1.4 este binario pasa de 10 bytes');
+        $ext = $this->extractor($llm, rasterizer: new FakePdfRasterizer([]), maxPdfBytes: 10);
+        $this->pdfFile('grande.pdf', '%PDF-1.4 este binario pasa de 10 bytes');
 
-        $out = $ext->describe([], [$pdf]);
+        $out = $ext->describe([], [$this->pdfFile('grande.pdf', '%PDF-1.4 este binario pasa de 10 bytes')]);
 
         $this->assertSame([], $out);
         $this->assertCount(0, $llm->calls);
     }
 
-    public function testPdfWithinInjectedCapIsSent(): void
+    public function testTraceRecordsEmptyProviderResponse(): void
     {
-        $llm = new FakeLlmClient(['Texto del PDF grande rescatado.']);
-        $ext = new MediaVisionExtractor(
-            $llm,
-            new PromptBuilder(),
-            true,
-            3,
-            MediaVisionExtractor::DEFAULT_MIN_IMAGE_BYTES,
-            5242880,
-            1024,
-            null,
-            maxPdfBytes: 1000000
-        );
-        $pdf = ['path' => $this->dir . '/ok.pdf', 'mediaType' => 'application/pdf', 'name' => 'ok.pdf'];
-        file_put_contents($pdf['path'], '%PDF-1.4 pequeño');
+        // El fallo real de TASK-026: se enviaron bloques y el proveedor devolvió
+        // texto vacío tras 10 min. Antes se aceptaba en silencio; ahora se traza.
+        $llm = new FakeLlmClient(['   ']);
+        $ext = $this->extractor($llm, rasterizer: new FakePdfRasterizer(['pagina']));
 
-        $out = $ext->describe([], [$pdf]);
+        $out = $ext->describe([], [$this->pdfFile('escaneado.pdf', '%PDF')]);
 
-        $this->assertSame(['Texto del PDF grande rescatado.'], $out);
-        $this->assertCount(1, $llm->calls);
+        $this->assertSame([], $out);
+        $trace = $ext->getTrace();
+        $this->assertTrue($trace[0]['empty_response']);
+        $this->assertSame(1, $trace[0]['pdf_pages']);
     }
 
     public function testSkipsImagesWhenProviderLacksImageSupport(): void
