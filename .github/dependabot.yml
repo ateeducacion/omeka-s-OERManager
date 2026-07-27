@@ -1,6 +1,12 @@
 version: 2
 updates:
-  # Mantiene al dia los pines a SHA de las GitHub Actions (NFR-009, supply-chain).
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "deps"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
