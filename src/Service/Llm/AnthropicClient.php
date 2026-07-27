@@ -133,6 +133,11 @@ final class AnthropicClient implements LlmClientInterface
         if (!is_array($data)) {
             throw new LlmException('Respuesta de Anthropic no parseable.');
         }
+        // Paridad con el adaptador OpenAI-compatible (TASK-026): un error en el
+        // cuerpo no se lee como «respuesta sin texto».
+        if ('error' === ($data['type'] ?? '')) {
+            throw new LlmException('Anthropic devolvió un error: ' . $this->safeError($body));
+        }
         $text = '';
         foreach ($data['content'] ?? [] as $block) {
             if (is_array($block) && ($block['type'] ?? '') === 'text') {

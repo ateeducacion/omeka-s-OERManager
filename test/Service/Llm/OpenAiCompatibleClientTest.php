@@ -179,4 +179,35 @@ final class OpenAiCompatibleClientTest extends TestCase
         $this->expectException(LlmException::class);
         $client->chat([['role' => 'user', 'content' => 'x']]);
     }
+
+    public function testThrowsOnErrorBodyWithSuccessStatus(): void
+    {
+        // TASK-026: OpenRouter puede devolver 200 con el error EN EL CUERPO. Leer
+        // solo `choices[0].message.content` lo convertía en una cadena vacía que
+        // el pipeline aceptaba en silencio: 10 min de espera y cero diagnóstico.
+        $transport = new FakeTransport(
+            new HttpResult(200, '{"error":{"message":"El fichero excede el tamaño admitido","code":413}}')
+        );
+        $client = new OpenAiCompatibleClient(
+            $transport,
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'https://openrouter.ai/api/v1']
+        );
+
+        $this->expectException(LlmException::class);
+        $this->expectExceptionMessageMatches('/excede el tamaño admitido/');
+        $client->chat([['role' => 'user', 'content' => 'x']]);
+    }
+
+    public function testEmptyChoicesIsNotMistakenForAnError(): void
+    {
+        // Una respuesta legítima sin texto (el modelo no dijo nada) NO es un error
+        // del proveedor: se devuelve vacía y quien llama decide.
+        $transport = new FakeTransport(new HttpResult(200, '{"choices":[{"message":{"content":""}}]}'));
+        $client = new OpenAiCompatibleClient(
+            $transport,
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'https://openrouter.ai/api/v1']
+        );
+
+        $this->assertSame('', $client->chat([['role' => 'user', 'content' => 'x']])->text());
+    }
 }

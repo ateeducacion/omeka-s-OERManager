@@ -156,6 +156,15 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         if (!is_array($data)) {
             throw new LlmException('Respuesta OpenAI-compatible no parseable.');
         }
+        // Error con estado 2xx (TASK-026): OpenRouter responde 200 con el fallo en
+        // el cuerpo. Sin esto, un rechazo del proveedor se leía como «el modelo no
+        // dijo nada» y el propose seguía sin señal ni rastro del motivo.
+        if (isset($data['error'])) {
+            throw new LlmException(sprintf(
+                'Endpoint OpenAI-compatible devolvió un error: %s',
+                $this->safeError($body)
+            ));
+        }
         $text = (string) ($data['choices'][0]['message']['content'] ?? '');
         $usage = $data['usage'] ?? [];
         return new ChatResult(
