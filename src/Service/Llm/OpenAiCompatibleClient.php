@@ -43,7 +43,7 @@ final class OpenAiCompatibleClient implements LlmClientInterface
             $chatMessages[] = ['role' => 'system', 'content' => (string) $options['system']];
         }
         foreach ($messages as $m) {
-            $chatMessages[] = ['role' => $m['role'], 'content' => $m['content']];
+            $chatMessages[] = ['role' => $m['role'], 'content' => $this->normalizeContent($m['content'])];
         }
 
         $payload = [
@@ -56,6 +56,13 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         }
         if (array_key_exists('temperature', $options)) {
             $payload['temperature'] = $options['temperature'];
+        }
+        // Paridad con Anthropic directo (razonamiento off por defecto): en OpenRouter
+        // algunos modelos traen reasoning activado (default_enabled) y sus tokens
+        // consumen max_tokens → JSON truncado. Solo se envía a OpenRouter: los
+        // endpoints genéricos (vLLM, Ollama…) pueden rechazar params no estándar.
+        if ($this->isOpenRouter()) {
+            $payload['reasoning'] = ['effort' => 'none'];
         }
 
         $headers = [
@@ -81,11 +88,82 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         return $this->parse($result->body());
     }
 
+    private function isOpenRouter(): bool
+    {
+        $host = strtolower((string) parse_url($this->baseUrl, PHP_URL_HOST));
+        return 'openrouter.ai' === $host || str_ends_with($host, '.openrouter.ai');
+    }
+
+    public function supportsImages(): bool
+    {
+        return true;
+    }
+
+    public function supportsPdf(): bool
+    {
+        // chat/completions no tiene un bloque de documento PDF estándar, PERO
+        // OpenRouter sí lo acepta (content part `file`, procesado nativo del
+        // modelo cuando lo soporta) → el rescate de PDF escaneado (ADR-0011)
+        // funciona por ese camino. Endpoints genéricos: sigue omitido (gating
+        // en el extractor). Cierra la divergencia documentada en ADR-0012.
+        return $this->isOpenRouter();
+    }
+
+    /**
+     * Traduce el contenido: un string se reenvía tal cual; una lista de partes
+     * neutrales (ADR-0011) se mapea a las partes de chat/completions — texto e
+     * imágenes como `image_url` (data URL); el documento PDF como part `file`
+     * SOLO en OpenRouter (en endpoints genéricos no es representable y se omite).
+     *
+     * @param mixed $content
+     * @return mixed string o array<int,array<string,mixed>>
+     */
+    private function normalizeContent(mixed $content): mixed
+    {
+        if (!is_array($content)) {
+            return $content;
+        }
+        $parts = [];
+        foreach ($content as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+            $type = (string) ($part['type'] ?? '');
+            if ('text' === $type) {
+                $parts[] = ['type' => 'text', 'text' => (string) ($part['text'] ?? '')];
+            } elseif ('image' === $type) {
+                $mediaType = (string) ($part['media_type'] ?? '');
+                $data = (string) ($part['data'] ?? '');
+                $parts[] = ['type' => 'image_url', 'image_url' => ['url' => "data:{$mediaType};base64,{$data}"]];
+            } elseif ('document' === $type && $this->isOpenRouter()) {
+                // OpenRouter: content part `file` (data URL base64); con modelos
+                // Anthropic el PDF va al procesado nativo del modelo. En endpoints
+                // genéricos el documento se sigue omitiendo (sin part estándar).
+                $mediaType = (string) ($part['media_type'] ?? 'application/pdf');
+                $data = (string) ($part['data'] ?? '');
+                $parts[] = ['type' => 'file', 'file' => [
+                    'filename' => (string) ($part['name'] ?? 'document.pdf'),
+                    'file_data' => "data:{$mediaType};base64,{$data}",
+                ]];
+            }
+        }
+        return $parts;
+    }
+
     private function parse(string $body): ChatResult
     {
         $data = json_decode($body, true);
         if (!is_array($data)) {
             throw new LlmException('Respuesta OpenAI-compatible no parseable.');
+        }
+        // Error con estado 2xx (TASK-026): OpenRouter responde 200 con el fallo en
+        // el cuerpo. Sin esto, un rechazo del proveedor se leía como «el modelo no
+        // dijo nada» y el propose seguía sin señal ni rastro del motivo.
+        if (isset($data['error'])) {
+            throw new LlmException(sprintf(
+                'Endpoint OpenAI-compatible devolvió un error: %s',
+                $this->safeError($body)
+            ));
         }
         $text = (string) ($data['choices'][0]['message']['content'] ?? '');
         $usage = $data['usage'] ?? [];

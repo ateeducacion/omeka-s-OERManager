@@ -76,6 +76,8 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     data-recatalog-preview-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-preview'])); ?>"
     data-recatalog-apply-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-apply'])); ?>"
     data-ai-propose-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose'])); ?>"
+    data-ai-propose-status-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose-status'])); ?>"
+    data-ai-propose-cancel-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose-cancel'])); ?>"
     data-ai-enabled="<?php echo !empty($aiEnabled) ? '1' : '0'; ?>"
     data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>"
     data-recatalog-csrf="<?php echo $escape($recatalogCsrf ?? ''); ?>">

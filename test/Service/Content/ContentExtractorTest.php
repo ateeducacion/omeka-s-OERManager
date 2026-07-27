@@ -79,6 +79,34 @@ final class ContentExtractorTest extends TestCase
         $this->assertArrayHasKey('broken.pdf', $content->skipped());
     }
 
+    /**
+     * TASK-024(b): en Alpine/musl `iconv` no soporta `//TRANSLIT`, así que
+     * smalot/pdfparser pierde el texto de las codificaciones que pasan por ahí
+     * —entre ellas WinAnsiEncoding, la más común en PDF— y devuelve vacío.
+     * Reportarlo como `pdf_empty` MIENTE: no es que el PDF no tenga texto, es
+     * que esta plataforma no sabe leerlo. El motivo debe distinguirlos.
+     */
+    public function testEmptyPdfOnPlatformWithoutTranslitIsReportedAsIconvUnsupported(): void
+    {
+        $file = $this->tempFile('sin-texto.pdf', self::minimalPdf(''));
+        $extractor = new ContentExtractor(['iconv_translit_supported' => false]);
+
+        $content = $extractor->extract('', [['path' => $file]]);
+
+        $this->assertSame('pdf_iconv_unsupported', $content->skipped()['sin-texto.pdf'] ?? null);
+    }
+
+    /** No regresión: en una plataforma sana, un PDF sin texto sigue siendo `pdf_empty`. */
+    public function testEmptyPdfOnHealthyPlatformIsStillReportedAsEmpty(): void
+    {
+        $file = $this->tempFile('sin-texto.pdf', self::minimalPdf(''));
+        $extractor = new ContentExtractor(['iconv_translit_supported' => true]);
+
+        $content = $extractor->extract('', [['path' => $file]]);
+
+        $this->assertSame('pdf_empty', $content->skipped()['sin-texto.pdf'] ?? null);
+    }
+
     public function testZipEntryIsExtracted(): void
     {
         $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);
@@ -254,6 +282,112 @@ final class ContentExtractorTest extends TestCase
         $this->assertStringContainsString('niveles de organización de la materia viva', $content->text());
         // sources() registra el fichero externo procesado (el ZIP), no las entradas.
         $this->assertContains('scorm.zip', $content->sources());
+    }
+
+    // --- Endurecimiento TASK-022 (diagnóstico con REAs reales, 2026-07-07) ---
+
+    public function testVendorNoisePathEntriesInZipAreSkipped(): void
+    {
+        // Caso #37129: los ZIP de herramientas de autor arrastran vendor completo
+        // (ckeditor samples, licencias, plugins) que entierra el contenido real.
+        $zip = $this->tempZip('scorm.zip', [
+            'ckeditor/samples/old/datafiltering.html' => '<p>Apollo 11 was the spaceflight sample</p>',
+            'pkg/plugins/wiris/readme.txt' => 'WIRIS plugin licensing boilerplate text',
+            'contenido/leccion.html' => '<p>Los porcentajes en la vida cotidiana</p>',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('porcentajes en la vida cotidiana', $content->text());
+        $this->assertStringNotContainsString('Apollo 11', $content->text());
+        $this->assertStringNotContainsString('WIRIS', $content->text());
+        $this->assertSame('noise_path', $content->skipped()['ckeditor/samples/old/datafiltering.html']);
+        $this->assertSame('noise_path', $content->skipped()['pkg/plugins/wiris/readme.txt']);
+    }
+
+    public function testNoiseSegmentMatchesDirectoriesNotFilenames(): void
+    {
+        // "fonts.html" es un FICHERO, no la carpeta fonts/: no debe denegarse.
+        $zip = $this->tempZip('p.zip', [
+            'fonts.html' => '<p>La tipografía en el arte contemporáneo</p>',
+            'fonts/license.txt' => 'Font license boilerplate to be ignored',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('tipografía en el arte contemporáneo', $content->text());
+        $this->assertStringNotContainsString('boilerplate', $content->text());
+    }
+
+    public function testNoiseEntriesDoNotConsumeEntryQuota(): void
+    {
+        // Caso #37129: ~900 entradas ckeditor quemaban max_zip_entries y el
+        // contenido real del final del ZIP ni se llegaba a leer.
+        $entries = [];
+        for ($i = 0; $i < 20; $i++) {
+            $entries["ckeditor/junk$i.html"] = '<p>editor sample</p>';
+        }
+        $entries['zz_contenido.txt'] = 'El contenido real del recurso educativo llega al final.';
+        $extractor = new ContentExtractor(['max_zip_entries' => 10]);
+        $zip = $this->tempZip('big.zip', $entries);
+        $content = $extractor->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('llega al final', $content->text());
+    }
+
+    public function testBudgetIsSharedFairlyAcrossPieces(): void
+    {
+        // Reparto equitativo: una pieza enorme (relleno) no expulsa la señal de
+        // las demás cuando el total excede el presupuesto (caso #37129). El
+        // relleno es incompresible para no disparar la defensa anti zip-bomb.
+        $zip = $this->tempZip('mix.zip', [
+            'aaa_relleno.txt' => bin2hex(random_bytes(12000)),
+            'zzz_senal.txt' => 'La fotosíntesis transforma la energía luminosa en energía química.',
+        ]);
+        $extractor = new ContentExtractor(['max_total_chars' => 2000]);
+        $content = $extractor->extract('', [['path' => $zip]]);
+        $this->assertTrue($content->isTruncated());
+        $this->assertStringContainsString('fotosíntesis', $content->text());
+        $this->assertLessThanOrEqual(2000, mb_strlen($content->text()));
+    }
+
+    public function testSingleSourceStillUsesFullBudget(): void
+    {
+        // Con una sola pieza no hay reparto: dispone del presupuesto completo
+        // (caso #40437, un único PDF bueno — un tope fijo por pieza lo mutilaría).
+        $file = $this->tempFile('guia.txt', str_repeat('palabra ', 1000));
+        $extractor = new ContentExtractor(['max_total_chars' => 5000]);
+        $content = $extractor->extract('', [['path' => $file]]);
+        $this->assertTrue($content->isTruncated());
+        $this->assertGreaterThan(4500, mb_strlen($content->text()));
+    }
+
+    public function testAuthoringToolIdentifiersInJsonAreFiltered(): void
+    {
+        // Caso #3181/#4359 (Netex): ids de interfaz que pasaban el filtro por longitud.
+        $json = json_encode([
+            'a' => 'navigationSectionInteracted',
+            'b' => 'imagelink_e7af877d2f1d45c1b82f1053778191fe',
+            'c' => 'interface_view_581-001_look_001',
+            'd' => 'Identificación de los orgánulos de la célula eucariota.',
+            'e' => 'ntx-text-font-style-normal-extra-largo',
+        ]);
+        $file = $this->tempFile('netex.json', (string) $json);
+        $content = (new ContentExtractor())->extract('', [['path' => $file]]);
+        $this->assertStringContainsString('orgánulos de la célula eucariota', $content->text());
+        $this->assertStringNotContainsString('navigationSectionInteracted', $content->text());
+        $this->assertStringNotContainsString('imagelink_', $content->text());
+        $this->assertStringNotContainsString('interface_view_581', $content->text());
+        $this->assertStringNotContainsString('ntx-text-font-style', $content->text());
+    }
+
+    public function testCssRuleStringsInJsonAreFiltered(): void
+    {
+        // Caso #37129: CSS embebido como string JSON (multi-palabra, pasaba el filtro).
+        $json = json_encode([
+            'css' => '.Wirisformula:not([width]) { vertical-align: middle !important; }',
+            'body' => 'El porcentaje expresa una proporción sobre cien unidades.',
+        ]);
+        $file = $this->tempFile('estilos.json', (string) $json);
+        $content = (new ContentExtractor())->extract('', [['path' => $file]]);
+        $this->assertStringContainsString('proporción sobre cien unidades', $content->text());
+        $this->assertStringNotContainsString('Wirisformula', $content->text());
+        $this->assertStringNotContainsString('!important', $content->text());
     }
 
     // --- helpers ---

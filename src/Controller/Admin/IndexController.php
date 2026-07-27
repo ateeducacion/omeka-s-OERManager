@@ -11,13 +11,14 @@ use Laminas\View\Model\ViewModel;
 use OERManager\ColumnType\AlignmentStatus;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
+use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
-use OERManager\Service\Llm\LlmException;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
 use Omeka\Api\Representation\ItemRepresentation;
+use Omeka\Job\Dispatcher;
 use Omeka\Permissions\Exception\PermissionDeniedException;
 use Omeka\Settings\Settings;
 
@@ -43,6 +44,8 @@ class IndexController extends AbstractActionController
     private MediaSourceInterface $mediaSource;
     private EvaluationScorer $scorer;
     private Settings $settings;
+    private Dispatcher $jobDispatcher;
+    private ProposalStore $proposalStore;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -52,7 +55,9 @@ class IndexController extends AbstractActionController
         AiCataloguer $aiCataloguer,
         MediaSourceInterface $mediaSource,
         EvaluationScorer $scorer,
-        Settings $settings
+        Settings $settings,
+        Dispatcher $jobDispatcher,
+        ProposalStore $proposalStore
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -62,6 +67,8 @@ class IndexController extends AbstractActionController
         $this->mediaSource = $mediaSource;
         $this->scorer = $scorer;
         $this->settings = $settings;
+        $this->jobDispatcher = $jobDispatcher;
+        $this->proposalStore = $proposalStore;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -213,11 +220,12 @@ class IndexController extends AbstractActionController
 
         $id = (int) $this->params()->fromPost('id');
         $alignment = $this->collectAlignment();
+        $justifications = $this->collectJustifications();
         $identity = $this->identity();
         $contributor = $identity ? $identity->getName() : 'unknown';
 
         try {
-            $result = $this->recatalogService->apply($id, $alignment, $contributor);
+            $result = $this->recatalogService->apply($id, $alignment, $contributor, $justifications);
         } catch (PermissionDeniedException $e) {
             return new JsonModel(['updated' => false, 'error' => 'denied']);
         } catch (\RuntimeException $e) {
@@ -259,24 +267,92 @@ class IndexController extends AbstractActionController
             return new JsonModel(['error' => 'not_found']);
         }
 
+        // Async (TASK-020): el propose encadena 7-9 llamadas al LLM y puede agotar
+        // el timeout del proxy (504, NFR-010). Se ejecuta como Job en 2º plano; el
+        // navegador sondea el estado. Aquí solo se despacha y se devuelve el jobId.
+        $this->proposalStore->sweepOld(3600); // limpia huérfanos oportunistamente
         try {
-            $proposal = $this->aiCataloguer->propose(
-                $this->itemMetadataText($item),
-                $this->mediaSource->filesFor($id)
-            );
-        } catch (LlmException $e) {
-            // Error del proveedor LLM: mensaje genérico (sin clave ni contenido).
-            return new JsonModel(['error' => 'llm']);
+            $job = $this->jobDispatcher->dispatch(\OERManager\Job\AiProposeJob::class, [
+                'item' => $id,
+            ]);
         } catch (\Exception $e) {
-            $this->logger->err('OERManager ai propose item ' . $id . ': ' . $e->getMessage());
-            return new JsonModel(['error' => 'unexpected']);
+            $this->logger->err('OERManager ai propose dispatch item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['error' => 'dispatch']);
         }
 
-        return new JsonModel([
-            'alignment' => $this->enrichLabels($proposal['alignment']),
-            'content' => $proposal['content'],
-            'debug' => $proposal['debug'],
-        ]);
+        return new JsonModel(['jobId' => (int) $job->getId()]);
+    }
+
+    /**
+     * Polling del propose asíncrono (TASK-020): devuelve el estado vivo del Job.
+     * Cruza el fichero de resultado con el estado nativo del Job para no colgar el
+     * sondeo si el Job muriera sin escribir (p. ej. PhpCli mal configurado).
+     */
+    public function aiProposeStatusAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return new JsonModel(['error' => 'method']);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        $jobId = (int) $this->params()->fromPost('jobId');
+        if ($jobId <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        // Control de acceso PRIMERO: la API de jobs acota por ACL (dueño/admin).
+        try {
+            $job = $this->api()->read('jobs', $jobId)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+
+        $native = (string) $job->status();
+        $finished = in_array($native, ['completed', 'error', 'stopped'], true);
+
+        $state = $this->proposalStore->read($jobId);
+        if (null !== $state) {
+            // Un `in_progress` con el Job YA terminado es un estado zombi: el Job
+            // murió sin escribir su resultado (OOM, proceso matado). Antes se
+            // devolvía tal cual y el navegador seguía sondeando «Analizando…»
+            // hasta el techo de 12 min: otro cuelgue sin causa visible (TASK-026).
+            // El Job escribe SIEMPRE su estado final antes de terminar, así que
+            // terminado + in_progress solo puede significar que se murió.
+            if ($finished && 'in_progress' === ($state['status'] ?? '')) {
+                return new JsonModel(['status' => 'error', 'code' => 'job_died']);
+            }
+            return new JsonModel($state); // in_progress / completed / error / stopped
+        }
+        // Sin fichero: cruzar con el estado nativo para no colgar el polling.
+        if (in_array($native, ['error', 'stopped'], true)) {
+            return new JsonModel(['status' => 'error', 'code' => 'job_' . $native]);
+        }
+        return new JsonModel(['status' => 'in_progress', 'step' => 'Iniciando…', 'done' => 0, 'total' => 5]);
+    }
+
+    /**
+     * Cancela un propose asíncrono en marcha (TASK-020). Dispatcher::stop solo pone
+     * el estado STOPPING; el Job lo ve entre fases y aborta sin propuesta parcial.
+     */
+    public function aiProposeCancelAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return new JsonModel(['error' => 'method']);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        $jobId = (int) $this->params()->fromPost('jobId');
+        if ($jobId <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        try {
+            $this->api()->read('jobs', $jobId); // valida propiedad por ACL
+            $this->jobDispatcher->stop($jobId);
+        } catch (\Exception $e) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+        return new JsonModel(['stopped' => true]);
     }
 
     /**
@@ -315,7 +391,8 @@ class IndexController extends AbstractActionController
             try {
                 $proposal = $this->aiCataloguer->propose(
                     $this->itemMetadataText($item),
-                    $this->mediaSource->filesFor($id)
+                    $this->mediaSource->filesFor($id),
+                    $this->mediaSource->imagesFor($id)
                 );
             } catch (\Exception $e) {
                 continue;
@@ -392,31 +469,6 @@ class IndexController extends AbstractActionController
         return implode("\n", array_values(array_unique($parts)));
     }
 
-    /**
-     * Resuelve los ids propuestos a {id,title} para que el panel pinte los chips.
-     *
-     * @param array<string,int[]> $alignment
-     * @return array<string,array<int,array{id:int,title:string}>>
-     */
-    private function enrichLabels(array $alignment): array
-    {
-        $out = [];
-        foreach ($alignment as $term => $ids) {
-            $list = [];
-            foreach ($ids as $id) {
-                try {
-                    $title = (string) $this->api()->read('items', (int) $id)->getContent()->displayTitle();
-                } catch (\Exception $e) {
-                    continue;
-                }
-                $list[] = ['id' => (int) $id, 'title' => $title];
-            }
-            if ($list) {
-                $out[$term] = $list;
-            }
-        }
-        return $out;
-    }
 
     /**
      * Alineamiento curricular/tags actual del item (verdad-terreno de evaluación).
@@ -456,5 +508,33 @@ class IndexController extends AbstractActionController
             }
         }
         return $alignment;
+    }
+
+    /**
+     * Recoge del POST la justificación IA por saber/criterio (TASK-023): mapa
+     * term => {itemId => texto}, solo para lrmi:teaches/lrmi:assesses. El POST es
+     * manipulable, así que se castea el id a int, se acota el texto y se descartan
+     * las entradas vacías; la integridad del alineamiento la garantiza aparte
+     * RecatalogService::invalidTargets().
+     *
+     * @return array<string,array<int,string>>
+     */
+    private function collectJustifications(): array
+    {
+        $posted = (array) $this->params()->fromPost('justification', []);
+        $out = [];
+        foreach (['lrmi:teaches', 'lrmi:assesses'] as $term) {
+            if (!isset($posted[$term]) || !is_array($posted[$term])) {
+                continue;
+            }
+            foreach ($posted[$term] as $id => $text) {
+                $itemId = (int) $id;
+                $reason = trim(mb_substr((string) $text, 0, 200));
+                if ($itemId > 0 && '' !== $reason) {
+                    $out[$term][$itemId] = $reason;
+                }
+            }
+        }
+        return $out;
     }
 }

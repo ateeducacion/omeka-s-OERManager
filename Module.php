@@ -4,6 +4,8 @@ namespace OERManager;
 
 use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
+use Laminas\ModuleManager\Feature\InitProviderInterface;
+use Laminas\ModuleManager\ModuleManagerInterface;
 use Laminas\Mvc\Controller\AbstractController;
 use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
@@ -18,8 +20,34 @@ use Omeka\Module\AbstractModule;
  * (items lrmi:LearningResource). Vista maestra (TASK-003), integridad
  * (TASK-005) y re-catalogador curricular/tags (TASK-004).
  */
-class Module extends AbstractModule
+class Module extends AbstractModule implements InitProviderInterface
 {
+    /**
+     * Registra el autoloader de las dependencias propias del módulo
+     * (smalot/pdfparser, TASK-010).
+     *
+     * Omeka NO autocarga el `vendor/` de un módulo y el core no trae pdfparser:
+     * sin esto la clase no existe en runtime, `ContentExtractor::parsePdf()`
+     * captura el Error y marca TODO PDF como `pdf_unreadable` en silencio
+     * (defecto hallado en la verificación en contenedor de TASK-019/022,
+     * 2026-07-22). Los tests del host no lo detectaban porque `test/phpunit.xml`
+     * bootstrapea `vendor/autoload.php` directamente.
+     *
+     * `Omeka\Module\AbstractModule` solo implementa `ConfigProviderInterface`, y
+     * el `InitTrigger` de Laminas solo invoca `init()` sobre un
+     * `InitProviderInterface`: por eso la interfaz se declara explícitamente.
+     *
+     * El guard mantiene el módulo cargable si se distribuye sin `vendor/`
+     * (`composer.json` §archive.exclude): la extracción de PDF se degrada, pero
+     * el módulo no revienta.
+     */
+    public function init(ModuleManagerInterface $manager): void
+    {
+        if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+            require_once __DIR__ . '/vendor/autoload.php';
+        }
+    }
+
     public function getConfig()
     {
         return include __DIR__ . '/config/module.config.php';
@@ -130,6 +158,20 @@ class Module extends AbstractModule
             LlmSettings::CONTENT_TOKEN_CAP,
             LlmSettings::DEFAULT_CONTENT_TOKEN_CAP
         );
+        // Perfil de inferencia compartido (paridad entre proveedores).
+        $data[LlmSettings::TEMPERATURE] = $settings->get(LlmSettings::TEMPERATURE);
+        $data[LlmSettings::MAX_TOKENS] = $settings->get(LlmSettings::MAX_TOKENS, LlmSettings::DEFAULT_MAX_TOKENS);
+        // Capa de contexto del LLM (ADR-0011): extracción/visión.
+        $data[LlmSettings::EXTRACTION_MODEL] = $settings->get(LlmSettings::EXTRACTION_MODEL);
+        $data[LlmSettings::VISION_ENABLED] = (bool) $settings->get(LlmSettings::VISION_ENABLED);
+        $data[LlmSettings::VISION_MAX_IMAGES] = $settings->get(
+            LlmSettings::VISION_MAX_IMAGES,
+            LlmSettings::DEFAULT_VISION_MAX_IMAGES
+        );
+        $data[LlmSettings::VISION_MAX_PDF_BYTES] = $settings->get(
+            LlmSettings::VISION_MAX_PDF_BYTES,
+            LlmSettings::DEFAULT_VISION_MAX_PDF_BYTES
+        );
         $form->setData($data);
         return $renderer->formCollection($form);
     }
@@ -161,6 +203,28 @@ class Module extends AbstractModule
         $settings->set(LlmSettings::MODEL, trim((string) ($params[LlmSettings::MODEL] ?? '')));
         $cap = (int) ($params[LlmSettings::CONTENT_TOKEN_CAP] ?? 0);
         $settings->set(LlmSettings::CONTENT_TOKEN_CAP, $cap > 0 ? $cap : LlmSettings::DEFAULT_CONTENT_TOKEN_CAP);
+
+        // Perfil de inferencia compartido: temperatura vacía/no válida = no enviar.
+        $temperature = LlmSettings::parseTemperature($params[LlmSettings::TEMPERATURE] ?? null);
+        $settings->set(LlmSettings::TEMPERATURE, null === $temperature ? '' : (string) $temperature);
+        $settings->set(LlmSettings::MAX_TOKENS, LlmSettings::parseMaxTokens($params[LlmSettings::MAX_TOKENS] ?? null));
+
+        // Capa de contexto del LLM (ADR-0011): modelo de extracción + visión. La
+        // visión arranca apagada (egress de binarios a un tercero); el modelo de
+        // extracción vacío cae al del clasificador (lo resuelve la factoría).
+        $settings->set(LlmSettings::EXTRACTION_MODEL, trim((string) ($params[LlmSettings::EXTRACTION_MODEL] ?? '')));
+        $settings->set(LlmSettings::VISION_ENABLED, !empty($params[LlmSettings::VISION_ENABLED]));
+        $maxImages = (int) ($params[LlmSettings::VISION_MAX_IMAGES] ?? 0);
+        $settings->set(
+            LlmSettings::VISION_MAX_IMAGES,
+            $maxImages > 0 ? $maxImages : LlmSettings::DEFAULT_VISION_MAX_IMAGES
+        );
+        // Tope de envío de PDF a visión, separado del de parseo (TASK-025).
+        $settings->set(
+            LlmSettings::VISION_MAX_PDF_BYTES,
+            LlmSettings::parseVisionMaxPdfBytes($params[LlmSettings::VISION_MAX_PDF_BYTES] ?? null)
+        );
+
         // Clave API write-only: solo se sobrescribe si llega un valor no vacío.
         $apiKey = (string) ($params[LlmSettings::API_KEY] ?? '');
         if ('' !== trim($apiKey)) {

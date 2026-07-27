@@ -40,6 +40,54 @@ final class ResponseParser
     }
 
     /**
+     * Como parseIndices pero conservando la justificación por índice (pasos finos,
+     * TASK-023). Degradante: acepta la forma {"i":n,"why":"…"}, tolera "why"
+     * ausente y enteros pelados (el modelo puede ignorar la instrucción); nunca se
+     * pierde una selección por el formato. Descarta índices <=0, duplicados
+     * (el primero gana) y valores no numéricos.
+     *
+     * @return array<int,string> índice 1-based => justificación ('' si falta)
+     */
+    public function parseSelections(string $text): array
+    {
+        $data = $this->decodeObject($text);
+        if (!is_array($data) || !isset($data['selected']) || !is_array($data['selected'])) {
+            return [];
+        }
+        $out = [];
+        foreach ($data['selected'] as $item) {
+            $index = null;
+            $why = '';
+            if (is_array($item)) {
+                $index = $this->toIndex($item['i'] ?? null);
+                $why = is_string($item['why'] ?? null) ? trim($item['why']) : '';
+            } else {
+                $index = $this->toIndex($item);
+            }
+            if (null !== $index && $index > 0 && !array_key_exists($index, $out)) {
+                $out[$index] = $why;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Normaliza un valor a índice entero (int o string numérica), o null.
+     *
+     * @param mixed $value
+     */
+    private function toIndex(mixed $value): ?int
+    {
+        if (is_int($value)) {
+            return $value;
+        }
+        if (is_string($value) && 1 === preg_match('/^-?\d+$/', trim($value))) {
+            return (int) trim($value);
+        }
+        return null;
+    }
+
+    /**
      * Decodifica el primer objeto JSON del texto. Intenta el texto completo y,
      * si no es un objeto, extrae el tramo entre la primera '{' y la última '}'
      * (cubre prosa alrededor y fences ```json ... ```).

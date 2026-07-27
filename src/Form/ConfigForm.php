@@ -149,5 +149,107 @@ class ConfigForm extends Form
                 'step' => 100,
             ],
         ]);
+
+        // Perfil de inferencia compartido (paridad entre proveedores): sin fijarlo,
+        // cada proveedor aplica sus defaults y los resultados divergen entre
+        // ejecuciones y entre proveedores (ficha destilada y selecciones).
+        $this->add([
+            'name' => LlmSettings::TEMPERATURE,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Temperatura (ambos proveedores)', // @translate
+                'info' => 'Se envía idéntica en todas las llamadas; 0–0.2 da resultados repetibles en '
+                    . 'modelos que la aceptan (p. ej. Haiku 4.5, Sonnet 4.6). OJO: Sonnet 5, Opus 4.6+ '
+                    . 'y Fable 5 la RECHAZAN con error 400 — con esos modelos déjala en blanco '
+                    . '(= no enviar; ambos proveedores usan su default).', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::TEMPERATURE,
+                'min' => 0,
+                'max' => 2,
+                'step' => 0.1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::MAX_TOKENS,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Tope de tokens de la respuesta (max_tokens)', // @translate
+                'info' => 'Tope de salida por llamada, idéntico en ambos proveedores. Si el modelo '
+                    . 'razona o la ficha es larga y se agota, la respuesta llega truncada.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::MAX_TOKENS,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->addVisionFields();
+    }
+
+    /**
+     * Capa de contexto del LLM (ADR-0011): modelo de extracción/destilado barato y
+     * visión (top-N imágenes + rescate de PDF escaneado). La visión está APAGADA por
+     * defecto por privacidad: al activarla, los binarios de los medios salen hacia un
+     * tercero (el proveedor LLM).
+     */
+    private function addVisionFields(): void
+    {
+        $this->add([
+            'name' => LlmSettings::EXTRACTION_MODEL,
+            'type' => 'Text',
+            'options' => [
+                'label' => 'Modelo de extracción/visión', // @translate
+                'info' => 'Modelo barato (vision-capable) para destilar la ficha y describir imágenes; '
+                    . 'si se deja en blanco, se reutiliza el modelo del clasificador.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::EXTRACTION_MODEL],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_ENABLED,
+            'type' => 'Checkbox',
+            'options' => [
+                'label' => 'Activar visión (imágenes y PDF escaneado)', // @translate
+                'info' => 'Envía los binarios de los medios al proveedor LLM. Apagada por defecto '
+                    . '(privacidad). Requiere un proveedor/modelo con soporte de visión.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::VISION_ENABLED],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_MAX_IMAGES,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Máximo de imágenes por recurso', // @translate
+                'info' => 'Número de imágenes (las mayores) que se envían a visión por recurso.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::VISION_MAX_IMAGES,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::VISION_MAX_PDF_BYTES,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Tope de PDF para visión (bytes)', // @translate
+                'info' => 'Tamaño máximo del PDF que se ENVÍA al proveedor como '
+                    . 'documento para visión (por defecto 33554432 = 32 MB, el '
+                    . 'límite de Anthropic). Es distinto del tope de parseo interno '
+                    . '(20 MB, guarda de seguridad, no configurable): un PDF entre '
+                    . 'ambos topes se rescata por visión previa confirmación del '
+                    . 'curador; por encima de este, no.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::VISION_MAX_PDF_BYTES,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
     }
 }

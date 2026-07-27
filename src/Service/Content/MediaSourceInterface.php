@@ -16,4 +16,13 @@ interface MediaSourceInterface
      * @return array<int,array{path:string,mediaType:string,name:string}>
      */
     public function filesFor(int $itemId): array;
+
+    /**
+     * Medios de imagen del item, candidatos a la visión (ADR-0011): se localizan
+     * aparte de la cascada de texto y se acompañan del tamaño en bytes para que el
+     * filtro heurístico (descarta ruido + top-N por tamaño) decida cuáles enviar.
+     *
+     * @return array<int,array{path:string,mediaType:string,name:string,size:int}>
+     */
+    public function imagesFor(int $itemId): array;
 }

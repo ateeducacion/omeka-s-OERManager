@@ -26,6 +26,12 @@ class RecatalogService
         'dcterms:relation',
     ];
 
+    /** Dimensiones cuyo valor puede llevar justificación de la IA (TASK-023). */
+    private const JUSTIFIABLE_TERMS = ['lrmi:teaches', 'lrmi:assesses'];
+
+    /** Tope de longitud de la justificación anotada (defensa en profundidad). */
+    private const MAX_REASON_CHARS = 200;
+
     /** @var array<string,int|null> caché term => property_id */
     private array $propertyIds = [];
 
@@ -70,9 +76,11 @@ class RecatalogService
      * auditoría dcterms sobre cada valor. Lanza si algún destino no existe.
      *
      * @param array<string,array<int|string>> $proposed
+     * @param array<string,array<int,string>> $justifications term => {itemId => texto}
+     *   justificación IA por saber/criterio (TASK-023); se anota como dcterms:description
      * @return array{updated:bool,properties:string[]}
      */
-    public function apply(int $itemId, array $proposed, string $contributor): array
+    public function apply(int $itemId, array $proposed, string $contributor, array $justifications = []): array
     {
         $now = (new \DateTimeImmutable())->format('c');
         $data = [];
@@ -100,7 +108,14 @@ class RecatalogService
             $clear[] = $propertyId;
             $properties[] = $term;
             if ($ids) {
-                $data[$term] = $this->buildValues($propertyId, $ids, $contributor, $now, $term);
+                $data[$term] = $this->buildValues(
+                    $propertyId,
+                    $ids,
+                    $contributor,
+                    $now,
+                    $term,
+                    $justifications[$term] ?? []
+                );
             }
         }
         if (!$clear) {
@@ -125,17 +140,26 @@ class RecatalogService
 
     /**
      * @param int[] $ids
+     * @param array<int,string> $justForTerm justificación IA por itemId (TASK-023)
      * @return array<int,array<string,mixed>>
      */
-    private function buildValues(int $propertyId, array $ids, string $contributor, string $when, string $term): array
-    {
+    private function buildValues(
+        int $propertyId,
+        array $ids,
+        string $contributor,
+        string $when,
+        string $term,
+        array $justForTerm = []
+    ): array {
+        $justifiable = in_array($term, self::JUSTIFIABLE_TERMS, true);
         $values = [];
         foreach ($ids as $targetId) {
+            $reason = $justifiable ? trim((string) ($justForTerm[$targetId] ?? '')) : '';
             $values[] = [
                 'type' => 'resource:item',
                 'property_id' => $propertyId,
                 'value_resource_id' => $targetId,
-                '@annotation' => $this->annotation($contributor, $when, $term),
+                '@annotation' => $this->annotation($contributor, $when, $term, $reason),
             ];
         }
         return $values;
@@ -144,11 +168,13 @@ class RecatalogService
     /**
      * Auditoría RDF nativa (ADR-0002): quién/cuándo/qué sobre el valor curado.
      * El formato '@annotation' está verificado contra la instalación real
-     * (2026-06-25): se escribe correctamente como value annotation.
+     * (2026-06-25): se escribe correctamente como value annotation. Si hay
+     * justificación de la IA (TASK-023), se añade como dcterms:description (el
+     * «porqué», distinto del «qué» de dcterms:provenance), acotada en longitud.
      *
      * @return array<string,array<int,array<string,mixed>>>
      */
-    private function annotation(string $contributor, string $when, string $term): array
+    private function annotation(string $contributor, string $when, string $term, string $reason = ''): array
     {
         $annotation = [];
         $map = [
@@ -156,6 +182,9 @@ class RecatalogService
             'dcterms:modified' => $when,
             'dcterms:provenance' => sprintf('OERManager re-catalogación de %s', $term),
         ];
+        if ('' !== $reason) {
+            $map['dcterms:description'] = mb_substr($reason, 0, self::MAX_REASON_CHARS);
+        }
         foreach ($map as $annTerm => $literal) {
             $annPropertyId = $this->propertyId($annTerm);
             if (null === $annPropertyId) {

@@ -18,6 +18,9 @@ final class OmekaMediaSource implements MediaSourceInterface
     /** Extensiones que el extractor sabe tratar (resto se omite ya aquí). */
     private const WHITELIST = ['txt', 'html', 'htm', 'xml', 'pdf', 'zip', 'json'];
 
+    /** Extensiones de imagen candidatas a visión (ADR-0011). */
+    private const IMAGE_WHITELIST = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
     public function __construct(private ApiManager $api, private StoreInterface $store)
     {
     }
@@ -43,13 +46,50 @@ final class OmekaMediaSource implements MediaSourceInterface
             if (null === $path || !is_file($path)) {
                 continue;
             }
+            // `size` lo consume AiCataloguer para decidir si un PDF grande es
+            // confirmable por visión o queda fuera de alcance (TASK-025), sin que
+            // el orquestador toque el sistema de ficheros.
+            $size = filesize($path);
             $files[] = [
                 'path' => $path,
                 'mediaType' => (string) $media->mediaType(),
                 'name' => (string) ($media->source() ?: $filename),
+                'size' => false === $size ? 0 : $size,
             ];
         }
         return $files;
+    }
+
+    public function imagesFor(int $itemId): array
+    {
+        try {
+            $item = $this->api->read('items', $itemId)->getContent();
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        $images = [];
+        foreach ($item->media() as $media) {
+            $filename = (string) $media->filename();
+            if ('' === $filename) {
+                continue;
+            }
+            if (!in_array(strtolower((string) $media->extension()), self::IMAGE_WHITELIST, true)) {
+                continue;
+            }
+            $path = $this->localPath('original/' . $filename);
+            if (null === $path || !is_file($path)) {
+                continue;
+            }
+            $size = filesize($path);
+            $images[] = [
+                'path' => $path,
+                'mediaType' => (string) $media->mediaType(),
+                'name' => (string) ($media->source() ?: $filename),
+                'size' => false === $size ? 0 : $size,
+            ];
+        }
+        return $images;
     }
 
     /**

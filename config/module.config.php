@@ -30,7 +30,9 @@ return [
                     $container->get(Service\Ai\AiCataloguer::class),
                     $container->get(Service\Content\MediaSourceInterface::class),
                     $container->get(Service\Ai\EvaluationScorer::class),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class)
                 );
             },
         ],
@@ -104,28 +106,122 @@ return [
                 );
                 return new Service\Content\ContentExtractor(['max_total_chars' => max(2000, $cap * 4)]);
             },
+            // Perfil de inferencia compartido (paridad entre proveedores): el mismo
+            // max_tokens + temperature en TODOS los pasos y por ambos adaptadores;
+            // temperatura vacía = no enviar (default del proveedor).
             Service\Ai\CurricularClassifier::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\CurricularClassifier(
                     $container->get(Service\Llm\LlmClientInterface::class),
                     $container->get(Service\Ai\TermResolverInterface::class),
                     $container->get(Service\Ai\PromptBuilder::class),
-                    $container->get(Service\Ai\ResponseParser::class)
+                    $container->get(Service\Ai\ResponseParser::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
                 );
             },
             Service\Ai\TagClassifier::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
                 return new Service\Ai\TagClassifier(
                     $container->get(Service\Llm\LlmClientInterface::class),
                     $container->get(Service\Ai\TermResolverInterface::class),
                     $container->get(Service\Ai\PromptBuilder::class),
-                    $container->get(Service\Ai\ResponseParser::class)
+                    $container->get(Service\Ai\ResponseParser::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
                 );
+            },
+            // Cliente LLM de extracción (barato, vision-capable; ADR-0011). Reusa
+            // el mismo proveedor/endpoint/clave/transporte que el clasificador, con
+            // EXTRACTION_MODEL (si está vacío, cae a MODEL). Clave de servicio propia:
+            // convive con el cliente del clasificador (LlmClientInterface).
+            'OERManager\Llm\ExtractionClient' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $transport = $container->get(Service\Llm\HttpTransportInterface::class);
+                $model = (string) $settings->get(Service\Llm\LlmSettings::EXTRACTION_MODEL, '');
+                if ('' === $model) {
+                    $model = (string) $settings->get(Service\Llm\LlmSettings::MODEL, '');
+                }
+                $config = [
+                    'api_key' => (string) $settings->get(Service\Llm\LlmSettings::API_KEY, ''),
+                    'model' => $model,
+                    'base_url' => (string) $settings->get(Service\Llm\LlmSettings::BASE_URL, ''),
+                ];
+                $provider = (string) $settings->get(
+                    Service\Llm\LlmSettings::PROVIDER,
+                    Service\Llm\LlmSettings::PROVIDER_ANTHROPIC
+                );
+                if (Service\Llm\LlmSettings::PROVIDER_OPENAI === $provider) {
+                    return new Service\Llm\OpenAiCompatibleClient($transport, $config);
+                }
+                return new Service\Llm\AnthropicClient($transport, $config);
+            },
+            // Destilador fiel (ADR-0011): ficha del recurso con el modelo de extracción.
+            Service\Ai\ContextDistiller::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                return new Service\Ai\ContextDistiller(
+                    $container->get('OERManager\Llm\ExtractionClient'),
+                    $container->get(Service\Ai\PromptBuilder::class),
+                    Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
+                );
+            },
+            // Extractor de visión (ADR-0011): top-N imágenes + rescate de PDF escaneado
+            // con el modelo de extracción. Apagado por defecto (VISION_ENABLED off):
+            // egress de binarios a un tercero. El gating por capacidad del proveedor lo
+            // resuelve el propio extractor (supportsImages()/supportsPdf()).
+            Service\Content\MediaVisionExtractor::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                return new Service\Content\MediaVisionExtractor(
+                    $container->get('OERManager\Llm\ExtractionClient'),
+                    $container->get(Service\Ai\PromptBuilder::class),
+                    (bool) $settings->get(Service\Llm\LlmSettings::VISION_ENABLED, false),
+                    (int) $settings->get(
+                        Service\Llm\LlmSettings::VISION_MAX_IMAGES,
+                        Service\Llm\LlmSettings::DEFAULT_VISION_MAX_IMAGES
+                    ),
+                    maxTokens: Service\Llm\LlmSettings::parseMaxTokens(
+                        $settings->get(Service\Llm\LlmSettings::MAX_TOKENS)
+                    ),
+                    temperature: Service\Llm\LlmSettings::parseTemperature(
+                        $settings->get(Service\Llm\LlmSettings::TEMPERATURE)
+                    ),
+                    // Tope de envío del BINARIO del PDF (camino de respaldo): solo
+                    // gobierna el bloque `document` nativo, que ya casi no se usa
+                    // porque el PDF viaja rasterizado (TASK-026).
+                    maxPdfBytes: Service\Llm\LlmSettings::parseVisionMaxPdfBytes(
+                        $settings->get(Service\Llm\LlmSettings::VISION_MAX_PDF_BYTES)
+                    ),
+                    rasterizer: $container->get(Service\Content\PdfRasterizerInterface::class)
+                );
+            },
+            // Rasterizador de PDF (TASK-026): convierte las primeras páginas en JPEG
+            // con el mismo Imagick que usa Omeka para las derivadas. Sin la extensión
+            // devuelve vacío y la visión cae al camino nativo del proveedor.
+            Service\Content\PdfRasterizerInterface::class => function () {
+                return new Service\Content\ImagickPdfRasterizer();
             },
             Service\Ai\AiCataloguer::class => function ($container) {
                 return new Service\Ai\AiCataloguer(
                     $container->get(Service\Content\ContentExtractor::class),
+                    $container->get(Service\Content\MediaVisionExtractor::class),
+                    $container->get(Service\Ai\ContextDistiller::class),
                     $container->get(Service\Ai\CurricularClassifier::class),
                     $container->get(Service\Ai\TagClassifier::class)
                 );
+            },
+            // Ensambla itemId → payload del navegador; lo reutiliza el AiProposeJob
+            // en 2º plano (TASK-020).
+            Service\Ai\ProposeRunner::class => function ($container) {
+                return new Service\Ai\ProposeRunner(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Ai\AiCataloguer::class),
+                    $container->get(Service\Content\MediaSourceInterface::class)
+                );
+            },
+            // Canal de estado/resultado del propose asíncrono (fichero privado, TASK-020).
+            Service\Ai\ProposalStore::class => function ($container) {
+                return new Service\Ai\ProposalStore(sys_get_temp_dir() . '/oer-manager-proposals');
             },
         ],
     ],

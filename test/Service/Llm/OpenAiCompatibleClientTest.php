@@ -70,11 +70,144 @@ final class OpenAiCompatibleClientTest extends TestCase
         $this->assertSame(4, $result->outputTokens());
     }
 
+    public function testTranslatesImagePartToImageUrlAndSkipsDocument(): void
+    {
+        // Imágenes → image_url (data URL); el PDF no es representable aquí y se omite
+        // (el gating de visión/PDF lo decide el extractor por capacidad, ADR-0011).
+        $transport = new FakeTransport($this->okResult());
+        $client = new OpenAiCompatibleClient($transport, ['api_key' => 'k', 'model' => 'm', 'base_url' => 'http://x/v1']);
+        $client->chat([[
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'describe'],
+                ['type' => 'image', 'media_type' => 'image/png', 'data' => 'BASE64IMG'],
+                ['type' => 'document', 'media_type' => 'application/pdf', 'data' => 'BASE64PDF'],
+            ],
+        ]]);
+
+        $this->assertSame([
+            ['type' => 'text', 'text' => 'describe'],
+            ['type' => 'image_url', 'image_url' => ['url' => 'data:image/png;base64,BASE64IMG']],
+        ], $transport->decodedBody()['messages'][0]['content']);
+    }
+
+    public function testReportsImageButNotPdfCapability(): void
+    {
+        $client = new OpenAiCompatibleClient(
+            new FakeTransport($this->okResult()),
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'http://x/v1']
+        );
+        $this->assertTrue($client->supportsImages());
+        $this->assertFalse($client->supportsPdf());
+    }
+
+    public function testReportsPdfCapabilityOnOpenRouter(): void
+    {
+        // OpenRouter acepta PDF de entrada (content part `file`, procesado nativo
+        // en modelos Anthropic) → el rescate de PDF escaneado (ADR-0011) se
+        // habilita también por este camino. Cierra la divergencia de ADR-0012.
+        $client = new OpenAiCompatibleClient(
+            new FakeTransport($this->okResult()),
+            ['api_key' => 'k', 'model' => 'anthropic/claude-haiku-4.5', 'base_url' => 'https://openrouter.ai/api/v1']
+        );
+        $this->assertTrue($client->supportsPdf());
+    }
+
+    public function testTranslatesDocumentToFilePartOnOpenRouter(): void
+    {
+        $transport = new FakeTransport($this->okResult());
+        $client = new OpenAiCompatibleClient($transport, [
+            'api_key' => 'k',
+            'model' => 'anthropic/claude-haiku-4.5',
+            'base_url' => 'https://openrouter.ai/api/v1',
+        ]);
+
+        $client->chat([[
+            'role' => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => 'describe'],
+                ['type' => 'document', 'media_type' => 'application/pdf', 'data' => 'BASE64PDF'],
+            ],
+        ]]);
+
+        $this->assertSame([
+            ['type' => 'text', 'text' => 'describe'],
+            ['type' => 'file', 'file' => [
+                'filename' => 'document.pdf',
+                'file_data' => 'data:application/pdf;base64,BASE64PDF',
+            ]],
+        ], $transport->decodedBody()['messages'][0]['content']);
+    }
+
+    public function testDisablesReasoningOnOpenRouter(): void
+    {
+        // Paridad con Anthropic directo (razonamiento off por defecto): OpenRouter
+        // puede traer reasoning activado según el modelo (default_enabled), así que
+        // se apaga explícitamente con su parámetro documentado {"effort":"none"}.
+        $transport = new FakeTransport($this->okResult());
+        $client = new OpenAiCompatibleClient($transport, [
+            'api_key' => 'k',
+            'model' => 'anthropic/claude-opus-4.8',
+            'base_url' => 'https://openrouter.ai/api/v1',
+        ]);
+
+        $client->chat([['role' => 'user', 'content' => 'x']]);
+
+        $this->assertSame(['effort' => 'none'], $transport->decodedBody()['reasoning']);
+    }
+
+    public function testNoReasoningParamOnGenericEndpoints(): void
+    {
+        // Los endpoints genéricos (vLLM, Ollama…) pueden rechazar parámetros no
+        // estándar: el apagado de reasoning solo se envía a OpenRouter.
+        $transport = new FakeTransport($this->okResult());
+        $client = new OpenAiCompatibleClient($transport, [
+            'api_key' => 'k',
+            'model' => 'm',
+            'base_url' => 'http://localhost:8080/v1',
+        ]);
+
+        $client->chat([['role' => 'user', 'content' => 'x']]);
+
+        $this->assertArrayNotHasKey('reasoning', $transport->decodedBody());
+    }
+
     public function testThrowsOnErrorStatus(): void
     {
         $transport = new FakeTransport(new HttpResult(500, '{"error":"boom"}'));
         $client = new OpenAiCompatibleClient($transport, ['api_key' => 'k', 'model' => 'm']);
         $this->expectException(LlmException::class);
         $client->chat([['role' => 'user', 'content' => 'x']]);
+    }
+
+    public function testThrowsOnErrorBodyWithSuccessStatus(): void
+    {
+        // TASK-026: OpenRouter puede devolver 200 con el error EN EL CUERPO. Leer
+        // solo `choices[0].message.content` lo convertía en una cadena vacía que
+        // el pipeline aceptaba en silencio: 10 min de espera y cero diagnóstico.
+        $transport = new FakeTransport(
+            new HttpResult(200, '{"error":{"message":"El fichero excede el tamaño admitido","code":413}}')
+        );
+        $client = new OpenAiCompatibleClient(
+            $transport,
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'https://openrouter.ai/api/v1']
+        );
+
+        $this->expectException(LlmException::class);
+        $this->expectExceptionMessageMatches('/excede el tamaño admitido/');
+        $client->chat([['role' => 'user', 'content' => 'x']]);
+    }
+
+    public function testEmptyChoicesIsNotMistakenForAnError(): void
+    {
+        // Una respuesta legítima sin texto (el modelo no dijo nada) NO es un error
+        // del proveedor: se devuelve vacía y quien llama decide.
+        $transport = new FakeTransport(new HttpResult(200, '{"choices":[{"message":{"content":""}}]}'));
+        $client = new OpenAiCompatibleClient(
+            $transport,
+            ['api_key' => 'k', 'model' => 'm', 'base_url' => 'https://openrouter.ai/api/v1']
+        );
+
+        $this->assertSame('', $client->chat([['role' => 'user', 'content' => 'x']])->text());
     }
 }
