@@ -83,6 +83,10 @@ class IndexController extends AbstractActionController
 
     public function indexAction()
     {
+        // Orden por defecto de `oer_items` (TASK-028, D5): escribe sort_by y
+        // sort_order en la request si no vienen, así que ha de ir ANTES de leer
+        // la query. Es el patrón del core (cfr. Admin\ItemController::browseAction).
+        $this->browse()->setDefaults('oer_items');
         $query = $this->params()->fromQuery();
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
         $response = $this->api()->search('items', $searchParams);

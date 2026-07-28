@@ -10,21 +10,11 @@
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
-$columnTypeManager = $this->browse()->getBrowseService()->getColumnTypeManager();
 /** @var bool $isPartialFilter */
 /** @var string $csrfToken */
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
 $this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERManager'));
-
-$columns = [
-    ['name' => 'is_public', 'type' => $columnTypeManager->get('is_public'), 'data' => []],
-    ['name' => 'stage', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'lrmi:educationalLevel', 'max_values' => 1]],
-    ['name' => 'subject', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'schema:about', 'max_values' => 1]],
-    ['name' => 'alignment', 'type' => $columnTypeManager->get('oerAlignmentStatus'), 'data' => []],
-    ['name' => 'licence', 'type' => $columnTypeManager->get('value'), 'data' => ['property_term' => 'dcterms:rights', 'max_values' => 1]],
-    ['name' => 'modified', 'type' => $columnTypeManager->get('modified'), 'data' => []],
-];
 ?>
 <?php echo $this->pageTitle($translate('OER Manager')); ?>
 
@@ -53,6 +43,7 @@ $columns = [
 </form>
 
 <div class="browse-controls">
+    <?php echo $this->browse()->renderSortSelector('oer_items'); ?>
     <?php echo $this->pagination(); ?>
 </div>
 
@@ -85,9 +76,7 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
         <tr>
             <th><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
             <th><?php echo $translate('Título'); ?></th>
-            <?php foreach ($columns as $column): ?>
-            <th><?php echo $escape($column['type']->renderHeader($this, $column['data'])); ?></th>
-            <?php endforeach; ?>
+            <?php echo $this->browse()->renderHeaderRow('oer_items'); ?>
         </tr>
     </thead>
     <tbody>
@@ -100,9 +89,7 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
                     <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
                 </ul>
             </td>
-            <?php foreach ($columns as $column): ?>
-            <td class="column-<?php echo $escape($column['name']); ?>"><?php echo $column['type']->renderContent($this, $item, $column['data']); ?></td>
-            <?php endforeach; ?>
+            <?php echo $this->browse()->renderContentRow('oer_items', $item); ?>
         </tr>
         <?php endforeach; ?>
     </tbody>

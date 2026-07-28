@@ -272,10 +272,42 @@ return [
             ],
         ],
     ],
-    // Vista maestra v1 (TASK-003, ADR-0005): indicador de alineamiento.
+    // Vista maestra (TASK-003/028): tipos propios bajo la clave `oer_items`,
+    // que es independiente de la del browse nativo de items.
     'column_types' => [
         'invokables' => [
             'oerAlignmentStatus' => ColumnType\AlignmentStatus::class,
+            'oerIsPublic' => ColumnType\IsPublic::class,
+            'oerModified' => ColumnType\Modified::class,
+            'oerId' => ColumnType\Id::class,
+            'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
+        ],
+        'factories' => [
+            // Value necesita FormElementManager y ApiManager, igual que el del core.
+            'oerValue' => function ($container) {
+                return new ColumnType\Value(
+                    $container->get('FormElementManager'),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
+        ],
+    ],
+    // Mismas seis columnas que la v1; el reequilibrio de ADR-0013 es posterior.
+    'column_defaults' => [
+        'admin' => [
+            'oer_items' => [
+                ['type' => 'oerIsPublic'],
+                ['type' => 'oerValue', 'property_term' => 'lrmi:educationalLevel', 'max_values' => 1],
+                ['type' => 'oerValue', 'property_term' => 'schema:about', 'max_values' => 1],
+                ['type' => 'oerAlignmentStatus'],
+                ['type' => 'oerValue', 'property_term' => 'dcterms:rights', 'max_values' => 1],
+                ['type' => 'oerModified'],
+            ],
+        ],
+    ],
+    'browse_defaults' => [
+        'admin' => [
+            'oer_items' => ['sort_by' => 'modified', 'sort_order' => 'desc'],
         ],
     ],
 ];
