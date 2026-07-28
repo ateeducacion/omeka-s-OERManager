@@ -48,7 +48,7 @@ class RecatalogService
      * Diff entre el alineamiento actual y el propuesto, sin escribir nada.
      *
      * @param array<string,array<int|string>> $proposed term => ids de item-término
-     * @return array<string,array{current:int[],next:int[],added:int[],removed:int[],invalid:int[]}>
+     * @return array<string,array{current:int[],next:int[],added:int[],removed:int[],invalid:int[],titles:array<int,string>}>
      */
     public function preview(int $itemId, array $proposed): array
     {
@@ -58,14 +58,20 @@ class RecatalogService
             if (!array_key_exists($term, $proposed)) {
                 continue;
             }
-            $current = $this->currentTargetIds($item, $term);
+            $currentTargets = $this->currentTargets($item, $term);
+            $current = $currentTargets['ids'];
+            $titles = $currentTargets['titles'];
             $next = $this->normalizeIds($proposed[$term]);
+            $invalid = $this->invalidTargets($term, $next, $titles);
             $diff[$term] = [
                 'current' => $current,
                 'next' => $next,
                 'added' => array_values(array_diff($next, $current)),
                 'removed' => array_values(array_diff($current, $next)),
-                'invalid' => $this->invalidTargets($term, $next),
+                'invalid' => $invalid,
+                // D7: el cliente necesita títulos para que el curador confirme
+                // viendo QUÉ cambia, no solo cuántos.
+                'titles' => $titles,
             ];
         }
         return $diff;
@@ -200,19 +206,22 @@ class RecatalogService
     }
 
     /**
-     * @return int[]
+     * @return array{ids:int[],titles:array<int,string>}
      */
-    private function currentTargetIds(ItemRepresentation $item, string $term): array
+    private function currentTargets(ItemRepresentation $item, string $term): array
     {
         $ids = [];
+        $titles = [];
         foreach ($item->value($term, ['all' => true, 'default' => []]) as $value) {
             $resource = $value->valueResource();
             if ($resource) {
-                $ids[] = $resource->id();
+                $id = (int) $resource->id();
+                $ids[] = $id;
+                $titles[$id] = (string) $resource->displayTitle();
             }
         }
         sort($ids);
-        return $ids;
+        return ['ids' => $ids, 'titles' => $titles];
     }
 
     /**
@@ -234,9 +243,11 @@ class RecatalogService
      * el id exista: debe ser un término de ESA dimensión.
      *
      * @param int[] $ids
+     * @param array<int,string> $titles se rellena por referencia con el título de
+     *   los destinos que sí existen, para no releerlos luego (D7)
      * @return int[]
      */
-    private function invalidTargets(string $term, array $ids): array
+    private function invalidTargets(string $term, array $ids, array &$titles = []): array
     {
         $invalid = [];
         foreach ($ids as $id) {
@@ -246,6 +257,7 @@ class RecatalogService
                 $invalid[] = $id;
                 continue;
             }
+            $titles[(int) $id] = (string) $item->displayTitle();
             if (!$this->matchesDimension($term, $item)) {
                 $invalid[] = $id;
             }
