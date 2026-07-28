@@ -124,6 +124,56 @@ class Module extends AbstractModule implements InitProviderInterface
             'api.update.post',
             [$this, 'handleItemPostSave']
         );
+        // Columnas y orden por defecto de la vista maestra, configurables por
+        // cada curador desde su perfil (TASK-028). Se usa la clave propia
+        // `oer_items`: compartir la de `items` haría que configurar esta tabla
+        // cambiase el browse nativo del admin, y al revés.
+        $sharedEventManager->attach(
+            \Omeka\Form\UserForm::class,
+            'form.add_elements',
+            [$this, 'addBrowseConfigElements']
+        );
+    }
+
+    /**
+     * Añade al perfil del usuario los dos campos que gobiernan la vista maestra.
+     *
+     * Van al fieldset `user-settings`, no a la raíz del formulario: el
+     * UserController solo persiste como user settings lo que llega bajo esa
+     * clave, así que colgarlos de la raíz los pintaría sin llegar a guardarlos.
+     * Los nombres son los que Omeka\Stdlib\Browse compone al leer los settings
+     * (`columns_admin_oer_items`, `browse_defaults_admin_oer_items`), y los
+     * grupos son los que el propio UserForm ya declara.
+     */
+    public function addBrowseConfigElements(Event $event): void
+    {
+        /** @var \Omeka\Form\UserForm $form */
+        $form = $event->getTarget();
+        $userId = $form->getOption('user_id');
+        $settingsFieldset = $form->get('user-settings');
+
+        $settingsFieldset->add([
+            'name' => 'columns_admin_oer_items',
+            'type' => \Omeka\Form\Element\Columns::class,
+            'options' => [
+                'element_group' => 'columns',
+                'label' => 'Columnas de la vista maestra de REA', // @translate
+                'columns_context' => 'admin',
+                'columns_resource_type' => 'oer_items',
+                'columns_user_id' => $userId,
+            ],
+        ]);
+        $settingsFieldset->add([
+            'name' => 'browse_defaults_admin_oer_items',
+            'type' => \Omeka\Form\Element\BrowseDefaults::class,
+            'options' => [
+                'element_group' => 'browse_defaults',
+                'label' => 'Orden por defecto de la vista maestra de REA', // @translate
+                'browse_defaults_context' => 'admin',
+                'browse_defaults_resource_type' => 'oer_items',
+                'browse_defaults_user_id' => $userId,
+            ],
+        ]);
     }
 
     /**
