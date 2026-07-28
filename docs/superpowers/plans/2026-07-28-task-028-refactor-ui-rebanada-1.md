@@ -16,7 +16,7 @@
 - **Sin tablas Doctrine propias** (NFR-002). Sin PHPStan ni Psalm.
 - **Sin dependencias nuevas de npm**: `package.json` con `type: module` y **cero dependencias**. Sin bundler.
 - **Frontera dura del JS**: ningún fichero de `asset/js/core/` puede mencionar `$`, `jQuery`, `document`, `window`, `fetch` ni `localStorage`.
-- **Sin cambios de comportamiento** salvo los cinco defectos que la rebanada cierra. El re-catalogador y el propose IA deben comportarse igual.
+- **Sin cambios de comportamiento en el re-catalogador ni en el propose IA**: son el componente de alto riesgo y deben comportarse exactamente igual. Fuera de ahí, los únicos cambios permitidos son los cinco defectos que la rebanada cierra y la nueva disposición de los filtros (decisión D-5). *(Acotación decidida por el propietario el 2026-07-28: la redacción anterior, «sin cambios de comportamiento» a secas, contradecía la tarea 15.)*
 - Namespace de tests PHP: `OERManager\Test\…`, `declare(strict_types=1)`, clases `final`.
 - Los textos de UI van en español y marcados para i18n (`// @translate` en PHP, `Omeka.jsTranslate(...)` en JS).
 - Autorización vigente del propietario: **se puede editar el `Makefile`** solo para añadir el target de tests de JS.
@@ -631,7 +631,8 @@ git commit -m "test(js): resumen de extracción y merge de la propuesta IA como 
 
 **Ficheros**
 - Modificar: `src/Service/RecatalogService.php` (`preview()`, `currentTargetIds()`, `invalidTargets()`)
-- Test: `test/Service/RecatalogServicePreviewTitlesTest.php` (crear)
+
+> **Esta tarea no lleva test automático, y es deliberado** (decisión del propietario, 2026-07-28). `RecatalogService` depende del core de Omeka y el arnés del host no puede instanciarlo — la misma limitación documentada en TASK-003. Un test que construyera a mano la estructura esperada pasaría desde el primer momento sin ejercitar código de producción: da falsa cobertura y ensucia la suite. **El cambio se valida solo en contenedor (paso 4)** y así queda declarado en el gobierno de la tarea 16.
 
 **Interfaces**
 - Produce: `preview()` devuelve por dimensión, además de lo que ya devolvía, `'titles' => array<int,string>` (id → título) que cubre `current ∪ next`. Lo consume la tarea 6.
@@ -640,54 +641,7 @@ git commit -m "test(js): resumen de extracción y merge de la propuesta IA como 
 
 Los títulos salen **sin lecturas nuevas**: los de `current` del `valueResource()` que ya se recorre, y los de `next` del `api->read()` por id que `invalidTargets()` ya ejecuta.
 
-- [ ] **Paso 1: escribir el test que falla**
-
-`test/Service/RecatalogServicePreviewTitlesTest.php`. Usa dobles de la API construidos con `createMock` sobre las interfaces del core; si el arnés del host no puede instanciarlas, marca el test `markTestSkipped` con el motivo y **verifica el cambio en contenedor** (es el mismo límite documentado en TASK-003).
-
-```php
-<?php
-
-declare(strict_types=1);
-
-namespace OERManager\Test\Service;
-
-use PHPUnit\Framework\TestCase;
-
-/**
- * D7 (TASK-028): el preview debe devolver los títulos, no solo ids. Confirmar
- * una escritura RDF viendo «+3 / −1» era el punto débil del flujo.
- */
-final class RecatalogServicePreviewTitlesTest extends TestCase
-{
-    public function testDiffCarriesATitleMapForCurrentAndNext(): void
-    {
-        $diff = [
-            'schema:about' => [
-                'current' => [7],
-                'next' => [9],
-                'added' => [9],
-                'removed' => [7],
-                'invalid' => [],
-                'titles' => [7 => 'Matemáticas (1º ESO)', 9 => 'Física y Química (3º ESO)'],
-            ],
-        ];
-
-        // Contrato que consume diffModel.js: todo id de current y next tiene título.
-        foreach (array_merge($diff['schema:about']['current'], $diff['schema:about']['next']) as $id) {
-            $this->assertArrayHasKey($id, $diff['schema:about']['titles']);
-        }
-    }
-}
-```
-
-> Este test fija el **contrato**; la verificación de que `preview()` lo cumple con datos reales es de contenedor (paso 5).
-
-- [ ] **Paso 2: ejecutar y verificar el estado de partida**
-
-Ejecuta: `make test`
-Esperado: PASS (el test de contrato pasa desde el principio; documenta la forma esperada).
-
-- [ ] **Paso 3: implementar en `RecatalogService`**
+- [ ] **Paso 1: implementar en `RecatalogService`**
 
 Cambia `currentTargetIds()` para que devuelva también títulos y ajusta `preview()`:
 
@@ -756,19 +710,19 @@ Y en `preview()`:
 
 **Ojo:** `apply()` también llama a `invalidTargets()`. Al tener el tercer parámetro valor por defecto, esa llamada sigue funcionando sin cambios. Comprueba que no queda ninguna llamada a `currentTargetIds()`; si `apply()` la usaba, sustitúyela por `$this->currentTargets(...)['ids']`.
 
-- [ ] **Paso 4: ejecutar lint y tests**
+- [ ] **Paso 2: ejecutar lint y tests**
 
 Ejecuta: `make lint && make test`
 Esperado: ambos en verde, sin regresión en los tests existentes de `RecatalogService`.
 
-- [ ] **Paso 5: verificar en contenedor**
+- [ ] **Paso 3: verificar en contenedor**
 
 Reutiliza el arnés de `test/container/`: lanza un `recatalog-preview` real sobre el item **#3181** con una dimensión modificada y comprueba en el JSON de respuesta que `diff['schema:about']['titles']` trae los títulos de los ids de `current` y `next`.
 
-- [ ] **Paso 6: commit**
+- [ ] **Paso 4: commit**
 
 ```bash
-git add src/Service/RecatalogService.php test/Service/RecatalogServicePreviewTitlesTest.php
+git add src/Service/RecatalogService.php
 git commit -m "feat(recatalog): el preview devuelve títulos además de ids (D7, mitad servidor)"
 ```
 
