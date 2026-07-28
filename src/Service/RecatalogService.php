@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use Omeka\Api\Manager as ApiManager;
+use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Settings\Settings;
 
@@ -28,6 +29,25 @@ class RecatalogService
 
     /** Dimensiones cuyo valor puede llevar justificación de la IA (TASK-023). */
     private const JUSTIFIABLE_TERMS = ['lrmi:teaches', 'lrmi:assesses'];
+
+    /**
+     * Aristas al ancestro que desambigua un item-término (D7), en orden de
+     * preferencia: el Curso cuando existe —Asignatura vía lrmi:educationalLevel,
+     * Saber/Criterio vía la denormalizada lrmi:educationalAlignment (ADR-0009)— y,
+     * si no, el conjunto al que pertenece (Curso→Etapa, Eje→su DefinedTermSet).
+     */
+    private const QUALIFIER_TERMS = [
+        'lrmi:educationalLevel',
+        'lrmi:educationalAlignment',
+        'schema:inDefinedTermSet',
+    ];
+
+    /**
+     * Dimensión que NO se califica: los ejes son un vocabulario plano y todos
+     * cuelgan del mismo DefinedTermSet, así que el sufijo sería constante («…
+     * (Categorías de REAs)») y alargaría cada línea sin desambiguar nada.
+     */
+    private const UNQUALIFIED_TERM = 'dcterms:relation';
 
     /** Tope de longitud de la justificación anotada (defensa en profundidad). */
     private const MAX_REASON_CHARS = 200;
@@ -217,11 +237,39 @@ class RecatalogService
             if ($resource) {
                 $id = (int) $resource->id();
                 $ids[] = $id;
-                $titles[$id] = (string) $resource->displayTitle();
+                $titles[$id] = $this->qualifiedTitle($resource, $term);
             }
         }
         sort($ids);
         return ['ids' => $ids, 'titles' => $titles];
+    }
+
+    /**
+     * Título del item-término con su ancestro entre paréntesis (D7). El currículo
+     * repite el mismo título de asignatura en cada curso (p. ej. «Conocimiento del
+     * Medio Natural, Social y cultural» existe en 3º, 4º y 5º de Primaria), así que
+     * un diff que liste solo títulos le muestra al curador líneas idénticas que no
+     * puede distinguir. Sin lecturas nuevas por id: la arista se recorre sobre la
+     * representación que ya se tenía.
+     */
+    private function qualifiedTitle(AbstractResourceEntityRepresentation $target, string $dimension): string
+    {
+        $title = (string) $target->displayTitle();
+        if (self::UNQUALIFIED_TERM === $dimension) {
+            return $title;
+        }
+        foreach (self::QUALIFIER_TERMS as $term) {
+            $value = $target->value($term);
+            $ancestor = $value ? $value->valueResource() : null;
+            if (null === $ancestor) {
+                continue;
+            }
+            $ancestorTitle = trim((string) $ancestor->displayTitle());
+            if ('' !== $ancestorTitle) {
+                return $title . ' (' . $ancestorTitle . ')';
+            }
+        }
+        return $title;
     }
 
     /**
@@ -257,7 +305,7 @@ class RecatalogService
                 $invalid[] = $id;
                 continue;
             }
-            $titles[(int) $id] = (string) $item->displayTitle();
+            $titles[(int) $id] = $this->qualifiedTitle($item, $term);
             if (!$this->matchesDimension($term, $item)) {
                 $invalid[] = $id;
             }
