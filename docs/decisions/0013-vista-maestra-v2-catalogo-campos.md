@@ -41,22 +41,67 @@ Además se detectaron defectos con impacto de gobierno: el filtro de tipo de rec
 
 8. **Los filtros curriculares dejan de pedir IDs numéricos** y reutilizan el autocompletado `search-terms` ya existente, que respeta NFR-004 (búsqueda incremental, nunca el árbol completo).
 
+9. **Sembrar, no poseer** — propiedad de los vocabularios y de la plantilla. Ver §«Sembrar, no poseer» más abajo.
+
+## Sembrar, no poseer (resuelve PEND-012 y el mecanismo de PEND-011)
+
+ADR-0006 fijó que el módulo **consume** vocabularios identificados por un ID en la configuración, «sin descubrimiento automático», y CLAUDE.md lo generaliza: *el currículo ya existe, el módulo lo consume, no lo posee ni lo modifica*. Ese principio resuelve el currículo y los ejes, pero **no cubre un caso nuevo**: el vocabulario de licencias y la plantilla REA **no existen y no son de nadie**. Consumir algo que no existe es no hacer nada.
+
+**Regla:** el módulo **siembra lo que falta y consume lo que ya está**; en ambos casos, lo que use se identifica por **ID en un setting**, nunca por etiqueta (las etiquetas cambian con i18n y con la edición del admin).
+
+| Artefacto | ¿Existe? | Decisión |
+| --- | --- | --- |
+| Currículo y ejes (`DefinedTerm`/`DefinedTermSet`) | Sí | Consumir por ID — ya decidido en ADR-0006 |
+| CustomVocab de **tipos de recurso** | **Sí** — `custom_vocab` id 1, «Tipos de recursos», 29 términos en 7 familias | **Consumir por ID. El módulo NO lo crea**: duplicarlo competiría con el que alguien ya diseñó. El trabajo es **migrar** los 9 literales libres a esos términos |
+| CustomVocab de **licencias** | **No** | **Sembrar bajo demanda**, con contenido inicial sensato; a partir de ahí es del admin |
+| **Plantilla REA** (`resource_template`) | **No** | **Sembrar bajo demanda**, y solo después de decidir sus campos obligatorios |
+
+**Cómo se siembra:**
+
+1. **Nunca en `install()`.** Crear datos en silencio al instalar es intrusivo en un sitio con convenciones propias, y en el caso de la plantilla sería crearla *antes* de decidir sus campos obligatorios, que es justo la trampa de §8.1 del estudio. Se crea **bajo demanda desde el formulario de configuración**, con acción idempotente que no duplica si ya existe.
+2. **`upgrade()` jamás re-siembra ni corrige** el contenido. Una vez creado, el vocabulario o la plantilla son dato del admin, editables desde la UI nativa de Omeka. El módulo no los sobrescribe en ninguna versión futura.
+3. **Degradación explícita**: si el setting está vacío o el artefacto ya no existe, el campo cae a texto libre y **la UI lo dice**, en vez de romper. Es el patrón que ya usa `CurriculumSearch`, que devuelve `[]` cuando su setting está sin configurar.
+
+**El setting de plantilla desactiva la trampa.** Hoy `IntegrityChecker` solo distingue «tiene plantilla / no tiene», de modo que *cualquier* plantilla cambia las reglas de validación. Conociendo cuál es **la** plantilla REA, pasa a distinguir tres casos:
+
+| Situación del item | Comportamiento |
+| --- | --- |
+| Tiene **la** plantilla REA | Valida sus campos obligatorios |
+| Tiene **otra** plantilla | Aplica la regla mínima **y avisa**: «plantilla inesperada» |
+| Sin plantilla | Aplica la regla mínima |
+
+**Crear la plantilla ≠ asignarla.** Asignarla a los REA existentes es una escritura masiva sobre el catálogo: va como acción de lote con previsualización, confirmación y auditoría, nunca de forma automática. **Criterio de aceptación de esa asignación:** tras aplicarla, los 18 avisos de «sin licencia» **deben seguir apareciendo**. Si desaparecen, la plantilla no marca como obligatorio lo que debe y se ha silenciado el problema en vez de resolverlo.
+
+### Settings nuevos
+
+| Setting | Contenido | Nota |
+| --- | --- | --- |
+| `oermanager_licence_vocab_id` | ID del CustomVocab de licencias | Decidido desde ADR-0004 §5, nunca implementado |
+| `oermanager_resource_type_vocab_id` | ID del CustomVocab de tipos de recurso | Apunta al **id 1 ya existente** |
+| `oermanager_rea_template_id` | ID de la plantilla REA | Habilita los tres casos de integridad de arriba |
+| `oermanager_default_rights_holder` | Titular de derechos por defecto | Deriva del modelo de autoría de RF-015 |
+
+### Dependencia de CustomVocab
+
+CustomVocab es un módulo opcional de Omeka. Se opta por **dependencia blanda**: `module.ini` **no** la declara; el módulo detecta si está activa y, si no lo está, los campos de licencia y tipo degradan a texto libre y la acción de sembrar no se ofrece. El resto del módulo (alineamiento, IA, integridad) funciona igual. Declararla como dependencia dura impediría instalar OERManager sin ella, lo que es desproporcionado para una función entre varias.
+
 ## Consecuencias
 
 - **Abre RF-015** (datos de gestión y autoría del REA): es un hueco de gobierno real, nunca convertido en requisito, y bloquea la columna de autoría, su filtro, su sección del drawer y su acción de lote.
-- **La configuración del módulo gana settings**: CustomVocab de licencias, CustomVocab de tipos de recurso y titular de derechos por defecto. El primero estaba decidido desde ADR-0004 y nunca llegó a `ConfigForm`.
+- **La configuración del módulo gana cuatro settings** (ver §«Sembrar, no poseer»): los CustomVocab de licencias y de tipos de recurso, la plantilla REA y el titular de derechos por defecto. El de licencias estaba decidido desde ADR-0004 y nunca llegó a `ConfigForm`.
+- **`Module::install()` sigue vacío** y `upgrade()` sin migraciones: la siembra es bajo demanda desde la configuración, no en el ciclo de instalación.
 - **La ACL necesita granularidad**: hoy `Module::onBootstrap` concede a `editor` el controlador entero sin lista de privilegios, de modo que una acción nueva de proyecto sería alcanzable por `editor` por herencia, contra NFR-003. Editar la ficha de gestión obliga a revisarlo.
 - **Los filtros computados exigen un patrón nuevo** (resolver ids → evaluar predicado → paginar en memoria, con tope duro). Sin él se propaga el defecto actual del filtro «parcial», cuyo total es aproximado.
 - **La agregación de los contadores es la misma que pide RF-007** para los gráficos de TASK-006: debe construirse compartida.
 - **El historial no es un log**: la anotación vive en el valor, así que no muestra eliminaciones. La reversibilidad real sigue siendo TASK-007, con la que esta UI se acopla naturalmente.
-- **Riesgo registrado — plantilla REA**: `IntegrityChecker` cambia de reglas si el item tiene plantilla. Asignar una que no marque licencia y alineamiento como obligatorios **silenciaría de golpe los avisos actuales de los 19 REA**. No se aplica plantilla sin definir antes sus campos obligatorios.
+- **Riesgo registrado y mitigado — plantilla REA**: `IntegrityChecker` cambia de reglas si el item tiene plantilla, así que asignar una que no marque licencia y alineamiento como obligatorios **silenciaría de golpe los avisos actuales de los 19 REA**. Se mitiga con el setting `oermanager_rea_template_id` (tres casos de validación) y con el criterio de aceptación de la asignación en lote. Sigue en pie la regla: no se aplica plantilla sin definir antes sus campos obligatorios.
 - **Riesgo registrado — higiene masiva**: promover literales a enlace, normalizar el `type` genérico de 44 valores o normalizar licencias reescribe RDF ya escrito sobre el catálogo entero. ADR-0002 no contempla cómo se anota una *corrección* frente a una re-catalogación: exige ADR propio antes de abordarse.
 - **No se da superficie a `ai-evaluate`**: existe como endpoint sin UI, es síncrono y puede encadenar decenas de llamadas al LLM. Darle un botón invitaría a lanzarlo sin dimensionar su coste; exigiría antes convertirlo en Job, como se hizo con el propose en TASK-020.
 
 ## Decisiones que este ADR deja abiertas
 
-- **PEND-011** — contenido del vocabulario de licencias (¿etiquetas con versión?, ¿URI canónica en `dcterms:license`?).
-- **PEND-012** — ¿se crea y se aplica una plantilla REA, y con qué campos obligatorios?
+- **PEND-011** — **solo el contenido** del vocabulario de licencias: qué valores exactos, si llevan versión (`CC BY-SA 4.0` frente al actual `ccbysa`) y si se acompañan de la URI canónica en `dcterms:license`. El **mecanismo** (CustomVocab identificado por setting, sembrado bajo demanda) queda resuelto por este ADR.
+- **PEND-012** — **resuelto por este ADR** (2026-07-28) en cuanto a *quién crea qué y cuándo*: el módulo siembra la plantilla bajo demanda, la identifica por setting y nunca la asigna automáticamente. Queda abierto **solo qué campos marca como obligatorios**, que es una decisión editorial del propietario y condición previa a crearla.
 - **PEND-013** — ¿se muestra la justificación pedagógica de la IA en el historial de lo ya confirmado? Es un caso distinto del panel de propuesta, donde la decisión vigente de TASK-023 (no mostrarla, para no anclar al curador) **no se toca**.
 
 ## Fuentes
