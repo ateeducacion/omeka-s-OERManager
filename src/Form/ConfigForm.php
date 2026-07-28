@@ -4,6 +4,7 @@ namespace OERManager\Form;
 
 use Laminas\Form\Form;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 
 /**
@@ -70,7 +71,78 @@ class ConfigForm extends Form
             ]);
         }
 
+        $this->addGovernanceFields();
         $this->addLlmFields();
+    }
+
+    /**
+     * Gobernanza del catálogo (ADR-0013, «sembrar, no poseer»): vocabularios de
+     * licencia y tipo de recurso, plantilla REA y titular de derechos por defecto.
+     *
+     * Todo se identifica por **id, nunca por etiqueta**: las etiquetas cambian con
+     * el idioma y con la edición del admin. Dejar un campo vacío no rompe nada —
+     * el campo correspondiente degrada a texto libre (patrón de CurriculumSearch).
+     */
+    private function addGovernanceFields(): void
+    {
+        $this->add([
+            'name' => GovernanceSettings::LICENCE_VOCAB_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'CustomVocab de licencias (dcterms:rights)', // @translate
+                'info' => 'ID del CustomVocab con las licencias admitidas. Si se deja vacío, '
+                    . 'la licencia se edita como texto libre y no se puede normalizar.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::LICENCE_VOCAB_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'CustomVocab de tipos de recurso (lrmi:learningResourceType)', // @translate
+                'info' => 'ID del CustomVocab con los tipos de recurso. El módulo NO lo crea: '
+                    . 'se apunta al vocabulario que ya exista en la instalación.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => GovernanceSettings::REA_TEMPLATE_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Plantilla de los REA (resource_template)', // @translate
+                'info' => 'ID de la plantilla propia de los REA. Sirve para distinguirla de '
+                    . 'cualquier otra plantilla al comprobar la integridad: un REA con otra '
+                    . 'plantilla se valida con la regla mínima y se avisa.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::REA_TEMPLATE_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
+            'type' => 'Text',
+            'options' => [
+                'label' => 'Titular de derechos por defecto (dcterms:rightsHolder)', // @translate
+                'info' => 'Valor que se propone al rellenar la ficha de un REA.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
+                'maxlength' => GovernanceSettings::MAX_RIGHTS_HOLDER_LEN,
+            ],
+        ]);
     }
 
     /**

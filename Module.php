@@ -11,6 +11,7 @@ use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Renderer\PhpRenderer;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Module\AbstractModule;
@@ -22,6 +23,29 @@ use Omeka\Module\AbstractModule;
  */
 class Module extends AbstractModule implements InitProviderInterface
 {
+    /**
+     * Settings de gobernanza que identifican un artefacto por id (ADR-0013):
+     * se cargan y se guardan igual, con el mismo parser, así que van en bucle.
+     * El titular de derechos va aparte porque es texto, no id.
+     *
+     * Es un MÉTODO y no una constante de clase a propósito: Laminas instancia
+     * este Module (ModuleResolverListener) ANTES de registrar el autoloading
+     * PSR-4 del módulo, así que una constante que referencie
+     * `GovernanceSettings::` se evalúa cuando esa clase todavía no existe y el
+     * arranque muere con «Class not found» (verificado en el contenedor,
+     * 2026-07-28). Dentro de un método se resuelve al invocarlo, ya tarde.
+     *
+     * @return string[]
+     */
+    private function governanceIdSettings(): array
+    {
+        return [
+            GovernanceSettings::LICENCE_VOCAB_ID,
+            GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+            GovernanceSettings::REA_TEMPLATE_ID,
+        ];
+    }
+
     /**
      * Registra el autoloader de las dependencias propias del módulo
      * (smalot/pdfparser, TASK-010).
@@ -148,6 +172,13 @@ class Module extends AbstractModule implements InitProviderInterface
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $data[$setting] = $settings->get($setting);
         }
+        // Gobernanza del catálogo (ADR-0013): vocabularios, plantilla y titular.
+        foreach ($this->governanceIdSettings() as $setting) {
+            $data[$setting] = $settings->get($setting);
+        }
+        $data[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = $settings->get(
+            GovernanceSettings::DEFAULT_RIGHTS_HOLDER
+        );
         // Conexión LLM (TASK-010). La clave API NO se devuelve en claro (write-only):
         // el campo se deja en blanco; solo se actualiza si el admin introduce un valor.
         $data[LlmSettings::ENABLED] = (bool) $settings->get(LlmSettings::ENABLED);
@@ -190,6 +221,17 @@ class Module extends AbstractModule implements InitProviderInterface
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $settings->set($setting, trim((string) ($params[$setting] ?? '')));
         }
+
+        // Gobernanza del catálogo (ADR-0013). Los artefactos se identifican por id;
+        // un valor vacío o no numérico se guarda como null = «sin configurar», que
+        // hace degradar el campo a texto libre en vez de romper.
+        foreach ($this->governanceIdSettings() as $setting) {
+            $settings->set($setting, GovernanceSettings::parseId($params[$setting] ?? null));
+        }
+        $settings->set(
+            GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
+            GovernanceSettings::parseRightsHolder($params[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] ?? null)
+        );
 
         // Conexión LLM (TASK-010, ADR-0008).
         $settings->set(LlmSettings::ENABLED, !empty($params[LlmSettings::ENABLED]));
