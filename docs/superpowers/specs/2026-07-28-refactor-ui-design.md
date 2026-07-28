@@ -88,7 +88,9 @@ El filtro está **muerto por construcción**: usa operador `res` (enlace a item)
 
 Arreglo: operador `res` → `eq`, y control numérico → **desplegable del CustomVocab**. El vocabulario **ya existe** (`custom_vocab` id 1, «Tipos de recursos», 29 términos en 7 familias) y **el módulo no crea nada**: solo lo consume.
 
-Entra por tanto un único setting de ADR-0013, `oermanager_resource_type_vocab_id`, que es el único de los cuatro **sin bloqueos** —no depende de PEND-011 ni de sembrar artefacto alguno—.
+**El setting ya existe.** `GovernanceSettings::RESOURCE_TYPE_VOCAB_ID` (`oermanager_resource_type_vocab_id`), su parser `parseId()`, su campo en `ConfigForm` y su persistencia en `Module::handleConfigForm` se entregaron en el commit `55da9b6`. Esta rebanada **no añade ningún setting**: añade el **primer consumidor** de uno que hoy se guarda y nadie lee. Es además el único de los cuatro sin bloqueos —no depende de PEND-011 ni de sembrar artefacto alguno—.
+
+La lectura del vocabulario va contra la API de CustomVocab: `read('custom_vocabs', $id)` y `listValues()` sobre la representación.
 
 **Degradación explícita**, siguiendo el patrón de `CurriculumSearch`: si CustomVocab no está activo, el setting está vacío o el vocabulario ya no existe, el campo cae a texto libre **y la UI lo dice**. Dependencia blanda, como fija ADR-0013: `module.ini` no la declara.
 
@@ -111,6 +113,22 @@ Híbrida, sobre el esqueleto nativo:
 - `browse-controls` (paginación + selector de orden) y el patrón `batch-form` del core para las acciones de lote.
 
 Motivo del híbrido: con 9 filtros la barra actual ya va justa y ADR-0013 añadirá al menos 4 más; mover todo a búsqueda avanzada, en cambio, cobraría un viaje a otra pantalla por cada filtrado.
+
+### 3.6 Títulos en el preview del re-catalogador (mitad servidor de D7)
+
+`RecatalogService::preview()` devuelve hoy solo ids. Para que el curador vea **qué** se añade y se quita antes de confirmar una escritura RDF, el diff de cada dimensión gana una clave `titles` con el mapa `id → título`:
+
+```php
+$diff[$term] = [
+    'current' => $current, 'next' => $next,
+    'added' => …, 'removed' => …, 'invalid' => …,
+    'titles' => $titles,   // id → título, para current ∪ next
+];
+```
+
+Se añade **sin coste de lectura nueva**: los títulos de `current` salen de `$value->valueResource()->displayTitle()` en el mismo recorrido que ya hace `currentTargetIds()`, y los de `next` del `api->read()` por id que `invalidTargets()` ya ejecuta. Un id inválido simplemente no aparece en el mapa, y el cliente cae a mostrar el id.
+
+**Cambio aditivo:** `added`, `removed`, `current`, `next` e `invalid` conservan su forma de arrays de ids, así que `apply()` y los tests existentes del preview no se ven afectados.
 
 ---
 
@@ -159,7 +177,9 @@ Testable sin red ni proveedor: el techo de 240 intentos, que `in_progress` reint
 
 **`messages.js`**: unifica los tres mapas duplicados en uno, con un solo fallback.
 
-**`diffModel.js`**: aquí entra **D7**. Hoy el diff pinta `+N/−M` aunque el backend ya devuelve `added`, `removed` e `invalid` **con títulos**. El modelo los expone por dimensión y `ui/recatalog.js` los pinta. Confirmar una escritura RDF viendo solo un recuento era el punto débil del flujo preview→confirmar, y se arregla **sin tocar el backend**.
+**`diffModel.js`**: aquí entra **D7**, la parte cliente. El modelo traduce la respuesta del preview a filas por dimensión con los títulos de lo añadido, lo quitado y lo inválido, y `ui/recatalog.js` las pinta. Confirmar una escritura RDF viendo solo un recuento era el punto débil del flujo preview→confirmar.
+
+> **Corrección al estudio de TASK-027.** Su descripción de D7 dice que «el backend ya devuelve `current`/`next`/`added`/`removed` con títulos». **No es cierto**: `RecatalogService::preview()` devuelve arrays de **ids** —`currentTargetIds()` recoge `$resource->id()` y `normalizeIds()` hace `intval`—, y ningún título llega al navegador. D7 necesita por tanto el cambio de servidor de §3.6, no solo el de cliente.
 
 **`drawerModel.js`**: traduce el JSON del item a filas. **Mantiene el comportamiento actual** —los nueve campos fijos, y omitir los vacíos— sin cambiarlo. El estado vacío explícito que pide ADR-0013 §1.2 es de la rebanada siguiente, y este modelo es exactamente el punto donde entrará.
 
@@ -244,7 +264,8 @@ También los settings de ADR-0013 **salvo** `oermanager_resource_type_vocab_id`,
 
 ## 10. Consecuencias de gobierno
 
-- **Un setting nuevo** en `ConfigForm`: `oermanager_resource_type_vocab_id`. Los otros tres de ADR-0013 esperan a su rebanada.
+- **Ningún setting nuevo.** Los cuatro de ADR-0013 ya se entregaron en `55da9b6`; esta rebanada estrena el **primer consumidor** de `oermanager_resource_type_vocab_id`. Los otros tres siguen guardándose sin lector hasta su rebanada.
+- **Dos correcciones al estudio de TASK-027**, ambas verificadas en el código: el preview **no** devuelve títulos (§3.6) y el setting del vocabulario de tipos **ya existía**. Conviene tenerlas presentes al planificar las rebanadas siguientes, que se apoyan en el mismo estudio.
 - **`Makefile` editable para este fin**, por autorización expresa del propietario (2026-07-28), levantando puntualmente la prohibición de CLAUDE.md. Alcance: añadir el target de tests de JS, nada más.
 - **`ci.yml` gana un paso** de tests de JS (TASK-014 está cerrada; esto es una adición, no un rediseño del workflow).
 - **`package.json` nuevo**, mínimo, con `type: module` y **cero dependencias**. No cambia `make package`: los tests viven bajo `test/js/` y `composer.json` ya excluye `/test` del ZIP de release. Queda una decisión menor de empaquetado —si `package.json` se excluye también o viaja en el ZIP, donde es inofensivo—, que se resuelve al implementar.
