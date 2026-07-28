@@ -40,3 +40,6 @@ jobs:
 
       - name: Run unit tests
         run: make test
+
+      - name: Run JS core tests
+        run: make test-js
