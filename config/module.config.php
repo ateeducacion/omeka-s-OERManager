@@ -32,7 +32,8 @@ return [
                     $container->get(Service\Ai\EvaluationScorer::class),
                     $container->get('Omeka\Settings'),
                     $container->get('Omeka\Job\Dispatcher'),
-                    $container->get(Service\Ai\ProposalStore::class)
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get(Service\ComputedFilter::class)
                 );
             },
         ],
@@ -40,6 +41,8 @@ return [
     'service_manager' => [
         'invokables' => [
             Service\IntegrityChecker::class => Service\IntegrityChecker::class,
+            // Patrón de filtros computados (ADR-0013, D4).
+            Service\ComputedFilter::class => Service\ComputedFilter::class,
             // Catalogación IA (TASK-010): núcleo puro sin dependencias.
             Service\Ai\PromptBuilder::class => Service\Ai\PromptBuilder::class,
             Service\Ai\ResponseParser::class => Service\Ai\ResponseParser::class,

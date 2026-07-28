@@ -12,6 +12,7 @@ use OERManager\ColumnType\AlignmentStatus;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Ai\ProposalStore;
+use OERManager\Service\ComputedFilter;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Llm\LlmSettings;
@@ -46,6 +47,7 @@ class IndexController extends AbstractActionController
     private Settings $settings;
     private Dispatcher $jobDispatcher;
     private ProposalStore $proposalStore;
+    private ComputedFilter $computedFilter;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -57,7 +59,8 @@ class IndexController extends AbstractActionController
         EvaluationScorer $scorer,
         Settings $settings,
         Dispatcher $jobDispatcher,
-        ProposalStore $proposalStore
+        ProposalStore $proposalStore,
+        ComputedFilter $computedFilter
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -69,6 +72,7 @@ class IndexController extends AbstractActionController
         $this->settings = $settings;
         $this->jobDispatcher = $jobDispatcher;
         $this->proposalStore = $proposalStore;
+        $this->computedFilter = $computedFilter;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -89,15 +93,46 @@ class IndexController extends AbstractActionController
         $this->browse()->setDefaults('oer_items');
         $query = $this->params()->fromQuery();
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
-        $response = $this->api()->search('items', $searchParams);
-        $items = $response->getContent();
         $isPartialFilter = AlignmentStatus::PARTIAL === ($query['alignment'] ?? '');
 
         if ($isPartialFilter) {
-            $items = $this->masterViewQuery->filterPartialAlignment($items);
-        }
+            // D4: «parcial» no se puede expresar como query de Omeka, así que es
+            // un filtro computado y sigue el patrón obligatorio de ADR-0013:
+            // conjunto completo → predicado → paginar. Cribar la página ya
+            // paginada daba un total aproximado y filas que bailaban.
+            //
+            // Las representaciones se piden de una vez, acotadas al tope, en vez
+            // de resolver ids y releer cada uno: el predicado necesita el item
+            // entero, así que un read por id serían hasta HARD_CAP consultas en
+            // una sola carga de página.
+            $fullParams = $searchParams;
+            $fullParams['page'] = 1;
+            $fullParams['per_page'] = ComputedFilter::HARD_CAP;
+            $response = $this->api()->search('items', $fullParams);
 
-        $this->paginator($response->getTotalResults());
+            $candidates = [];
+            foreach ($response->getContent() as $candidate) {
+                $candidates[(int) $candidate->id()] = $candidate;
+            }
+            $filtered = $this->computedFilter->apply(
+                array_keys($candidates),
+                fn (int $id): bool => AlignmentStatus::PARTIAL
+                    === AlignmentStatus::statusFor($candidates[$id]),
+                (int) ($query['page'] ?? 1),
+                (int) $this->settings->get('pagination_per_page', 25)
+            );
+            $items = array_map(static fn (int $id) => $candidates[$id], $filtered['ids']);
+            $this->paginator($filtered['total']);
+            // El tope puede alcanzarse por la propia lista o porque el filtro
+            // base ya devolvía más de HARD_CAP antes de acotar la página.
+            $isTruncated = $filtered['truncated']
+                || $response->getTotalResults() > ComputedFilter::HARD_CAP;
+        } else {
+            $response = $this->api()->search('items', $searchParams);
+            $items = $response->getContent();
+            $this->paginator($response->getTotalResults());
+            $isTruncated = false;
+        }
 
         // CSRF: token por sesión, consumido por setVisibilityAction via JS.
         $session = new SessionContainer('OERManager');
@@ -109,7 +144,7 @@ class IndexController extends AbstractActionController
         $view->setTemplate('oer-manager/admin/index/index');
         $view->setVariable('items', $items);
         $view->setVariable('query', $query);
-        $view->setVariable('isPartialFilter', $isPartialFilter);
+        $view->setVariable('isTruncated', $isTruncated);
         // CSRF de visibilidad (QA TASK-003) y de la confirmación del
         // re-catalogador (TASK-004, I4): mecanismos independientes.
         $view->setVariable('csrfToken', $session->visibilityCsrfToken);

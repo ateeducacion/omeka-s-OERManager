@@ -10,7 +10,7 @@
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
-/** @var bool $isPartialFilter */
+/** @var bool $isTruncated */
 /** @var string $csrfToken */
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
@@ -47,8 +47,8 @@ $this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERMan
     <?php echo $this->pagination(); ?>
 </div>
 
-<?php if ($isPartialFilter): ?>
-<p class="status-info"><?php echo $translate('Nota: el total paginado es aproximado al filtrar por alineamiento parcial.'); /* @translate */ ?></p>
+<?php if (!empty($isTruncated)): ?>
+<p class="status-info"><?php echo $translate('Resultado acotado a los primeros 2000 recursos.'); /* @translate */ ?></p>
 <?php endif; ?>
 
 <?php if ($items): ?>

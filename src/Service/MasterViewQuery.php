@@ -4,7 +4,6 @@ namespace OERManager\Service;
 
 use OERManager\ColumnType\AlignmentStatus;
 use Omeka\Api\Manager as ApiManager;
-use Omeka\Api\Representation\ItemRepresentation;
 
 /**
  * Traduce los filtros de la vista maestra (ADR-0005 §5) a parámetros de
@@ -91,23 +90,12 @@ class MasterViewQuery
     }
 
     /**
-     * Filtra en memoria los items "parcial" de una página ya obtenida con
-     * buildSearchParams(): el adaptador de Omeka no soporta agrupar
-     * condiciones AND/OR con paréntesis, así que la query solo puede acotar
-     * a "no sin alinear" (ver addAlignmentFilter()); excluir "completo" se
-     * resuelve aquí (ADR-0005 §5).
-     *
-     * @param ItemRepresentation[] $items
-     * @return ItemRepresentation[]
+     * El adaptador de Omeka no soporta agrupar condiciones AND/OR con
+     * paréntesis, así que la query solo puede acotar a "no sin alinear" (ver
+     * addAlignmentFilter()); excluir "completo" es un filtro computado y lo
+     * resuelve el controlador con ComputedFilter (ADR-0013, D4). Antes se
+     * cribaba aquí la página ya paginada, que daba un total aproximado.
      */
-    public function filterPartialAlignment(array $items): array
-    {
-        return array_values(array_filter(
-            $items,
-            fn (ItemRepresentation $item) => AlignmentStatus::PARTIAL === AlignmentStatus::statusFor($item)
-        ));
-    }
-
     private function addAlignmentFilter(array &$params, string $alignment): void
     {
         if (AlignmentStatus::NONE === $alignment) {
