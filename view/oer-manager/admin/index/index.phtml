@@ -14,6 +14,9 @@ $escape = $this->plugin('escapeHtml');
 /** @var string $csrfToken */
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+// TASK-028: entrada por módulos ES. Las dos líneas conviven durante la
+// transición; oer-master-view.js desaparece al terminar la rebanada.
+$this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
 $this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERManager'));
 ?>
 <?php echo $this->pageTitle($translate('OER Manager')); ?>
