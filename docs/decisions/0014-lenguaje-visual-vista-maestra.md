@@ -2,7 +2,7 @@
 
 ## Estado
 
-Propuesto (2026-07-29). Redactado a petición del propietario tras la pasada de diseño de la vista maestra; **pendiente de su aceptación o rechazo**.
+**Aceptado (2026-07-30)** por el propietario. Redactado a petición suya el 2026-07-29 (`Propuesto`) tras la pasada de diseño de la vista maestra, y aceptado sin cambios al día siguiente. Norma vinculante para las superficies de curación del módulo; complementa ADR-0005 y ADR-0013, no deroga ninguno.
 
 ## Contexto
 
@@ -76,7 +76,7 @@ Composición concreta de cada pantalla, anchuras, qué columnas existen y en qu�
 
 **Deuda declarada.** La pasada del 2026-07-29 se verificó en Chrome headless contra la hoja compilada del core, **no en el admin real logueado**. Esta norma se apoya en esa verificación; la primera sesión con credenciales debe confirmarla.
 
-**Queda pendiente a raíz de esta decisión.** El contraste de la tríada de estado sobre las superficies del módulo no se ha medido contra WCAG AA; los valores se eligieron por criterio, no por medición. Si el propietario acepta este ADR, la medición es trabajo de la rebanada que estrene la columna de integridad, que es la que multiplica los estados en pantalla.
+**Queda pendiente a raíz de esta decisión, y es exigible desde su aceptación.** El contraste de la tríada de estado sobre las superficies del módulo **no se ha medido contra WCAG AA**; los valores se eligieron por criterio, no por medición. La medición es **trabajo obligatorio de la rebanada que estrene la columna de integridad**, que es la que multiplica los estados en pantalla: es ahí donde la regla 3 pasa de gobernar tres estados a gobernar ocho, y donde un contraste insuficiente dejaría de ser un detalle para convertirse en la vía principal de lectura de la pantalla. Si esa medición obliga a mover los valores de la tríada, se mueven — este ADR norma el criterio, no los hexadecimales.
 
 ## Fuentes
 
