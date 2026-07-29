@@ -18,6 +18,7 @@ use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
+use OERManager\Service\ResourceTypeVocab;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Job\Dispatcher;
 use Omeka\Permissions\Exception\PermissionDeniedException;
@@ -48,6 +49,7 @@ class IndexController extends AbstractActionController
     private Dispatcher $jobDispatcher;
     private ProposalStore $proposalStore;
     private ComputedFilter $computedFilter;
+    private ResourceTypeVocab $resourceTypeVocab;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -60,7 +62,8 @@ class IndexController extends AbstractActionController
         Settings $settings,
         Dispatcher $jobDispatcher,
         ProposalStore $proposalStore,
-        ComputedFilter $computedFilter
+        ComputedFilter $computedFilter,
+        ResourceTypeVocab $resourceTypeVocab
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -73,6 +76,7 @@ class IndexController extends AbstractActionController
         $this->jobDispatcher = $jobDispatcher;
         $this->proposalStore = $proposalStore;
         $this->computedFilter = $computedFilter;
+        $this->resourceTypeVocab = $resourceTypeVocab;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -145,6 +149,8 @@ class IndexController extends AbstractActionController
         $view->setVariable('items', $items);
         $view->setVariable('query', $query);
         $view->setVariable('isTruncated', $isTruncated);
+        // D1: si el vocabulario degrada, la plantilla cae a texto libre.
+        $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
         // CSRF de visibilidad (QA TASK-003) y de la confirmación del
         // re-catalogador (TASK-004, I4): mecanismos independientes.
         $view->setVariable('csrfToken', $session->visibilityCsrfToken);

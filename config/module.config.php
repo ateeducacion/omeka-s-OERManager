@@ -33,7 +33,8 @@ return [
                     $container->get('Omeka\Settings'),
                     $container->get('Omeka\Job\Dispatcher'),
                     $container->get(Service\Ai\ProposalStore::class),
-                    $container->get(Service\ComputedFilter::class)
+                    $container->get(Service\ComputedFilter::class),
+                    $container->get(Service\ResourceTypeVocab::class)
                 );
             },
         ],
@@ -51,6 +52,20 @@ return [
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
+            // CustomVocab: no se declara en module.ini; si no está, degrada.
+            Service\ResourceTypeVocab::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\ResourceTypeVocab(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::RESOURCE_TYPE_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        return $api->read('custom_vocabs', $id)->getContent()->listValues();
+                    }
+                );
             },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {

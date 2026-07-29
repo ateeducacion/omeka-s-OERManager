@@ -62,9 +62,6 @@ class MasterViewQuery
             'subject' => 'schema:about',
             'project' => 'schema:isPartOf',
             'axis' => 'dcterms:relation',
-            // lrmi:learningResourceType no está en el mapeo de ADR-0004; se
-            // trata como resource:item igual que el resto del alineamiento.
-            'resource_type' => 'lrmi:learningResourceType',
         ];
         foreach ($resourceFilters as $param => $term) {
             if (!empty($query[$param])) {
@@ -81,6 +78,16 @@ class MasterViewQuery
                 'property' => 'dcterms:rights',
                 'type' => 'eq',
                 'text' => $query['licence'],
+            ];
+        }
+
+        // D1: lrmi:learningResourceType son literales del CustomVocab, no
+        // enlaces a item. Con operador `res` este filtro no podía casar nunca.
+        if (!empty($query['resource_type'])) {
+            $params['property'][] = [
+                'property' => 'lrmi:learningResourceType',
+                'type' => 'eq',
+                'text' => $query['resource_type'],
             ];
         }
 

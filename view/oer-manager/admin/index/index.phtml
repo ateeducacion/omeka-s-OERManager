@@ -37,7 +37,18 @@ $this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERMan
         <input type="text" name="licence" value="<?php echo $escape($query['licence'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Licencia')); ?>">
         <input type="number" name="project" value="<?php echo $escape($query['project'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Proyecto (id)')); ?>">
         <input type="number" name="axis" value="<?php echo $escape($query['axis'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Eje temático (id)')); ?>">
-        <input type="number" name="resource_type" value="<?php echo $escape($query['resource_type'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Tipo de recurso (id)')); ?>">
+        <?php if ($resourceTypeValues): ?>
+        <select name="resource_type">
+            <option value=""><?php echo $translate('Tipo de recurso (todos)'); ?></option>
+            <?php foreach ($resourceTypeValues as $value): ?>
+            <option value="<?php echo $escape($value); ?>" <?php echo ($query['resource_type'] ?? '') === $value ? 'selected' : ''; ?>><?php echo $escape($value); ?></option>
+            <?php endforeach; ?>
+        </select>
+        <?php else: ?>
+        <input type="text" name="resource_type" value="<?php echo $escape($query['resource_type'] ?? ''); ?>"
+               placeholder="<?php echo $escape($translate('Tipo de recurso (texto libre)')); ?>"
+               title="<?php echo $escape($translate('Sin vocabulario de tipos configurado: se busca por texto exacto.')); ?>">
+        <?php endif; ?>
         <button type="submit"><?php echo $translate('Filtrar'); ?></button>
     </div>
 </form>
