@@ -20,21 +20,25 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
 ?>
 <?php echo $this->pageTitle($translate('OER Manager')); ?>
 
+<div class="oer-toolbar">
 <form id="oer-master-view-filters" method="get">
     <div class="oer-filter-row">
-        <input type="text" name="title" value="<?php echo $escape($query['title'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Título')); ?>">
-        <select name="visibility">
+        <label class="oer-visually-hidden" for="oer-filter-title"><?php echo $translate('Título'); ?></label>
+        <input type="text" id="oer-filter-title" name="title" value="<?php echo $escape($query['title'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Buscar por título')); /* @translate */ ?>">
+        <label class="oer-visually-hidden" for="oer-filter-visibility"><?php echo $translate('Visibilidad'); ?></label>
+        <select id="oer-filter-visibility" name="visibility">
             <option value=""><?php echo $translate('Visibilidad (todas)'); ?></option>
             <option value="public" <?php echo ($query['visibility'] ?? '') === 'public' ? 'selected' : ''; ?>><?php echo $translate('Público'); ?></option>
             <option value="private" <?php echo ($query['visibility'] ?? '') === 'private' ? 'selected' : ''; ?>><?php echo $translate('Privado'); ?></option>
         </select>
-        <select name="alignment">
+        <label class="oer-visually-hidden" for="oer-filter-alignment"><?php echo $translate('Alineamiento'); ?></label>
+        <select id="oer-filter-alignment" name="alignment">
             <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
             <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
             <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
             <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
         </select>
-        <button type="submit"><?php echo $translate('Filtrar'); ?></button>
+        <button type="submit" class="button oer-button-primary"><?php echo $translate('Filtrar'); ?></button>
         <?php echo $this->hyperlink(
             $translate('Búsqueda avanzada'),
             $this->url('admin/oer-manager', ['action' => 'search'], ['query' => $query]),
@@ -53,10 +57,10 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     <input type="hidden" name="<?php echo $escape($advanced); ?>" value="<?php echo $escape($query[$advanced]); ?>">
     <?php endforeach; ?>
 </form>
-
 <?php echo $this->searchFilters('oer-manager/common/search-filters'); ?>
+</div>
 
-<div class="browse-controls">
+<div class="browse-controls oer-results-bar">
     <?php echo $this->browse()->renderSortSelector('oer_items'); ?>
     <?php echo $this->pagination(); ?>
 </div>
@@ -66,9 +70,16 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
 <?php endif; ?>
 
 <?php if ($items): ?>
-<div class="oer-batch-actions">
-    <button type="button" class="oer-batch-set-public" data-is-public="1"><?php echo $translate('Hacer público (selección)'); ?></button>
-    <button type="button" class="oer-batch-set-public" data-is-public="0"><?php echo $translate('Hacer privado (selección)'); ?></button>
+<?php
+// Las acciones de lote solo actúan sobre una selección, así que la barra se
+// materializa al seleccionar en vez de enseñarse apagada. Son funciones de JS
+// en cualquier caso: sin JS no había nada que pulsar aquí.
+?>
+<div class="oer-selection-bar" hidden>
+    <span class="oer-selection-count" data-singular="<?php echo $escape($translate('%s REA seleccionado')); /* @translate */ ?>" data-plural="<?php echo $escape($translate('%s REA seleccionados')); /* @translate */ ?>"></span>
+    <button type="button" class="button oer-batch-set-public" data-is-public="1"><?php echo $translate('Hacer público'); /* @translate */ ?></button>
+    <button type="button" class="button oer-batch-set-public" data-is-public="0"><?php echo $translate('Hacer privado'); /* @translate */ ?></button>
+    <button type="button" class="oer-selection-clear"><?php echo $translate('Deseleccionar'); /* @translate */ ?></button>
 </div>
 
 <?php
@@ -88,20 +99,23 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     data-recatalog-csrf="<?php echo $escape($recatalogCsrf ?? ''); ?>">
     <thead>
         <tr>
-            <th><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
-            <th><?php echo $translate('Título'); ?></th>
+            <th class="oer-column-select"><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
+            <th class="oer-column-title"><?php echo $translate('Título'); ?></th>
             <?php echo $this->browse()->renderHeaderRow('oer_items'); ?>
         </tr>
     </thead>
     <tbody>
         <?php foreach ($items as $item): ?>
-        <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>">
-            <td><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>
-            <td>
-                <a href="#" class="oer-open-drawer" data-item-id="<?php echo $item->id(); ?>"><?php echo $escape($item->displayTitle()); ?></a>
-                <ul class="actions">
-                    <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
-                </ul>
+        <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>"
+            data-alignment="<?php echo $escape(\OERManager\ColumnType\AlignmentStatus::statusFor($item)); ?>">
+            <td class="oer-column-select"><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>
+            <td class="oer-column-title">
+                <div class="oer-title-cell">
+                    <a href="#" class="oer-open-drawer" data-item-id="<?php echo $item->id(); ?>"><?php echo $escape($item->displayTitle()); ?></a>
+                    <ul class="actions">
+                        <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
+                    </ul>
+                </div>
             </td>
             <?php echo $this->browse()->renderContentRow('oer_items', $item); ?>
         </tr>

@@ -30,30 +30,94 @@ function paintUpdated(ids, isPublic) {
     if (!table) {
         return;
     }
+    const label = isPublic
+        ? Omeka.jsTranslate('Público')
+        : Omeka.jsTranslate('Privado');
     ids.forEach((id) => {
         const cell = table.querySelector(`tr[data-resource-id="${id}"] ${VISIBILITY_CELL}`);
-        if (cell) {
-            cell.textContent = isPublic ? 'Sí' : 'No';
+        if (!cell) {
+            return;
         }
+        // Mismo marcado que OERManager\ColumnType\IsPublic::renderContent().
+        let mark = cell.querySelector('.oer-visibility');
+        if (!mark) {
+            mark = document.createElement('span');
+            mark.className = 'oer-visibility';
+            cell.textContent = '';
+            cell.appendChild(mark);
+        }
+        mark.classList.toggle('oer-visibility-public', isPublic);
+        mark.classList.toggle('oer-visibility-private', !isPublic);
+        mark.textContent = label;
     });
 }
 
+function selectedInputs() {
+    return Array.from(document.querySelectorAll('.oer-row-select:checked'));
+}
+
 function selectedIds() {
-    return Array.from(document.querySelectorAll('.oer-row-select:checked')).map((input) => input.value);
+    return selectedInputs().map((input) => input.value);
+}
+
+/**
+ * La barra de lote solo existe cuando hay selección: enseñarla apagada de
+ * continuo la convierte en ruido, y sus dos acciones no significan nada sin
+ * filas marcadas.
+ */
+function refreshSelectionUi() {
+    const all = Array.from(document.querySelectorAll('.oer-row-select'));
+    const selected = all.filter((input) => input.checked);
+    const bar = document.querySelector('.oer-selection-bar');
+
+    all.forEach((input) => {
+        const row = input.closest('tr');
+        if (row) {
+            row.classList.toggle('is-selected', input.checked);
+        }
+    });
+
+    const selectAll = document.querySelector('.oer-select-all');
+    if (selectAll) {
+        selectAll.checked = all.length > 0 && selected.length === all.length;
+        selectAll.indeterminate = selected.length > 0 && selected.length < all.length;
+    }
+
+    if (!bar) {
+        return;
+    }
+    bar.hidden = 0 === selected.length;
+    const counter = bar.querySelector('.oer-selection-count');
+    if (counter && selected.length) {
+        const template = 1 === selected.length ? counter.dataset.singular : counter.dataset.plural;
+        counter.textContent = (template || '%s').replace('%s', selected.length);
+    }
 }
 
 export function initVisibility(config) {
     document.addEventListener('change', (event) => {
-        if (!event.target.classList.contains('oer-select-all')) {
+        if (event.target.classList.contains('oer-select-all')) {
+            const checked = event.target.checked;
+            document.querySelectorAll('.oer-row-select').forEach((input) => {
+                input.checked = checked;
+            });
+            refreshSelectionUi();
             return;
         }
-        const checked = event.target.checked;
-        document.querySelectorAll('.oer-row-select').forEach((input) => {
-            input.checked = checked;
-        });
+        if (event.target.classList.contains('oer-row-select')) {
+            refreshSelectionUi();
+        }
     });
 
     document.addEventListener('click', (event) => {
+        if (event.target.closest('.oer-selection-clear')) {
+            document.querySelectorAll('.oer-row-select').forEach((input) => {
+                input.checked = false;
+            });
+            refreshSelectionUi();
+            return;
+        }
+
         const button = event.target.closest('.oer-batch-set-public');
         if (!button) {
             return;
@@ -79,4 +143,6 @@ export function initVisibility(config) {
             }
         });
     });
+
+    refreshSelectionUi();
 }
