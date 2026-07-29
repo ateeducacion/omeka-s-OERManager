@@ -1,12 +1,13 @@
 <?php
 /**
- * Vista maestra del catálogo REA (TASK-003, ADR-0005 v1). Página
- * server-rendered: reutiliza column types del core para Visibilidad,
- * Etapa, Materia, Licencia y Modificado; el drawer de detalle y las
- * acciones de visibilidad son la única parte asíncrona (oer-master-view.js).
+ * Vista maestra del catálogo REA (TASK-003, ADR-0005; columnas por el mecanismo
+ * nativo bajo la clave `oer_items` desde TASK-028). Página server-rendered: la
+ * parte asíncrona (drawer, visibilidad, re-catalogador y propose IA) son módulos
+ * ES con una única entrada, asset/js/main.js.
  *
  * @var \Omeka\Api\Representation\ItemRepresentation[] $items
  * @var array $query
+ * @var array $resourceTypeValues términos del CustomVocab, o [] si degrada (D1)
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
@@ -14,10 +15,8 @@ $escape = $this->plugin('escapeHtml');
 /** @var string $csrfToken */
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
-// TASK-028: entrada por módulos ES. Las dos líneas conviven durante la
-// transición; oer-master-view.js desaparece al terminar la rebanada.
+// TASK-028: única entrada, módulos ES (asset/js/main.js).
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
-$this->headScript()->appendFile($this->assetUrl('js/oer-master-view.js', 'OERManager'));
 ?>
 <?php echo $this->pageTitle($translate('OER Manager')); ?>
 

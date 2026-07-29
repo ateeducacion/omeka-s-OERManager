@@ -9,10 +9,6 @@
  * como modificada es este widget, y el panel solo lo consume.
  */
 
-/** Pide insertar un chip desde fuera del módulo. Lo usa el propose IA, que aún
- * vive en oer-master-view.js; desaparece con él en la tarea 14. */
-export const ADD_CHIP = 'oer:add-chip';
-
 export function disableApply($panel) {
     $panel.find('.oer-recatalog-apply').prop('disabled', true);
 }
@@ -149,7 +145,8 @@ function showDrop($container, results, existingIds) {
     $container.addClass('chosen-container-active chosen-with-drop');
 }
 
-function addChip($dim, id, title, justification) {
+/** Añade un chip si no estaba ya. Devuelve si lo añadió. */
+export function addChip($dim, id, title, justification) {
     if ($dim.find(`.chosen-choices .search-choice[data-id="${id}"]`).length) {
         return false;
     }
@@ -210,10 +207,5 @@ export function initTermPicker(config) {
         const $choice = $(this).closest('.search-choice');
         markDirty($choice.closest('.oer-recatalog-dim'));
         $choice.remove();
-    });
-
-    document.addEventListener(ADD_CHIP, (event) => {
-        const { dim, id, title, justification } = event.detail;
-        addChip($(dim), id, title, justification);
     });
 }

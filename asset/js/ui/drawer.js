@@ -11,13 +11,6 @@ import { drawerRows, drawerTitle } from '../core/drawerModel.js';
  */
 export const DRAWER_RENDERED = 'oer:drawer-rendered';
 
-/**
- * Petición de abrir el drawer desde fuera del módulo. Lo usa el apply del
- * re-catalogador, que aún vive en oer-master-view.js, para refrescar el detalle
- * sin que ese fichero tenga que importar nada. Desaparece con él en la tarea 14.
- */
-export const OPEN_DRAWER = 'oer:open-drawer';
-
 function buildContent(itemJson) {
     const content = document.createElement('div');
 
@@ -49,7 +42,7 @@ function drawerElements() {
     return { drawer, content: drawer ? drawer.querySelector('.oer-drawer-content') : null };
 }
 
-function openDrawer(apiUrl, itemId) {
+export function openDrawer(apiUrl, itemId) {
     const { drawer, content } = drawerElements();
     if (!drawer || !content) {
         return;
@@ -113,9 +106,5 @@ export function initDrawer(config) {
         if ('Escape' === event.key && drawer && !drawer.hidden) {
             closeDrawer();
         }
-    });
-
-    document.addEventListener(OPEN_DRAWER, (event) => {
-        openDrawer(event.detail.apiUrl, event.detail.itemId);
     });
 }

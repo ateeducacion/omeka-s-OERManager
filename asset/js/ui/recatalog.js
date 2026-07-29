@@ -2,7 +2,7 @@ import { diffRows, RECATALOG_DIMENSIONS } from '../core/diffModel.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
-import { DRAWER_RENDERED, OPEN_DRAWER } from './drawer.js';
+import { DRAWER_RENDERED, openDrawer } from './drawer.js';
 
 /**
  * Panel de re-catalogación (TASK-004), extraído de oer-master-view.js en
@@ -145,9 +145,7 @@ export function initRecatalog(config) {
         pairs.push({ name: 'csrf', value: config.recatalogCsrf });
         $.post(config.recatalogApplyUrl, $.param(pairs)).done((response) => {
             if (response.updated) {
-                document.dispatchEvent(new CustomEvent(OPEN_DRAWER, {
-                    detail: { apiUrl, itemId }
-                }));
+                openDrawer(apiUrl, itemId);
                 return;
             }
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar: ')
