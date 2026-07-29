@@ -96,6 +96,35 @@
     font-weight: bold;
 }
 
+/* D7 (TASK-028): el diff lista títulos, así que cada grupo va en su renglón
+   para que se lean sin ambigüedad. */
+.oer-diff-added,
+.oer-diff-removed,
+.oer-diff-invalid {
+    display: block;
+    margin-left: 1em;
+}
+
+.oer-diff-added {
+    color: #275;
+}
+
+.oer-diff-removed {
+    color: #a32;
+}
+
+/* Linaje del término en el desplegable (TASK-028): los nueve «Matemáticas»
+   solo se distinguen por su curso, así que va bajo el título. */
+.oer-term-title {
+    display: block;
+}
+
+.oer-term-lineage {
+    display: block;
+    font-size: 0.85em;
+    color: #666;
+}
+
 /* Panel de debug de calidad (TASK-015): intercambio LLM */
 .oer-ai-debug {
     margin-top: 1em;
