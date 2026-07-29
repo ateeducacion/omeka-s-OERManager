@@ -332,9 +332,12 @@
 
 /* Anchos: sin ellos el layout fijo del core reparte a partes iguales y los
    títulos largos rompen la fila en cuatro renglones. */
+/* Anchuras en `rem`, no en `em`: el layout fijo del core toma la anchura de
+   la fila de cabecera, y la `th` va a 11px mientras la `td` va a 13px, así que
+   `em` significaría dos cosas distintas en la misma columna. */
 @media screen and (min-width: 641px) {
     #oer-master-view-table .oer-column-select {
-        width: 2.6em;
+        width: 1.75rem;
     }
 
     #oer-master-view-table .oer-column-title {
@@ -342,17 +345,19 @@
     }
 
     /* Holgura suficiente para que los rótulos en versalitas no partan palabra
-       («VISIBILID/AD», «ALINEAMIEN/TO»). */
+       («VISIBILID/AD», «ALINEAMIEN/TO»). En columnas de solo glifo el ancho lo
+       fija la cabecera, no la celda. */
     #oer-master-view-table .column-oerIsPublic {
-        width: 9em;
+        width: 6.25rem;
     }
 
     #oer-master-view-table .column-oerAlignmentStatus {
-        width: 10.5em;
+        width: 7.5rem;
+        text-align: center;
     }
 
     #oer-master-view-table .column-oerModified {
-        width: 8em;
+        width: 5.5rem;
         text-align: right;
     }
 }
@@ -413,20 +418,20 @@
    Estados
    ========================================================================== */
 
-/* Escala ordinal marcada por forma además de por color: la completitud se lee
-   sin depender de la vista cromática. */
+/* Columna comprimida a solo glifo (ADR-0013 §Afinado 2026-07-29). La
+   distinción que dispara la acción —ajustado / no ajustado al currículo— va
+   por FORMA (✓ / ⚠), legible sin color; la severidad (parcial vs sin alinear)
+   solo gradúa, así que comparte glifo y se distingue por color, por el riel de
+   la fila y por el rótulo íntegro del nombre accesible (ADR-0014 §3). */
 .oer-alignment-status {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    white-space: nowrap;
+    display: block;
+    text-align: center;
+    font-size: 15px;
+    line-height: 20px;
 }
 
 .oer-alignment-status::before {
-    font-size: 11px;
-    line-height: 1;
+    display: inline-block;
 }
 
 .oer-alignment-status-complete {
@@ -434,7 +439,7 @@
 }
 
 .oer-alignment-status-complete::before {
-    content: "\25CF"; /* ● */
+    content: "\2713"; /* ✓ */
 }
 
 .oer-alignment-status-partial {
@@ -442,7 +447,7 @@
 }
 
 .oer-alignment-status-partial::before {
-    content: "\25D0"; /* ◐ */
+    content: "\26A0"; /* ⚠ */
 }
 
 .oer-alignment-status-none {
@@ -450,7 +455,7 @@
 }
 
 .oer-alignment-status-none::before {
-    content: "\25CB"; /* ○ */
+    content: "\26A0"; /* ⚠ */
 }
 
 .oer-visibility {
