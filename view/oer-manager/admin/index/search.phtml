@@ -1,0 +1,145 @@
+<?php
+/**
+ * Búsqueda avanzada de la vista maestra (TASK-028, D-5). Con nueve filtros la
+ * barra rápida ya iba justa y ADR-0013 añadirá más: aquí van los que no son de
+ * uso diario. No filtra nada por sí misma — envía por GET a la vista maestra,
+ * que es quien aplica los mismos parámetros.
+ *
+ * Los cuatro filtros curriculares usan el marcado de ui/termPicker.js, así que
+ * se rellenan por autocompletado con su linaje y ya no piden ids a mano.
+ *
+ * @var array $query
+ * @var array $resourceTypeValues términos del CustomVocab, o [] si degrada (D1)
+ */
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+$this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
+
+// El autocompletado necesita la misma configuración que la vista maestra; el
+// panel de re-catalogación no se pinta aquí (no hay item que curar).
+$curricular = [
+    'stage' => $translate('Etapa'),
+    'subject' => $translate('Materia'),
+    'project' => $translate('Proyecto'),
+    'axis' => $translate('Eje temático'),
+];
+?>
+<?php echo $this->pageTitle($translate('Búsqueda avanzada'), 1, $translate('OER Manager')); ?>
+
+<form id="oer-advanced-search" method="get"
+      action="<?php echo $escape($this->url('admin/oer-manager')); ?>">
+
+    <div id="oer-master-view-table"
+        data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
+        data-ai-enabled="0"
+        data-can-recatalog="0"></div>
+
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-title"><?php echo $translate('Título'); ?></label>
+        </div>
+        <div class="inputs">
+            <input type="text" id="oer-search-title" name="title"
+                   value="<?php echo $escape($query['title'] ?? ''); ?>">
+        </div>
+    </div>
+
+    <?php foreach ($curricular as $key => $label): ?>
+    <div class="field">
+        <div class="field-meta">
+            <label><?php echo $escape($label); ?></label>
+        </div>
+        <div class="inputs oer-recatalog">
+            <?php
+            // Un solo valor por dimensión: el filtro acota por un ancestro.
+            $current = (string) ($query[$key] ?? '');
+            ?>
+            <div class="oer-recatalog-dim" data-term="<?php echo $escape($key); ?>"
+                 data-dirty="0" data-helper="0">
+                <div class="chosen-container chosen-container-multi" style="width:100%">
+                    <ul class="chosen-choices">
+                        <?php if ('' !== $current): ?>
+                        <li class="search-choice" data-id="<?php echo $escape($current); ?>">
+                            <span><?php echo $escape($resourceFilterTitles[$key] ?? $current); ?></span>
+                            <a class="search-choice-close" href="#" role="button"
+                               aria-label="<?php echo $escape($translate('Quitar')); ?>"></a>
+                        </li>
+                        <?php endif; ?>
+                        <li class="search-field">
+                            <input type="text" class="chosen-search-input oer-term-search"
+                                   autocomplete="off"
+                                   placeholder="<?php echo $escape($translate('Buscar término…')); ?>">
+                        </li>
+                    </ul>
+                    <div class="chosen-drop"><ul class="chosen-results"></ul></div>
+                </div>
+            </div>
+            <input type="hidden" name="<?php echo $escape($key); ?>"
+                   value="<?php echo $escape($current); ?>"
+                   class="oer-term-value" data-for="<?php echo $escape($key); ?>">
+        </div>
+    </div>
+    <?php endforeach; ?>
+
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-resource-type"><?php echo $translate('Tipo de recurso'); ?></label>
+        </div>
+        <div class="inputs">
+            <?php if ($resourceTypeValues): ?>
+            <select id="oer-search-resource-type" name="resource_type">
+                <option value=""><?php echo $translate('Tipo de recurso (todos)'); ?></option>
+                <?php foreach ($resourceTypeValues as $value): ?>
+                <option value="<?php echo $escape($value); ?>" <?php echo ($query['resource_type'] ?? '') === $value ? 'selected' : ''; ?>><?php echo $escape($value); ?></option>
+                <?php endforeach; ?>
+            </select>
+            <?php else: ?>
+            <input type="text" id="oer-search-resource-type" name="resource_type"
+                   value="<?php echo $escape($query['resource_type'] ?? ''); ?>"
+                   title="<?php echo $escape($translate('Sin vocabulario de tipos configurado: se busca por texto exacto.')); ?>">
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-licence"><?php echo $translate('Licencia'); ?></label>
+        </div>
+        <div class="inputs">
+            <input type="text" id="oer-search-licence" name="licence"
+                   value="<?php echo $escape($query['licence'] ?? ''); ?>">
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-visibility"><?php echo $translate('Visibilidad'); ?></label>
+        </div>
+        <div class="inputs">
+            <select id="oer-search-visibility" name="visibility">
+                <option value=""><?php echo $translate('Visibilidad (todas)'); ?></option>
+                <option value="public" <?php echo ($query['visibility'] ?? '') === 'public' ? 'selected' : ''; ?>><?php echo $translate('Público'); ?></option>
+                <option value="private" <?php echo ($query['visibility'] ?? '') === 'private' ? 'selected' : ''; ?>><?php echo $translate('Privado'); ?></option>
+            </select>
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-alignment"><?php echo $translate('Alineamiento'); ?></label>
+        </div>
+        <div class="inputs">
+            <select id="oer-search-alignment" name="alignment">
+                <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
+                <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
+                <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
+                <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
+            </select>
+        </div>
+    </div>
+
+    <button type="submit"><?php echo $translate('Buscar'); ?></button>
+    <?php echo $this->hyperlink($translate('Volver al catálogo'), $this->url('admin/oer-manager')); ?>
+</form>

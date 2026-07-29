@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use Omeka\Api\Manager as ApiManager;
+use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Settings\Settings;
 
@@ -29,6 +30,25 @@ class RecatalogService
     /** Dimensiones cuyo valor puede llevar justificación de la IA (TASK-023). */
     private const JUSTIFIABLE_TERMS = ['lrmi:teaches', 'lrmi:assesses'];
 
+    /**
+     * Aristas al ancestro que desambigua un item-término (D7), en orden de
+     * preferencia: el Curso cuando existe —Asignatura vía lrmi:educationalLevel,
+     * Saber/Criterio vía la denormalizada lrmi:educationalAlignment (ADR-0009)— y,
+     * si no, el conjunto al que pertenece (Curso→Etapa, Eje→su DefinedTermSet).
+     */
+    private const QUALIFIER_TERMS = [
+        'lrmi:educationalLevel',
+        'lrmi:educationalAlignment',
+        'schema:inDefinedTermSet',
+    ];
+
+    /**
+     * Dimensión que NO se califica: los ejes son un vocabulario plano y todos
+     * cuelgan del mismo DefinedTermSet, así que el sufijo sería constante («…
+     * (Categorías de REAs)») y alargaría cada línea sin desambiguar nada.
+     */
+    private const UNQUALIFIED_TERM = 'dcterms:relation';
+
     /** Tope de longitud de la justificación anotada (defensa en profundidad). */
     private const MAX_REASON_CHARS = 200;
 
@@ -48,7 +68,7 @@ class RecatalogService
      * Diff entre el alineamiento actual y el propuesto, sin escribir nada.
      *
      * @param array<string,array<int|string>> $proposed term => ids de item-término
-     * @return array<string,array{current:int[],next:int[],added:int[],removed:int[],invalid:int[]}>
+     * @return array<string,array{current:int[],next:int[],added:int[],removed:int[],invalid:int[],titles:array<int,string>}>
      */
     public function preview(int $itemId, array $proposed): array
     {
@@ -58,14 +78,20 @@ class RecatalogService
             if (!array_key_exists($term, $proposed)) {
                 continue;
             }
-            $current = $this->currentTargetIds($item, $term);
+            $currentTargets = $this->currentTargets($item, $term);
+            $current = $currentTargets['ids'];
+            $titles = $currentTargets['titles'];
             $next = $this->normalizeIds($proposed[$term]);
+            $invalid = $this->invalidTargets($term, $next, $titles);
             $diff[$term] = [
                 'current' => $current,
                 'next' => $next,
                 'added' => array_values(array_diff($next, $current)),
                 'removed' => array_values(array_diff($current, $next)),
-                'invalid' => $this->invalidTargets($term, $next),
+                'invalid' => $invalid,
+                // D7: el cliente necesita títulos para que el curador confirme
+                // viendo QUÉ cambia, no solo cuántos.
+                'titles' => $titles,
             ];
         }
         return $diff;
@@ -200,19 +226,50 @@ class RecatalogService
     }
 
     /**
-     * @return int[]
+     * @return array{ids:int[],titles:array<int,string>}
      */
-    private function currentTargetIds(ItemRepresentation $item, string $term): array
+    private function currentTargets(ItemRepresentation $item, string $term): array
     {
         $ids = [];
+        $titles = [];
         foreach ($item->value($term, ['all' => true, 'default' => []]) as $value) {
             $resource = $value->valueResource();
             if ($resource) {
-                $ids[] = $resource->id();
+                $id = (int) $resource->id();
+                $ids[] = $id;
+                $titles[$id] = $this->qualifiedTitle($resource, $term);
             }
         }
         sort($ids);
-        return $ids;
+        return ['ids' => $ids, 'titles' => $titles];
+    }
+
+    /**
+     * Título del item-término con su ancestro entre paréntesis (D7). El currículo
+     * repite el mismo título de asignatura en cada curso (p. ej. «Conocimiento del
+     * Medio Natural, Social y cultural» existe en 3º, 4º y 5º de Primaria), así que
+     * un diff que liste solo títulos le muestra al curador líneas idénticas que no
+     * puede distinguir. Sin lecturas nuevas por id: la arista se recorre sobre la
+     * representación que ya se tenía.
+     */
+    private function qualifiedTitle(AbstractResourceEntityRepresentation $target, string $dimension): string
+    {
+        $title = (string) $target->displayTitle();
+        if (self::UNQUALIFIED_TERM === $dimension) {
+            return $title;
+        }
+        foreach (self::QUALIFIER_TERMS as $term) {
+            $value = $target->value($term);
+            $ancestor = $value ? $value->valueResource() : null;
+            if (null === $ancestor) {
+                continue;
+            }
+            $ancestorTitle = trim((string) $ancestor->displayTitle());
+            if ('' !== $ancestorTitle) {
+                return $title . ' (' . $ancestorTitle . ')';
+            }
+        }
+        return $title;
     }
 
     /**
@@ -234,9 +291,11 @@ class RecatalogService
      * el id exista: debe ser un término de ESA dimensión.
      *
      * @param int[] $ids
+     * @param array<int,string> $titles se rellena por referencia con el título de
+     *   los destinos que sí existen, para no releerlos luego (D7)
      * @return int[]
      */
-    private function invalidTargets(string $term, array $ids): array
+    private function invalidTargets(string $term, array $ids, array &$titles = []): array
     {
         $invalid = [];
         foreach ($ids as $id) {
@@ -246,6 +305,7 @@ class RecatalogService
                 $invalid[] = $id;
                 continue;
             }
+            $titles[(int) $id] = $this->qualifiedTitle($item, $term);
             if (!$this->matchesDimension($term, $item)) {
                 $invalid[] = $id;
             }

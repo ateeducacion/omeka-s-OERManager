@@ -32,7 +32,9 @@ return [
                     $container->get(Service\Ai\EvaluationScorer::class),
                     $container->get('Omeka\Settings'),
                     $container->get('Omeka\Job\Dispatcher'),
-                    $container->get(Service\Ai\ProposalStore::class)
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get(Service\ComputedFilter::class),
+                    $container->get(Service\ResourceTypeVocab::class)
                 );
             },
         ],
@@ -40,6 +42,8 @@ return [
     'service_manager' => [
         'invokables' => [
             Service\IntegrityChecker::class => Service\IntegrityChecker::class,
+            // Patrón de filtros computados (ADR-0013, D4).
+            Service\ComputedFilter::class => Service\ComputedFilter::class,
             // Catalogación IA (TASK-010): núcleo puro sin dependencias.
             Service\Ai\PromptBuilder::class => Service\Ai\PromptBuilder::class,
             Service\Ai\ResponseParser::class => Service\Ai\ResponseParser::class,
@@ -48,6 +52,20 @@ return [
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
+            // CustomVocab: no se declara en module.ini; si no está, degrada.
+            Service\ResourceTypeVocab::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\ResourceTypeVocab(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::RESOURCE_TYPE_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        return $api->read('custom_vocabs', $id)->getContent()->listValues();
+                    }
+                );
             },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {
@@ -272,10 +290,42 @@ return [
             ],
         ],
     ],
-    // Vista maestra v1 (TASK-003, ADR-0005): indicador de alineamiento.
+    // Vista maestra (TASK-003/028): tipos propios bajo la clave `oer_items`,
+    // que es independiente de la del browse nativo de items.
     'column_types' => [
         'invokables' => [
             'oerAlignmentStatus' => ColumnType\AlignmentStatus::class,
+            'oerIsPublic' => ColumnType\IsPublic::class,
+            'oerModified' => ColumnType\Modified::class,
+            'oerId' => ColumnType\Id::class,
+            'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
+        ],
+        'factories' => [
+            // Value necesita FormElementManager y ApiManager, igual que el del core.
+            'oerValue' => function ($container) {
+                return new ColumnType\Value(
+                    $container->get('FormElementManager'),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
+        ],
+    ],
+    // Mismas seis columnas que la v1; el reequilibrio de ADR-0013 es posterior.
+    'column_defaults' => [
+        'admin' => [
+            'oer_items' => [
+                ['type' => 'oerIsPublic'],
+                ['type' => 'oerValue', 'property_term' => 'lrmi:educationalLevel', 'max_values' => 1],
+                ['type' => 'oerValue', 'property_term' => 'schema:about', 'max_values' => 1],
+                ['type' => 'oerAlignmentStatus'],
+                ['type' => 'oerValue', 'property_term' => 'dcterms:rights', 'max_values' => 1],
+                ['type' => 'oerModified'],
+            ],
+        ],
+    ],
+    'browse_defaults' => [
+        'admin' => [
+            'oer_items' => ['sort_by' => 'modified', 'sort_order' => 'desc'],
         ],
     ],
 ];

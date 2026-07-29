@@ -1,0 +1,6 @@
+{
+  "name": "oer-manager",
+  "private": true,
+  "type": "module",
+  "description": "Módulo OERManager de Omeka-S: núcleo JS puro y sus tests (TASK-028)."
+}

@@ -31,6 +31,16 @@ test:
 	@echo "Running unit tests..."
 	"vendor/bin/phpunit" -c test/phpunit.xml --colors=always --testdox
 
+# Tests del núcleo JS (TASK-028). Runner integrado de Node: sin dependencias
+# ni node_modules. Solo cubre asset/js/core/, que es puro por contrato.
+# Glob recursivo entre comillas simples para que lo resuelva el propio Node
+# (no el shell): en Node 26 pasar un directorio a secas ya no recorre su
+# contenido, y esta forma es compatible con versiones anteriores.
+.PHONY: test-js
+test-js:
+	@echo "Running JS core tests..."
+	node --test 'test/js/**/*.test.js'
+
 # ---------------------------------------------------------------------------
 # Empaquetado
 # ---------------------------------------------------------------------------
@@ -118,6 +128,7 @@ help:
 	@echo ""
 	@echo "Testing:"
 	@echo "  test              - Run unit tests with PHPUnit"
+	@echo "  test-js           - Run JS core unit tests (node --test)"
 	@echo ""
 	@echo "Packaging:"
 	@echo "  package           - Generate a .zip package of the module with version tag"

@@ -11,6 +11,7 @@ use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
 use Laminas\View\Renderer\PhpRenderer;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Module\AbstractModule;
@@ -22,6 +23,29 @@ use Omeka\Module\AbstractModule;
  */
 class Module extends AbstractModule implements InitProviderInterface
 {
+    /**
+     * Settings de gobernanza que identifican un artefacto por id (ADR-0013):
+     * se cargan y se guardan igual, con el mismo parser, así que van en bucle.
+     * El titular de derechos va aparte porque es texto, no id.
+     *
+     * Es un MÉTODO y no una constante de clase a propósito: Laminas instancia
+     * este Module (ModuleResolverListener) ANTES de registrar el autoloading
+     * PSR-4 del módulo, así que una constante que referencie
+     * `GovernanceSettings::` se evalúa cuando esa clase todavía no existe y el
+     * arranque muere con «Class not found» (verificado en el contenedor,
+     * 2026-07-28). Dentro de un método se resuelve al invocarlo, ya tarde.
+     *
+     * @return string[]
+     */
+    private function governanceIdSettings(): array
+    {
+        return [
+            GovernanceSettings::LICENCE_VOCAB_ID,
+            GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+            GovernanceSettings::REA_TEMPLATE_ID,
+        ];
+    }
+
     /**
      * Registra el autoloader de las dependencias propias del módulo
      * (smalot/pdfparser, TASK-010).
@@ -100,6 +124,126 @@ class Module extends AbstractModule implements InitProviderInterface
             'api.update.post',
             [$this, 'handleItemPostSave']
         );
+        // Columnas y orden por defecto de la vista maestra, configurables por
+        // cada curador desde su perfil (TASK-028). Se usa la clave propia
+        // `oer_items`: compartir la de `items` haría que configurar esta tabla
+        // cambiase el browse nativo del admin, y al revés.
+        $sharedEventManager->attach(
+            \Omeka\Form\UserForm::class,
+            'form.add_elements',
+            [$this, 'addBrowseConfigElements']
+        );
+        // Chips de filtros activos (TASK-028, D-5): el helper nativo solo conoce
+        // los parámetros del core, así que el módulo añade los suyos por el
+        // evento que expone. El identificador es el `controller` del routeMatch
+        // (cfr. View\Helper\Trigger), es decir NUESTRO controlador.
+        $sharedEventManager->attach(
+            Controller\Admin\IndexController::class,
+            'view.search.filters',
+            [$this, 'addSearchFilters']
+        );
+    }
+
+    /**
+     * Etiqueta de cada filtro propio de la vista maestra. La usa el listener de
+     * chips y el partial que los pinta, para saber qué parámetro quita cada uno.
+     */
+    public const SEARCH_FILTER_LABELS = [
+        'title' => 'Título', // @translate
+        'visibility' => 'Visibilidad', // @translate
+        'alignment' => 'Alineamiento', // @translate
+        'stage' => 'Etapa', // @translate
+        'subject' => 'Materia', // @translate
+        'project' => 'Proyecto', // @translate
+        'axis' => 'Eje temático', // @translate
+        'resource_type' => 'Tipo de recurso', // @translate
+        'licence' => 'Licencia', // @translate
+    ];
+
+    /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
+    private const RESOURCE_FILTERS = ['stage', 'subject', 'project', 'axis'];
+
+    /** Valores codificados que no se pueden enseñar en crudo. */
+    private const FILTER_VALUE_LABELS = [
+        'visibility' => ['public' => 'Público', 'private' => 'Privado'], // @translate
+        'alignment' => [
+            'complete' => 'Completo', // @translate
+            'partial' => 'Parcial', // @translate
+            'none' => 'Sin alinear', // @translate
+        ],
+    ];
+
+    /**
+     * Añade los filtros del módulo a los chips de búsqueda activa (D-5).
+     *
+     * Los filtros curriculares llevan el id del item-término, que al curador no
+     * le dice nada: se resuelve su título por API. Si el término ya no existe se
+     * cae al id, que al menos identifica lo que se está filtrando.
+     */
+    public function addSearchFilters(Event $event): void
+    {
+        $filters = $event->getParam('filters');
+        $query = $event->getParam('query', []);
+        $api = $this->getServiceLocator()->get('Omeka\ApiManager');
+
+        foreach (self::SEARCH_FILTER_LABELS as $key => $label) {
+            $value = (string) ($query[$key] ?? '');
+            if ('' === $value) {
+                continue;
+            }
+            if (isset(self::FILTER_VALUE_LABELS[$key][$value])) {
+                $value = self::FILTER_VALUE_LABELS[$key][$value];
+            } elseif (in_array($key, self::RESOURCE_FILTERS, true)) {
+                try {
+                    $value = (string) $api->read('items', (int) $value)->getContent()->displayTitle();
+                } catch (\Exception $e) {
+                    // El término ya no existe: se deja el id.
+                }
+            }
+            $filters[$label][] = $value;
+        }
+        $event->setParam('filters', $filters);
+    }
+
+    /**
+     * Añade al perfil del usuario los dos campos que gobiernan la vista maestra.
+     *
+     * Van al fieldset `user-settings`, no a la raíz del formulario: el
+     * UserController solo persiste como user settings lo que llega bajo esa
+     * clave, así que colgarlos de la raíz los pintaría sin llegar a guardarlos.
+     * Los nombres son los que Omeka\Stdlib\Browse compone al leer los settings
+     * (`columns_admin_oer_items`, `browse_defaults_admin_oer_items`), y los
+     * grupos son los que el propio UserForm ya declara.
+     */
+    public function addBrowseConfigElements(Event $event): void
+    {
+        /** @var \Omeka\Form\UserForm $form */
+        $form = $event->getTarget();
+        $userId = $form->getOption('user_id');
+        $settingsFieldset = $form->get('user-settings');
+
+        $settingsFieldset->add([
+            'name' => 'columns_admin_oer_items',
+            'type' => \Omeka\Form\Element\Columns::class,
+            'options' => [
+                'element_group' => 'columns',
+                'label' => 'Columnas de la vista maestra de REA', // @translate
+                'columns_context' => 'admin',
+                'columns_resource_type' => 'oer_items',
+                'columns_user_id' => $userId,
+            ],
+        ]);
+        $settingsFieldset->add([
+            'name' => 'browse_defaults_admin_oer_items',
+            'type' => \Omeka\Form\Element\BrowseDefaults::class,
+            'options' => [
+                'element_group' => 'browse_defaults',
+                'label' => 'Orden por defecto de la vista maestra de REA', // @translate
+                'browse_defaults_context' => 'admin',
+                'browse_defaults_resource_type' => 'oer_items',
+                'browse_defaults_user_id' => $userId,
+            ],
+        ]);
     }
 
     /**
@@ -148,6 +292,13 @@ class Module extends AbstractModule implements InitProviderInterface
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $data[$setting] = $settings->get($setting);
         }
+        // Gobernanza del catálogo (ADR-0013): vocabularios, plantilla y titular.
+        foreach ($this->governanceIdSettings() as $setting) {
+            $data[$setting] = $settings->get($setting);
+        }
+        $data[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = $settings->get(
+            GovernanceSettings::DEFAULT_RIGHTS_HOLDER
+        );
         // Conexión LLM (TASK-010). La clave API NO se devuelve en claro (write-only):
         // el campo se deja en blanco; solo se actualiza si el admin introduce un valor.
         $data[LlmSettings::ENABLED] = (bool) $settings->get(LlmSettings::ENABLED);
@@ -190,6 +341,17 @@ class Module extends AbstractModule implements InitProviderInterface
         foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
             $settings->set($setting, trim((string) ($params[$setting] ?? '')));
         }
+
+        // Gobernanza del catálogo (ADR-0013). Los artefactos se identifican por id;
+        // un valor vacío o no numérico se guarda como null = «sin configurar», que
+        // hace degradar el campo a texto libre en vez de romper.
+        foreach ($this->governanceIdSettings() as $setting) {
+            $settings->set($setting, GovernanceSettings::parseId($params[$setting] ?? null));
+        }
+        $settings->set(
+            GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
+            GovernanceSettings::parseRightsHolder($params[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] ?? null)
+        );
 
         // Conexión LLM (TASK-010, ADR-0008).
         $settings->set(LlmSettings::ENABLED, !empty($params[LlmSettings::ENABLED]));

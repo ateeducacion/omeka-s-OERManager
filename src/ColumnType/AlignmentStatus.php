@@ -25,7 +25,9 @@ class AlignmentStatus implements ColumnTypeInterface
 
     public function getResourceTypes(): array
     {
-        return ['items'];
+        // 'items' se conserva: quitarlo retiraría la posibilidad, hoy
+        // existente, de añadir esta columna al browse nativo de items.
+        return ['items', 'oer_items'];
     }
 
     public function getMaxColumns(): ?int

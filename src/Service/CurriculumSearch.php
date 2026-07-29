@@ -41,6 +41,19 @@ class CurriculumSearch
         'lrmi:assesses' => 'oermanager_type_assesses',
     ];
 
+    /**
+     * Property por la que cada dimensión cuelga de su ancestro (ADR-0009). Es
+     * el inverso del filtro de contexto: aquí no se acota, se muestra el linaje
+     * para desambiguar homónimos («Matemáticas» aparece 7 veces con distinto
+     * curso). Etapas y ejes no tienen padre que mostrar.
+     */
+    private const PARENT_TERMS = [
+        'lrmi:educationalLevel' => self::IN_TERMSET_TERM,
+        'schema:about' => 'lrmi:educationalLevel',
+        'lrmi:teaches' => 'lrmi:educationalAlignment',
+        'lrmi:assesses' => 'lrmi:educationalAlignment',
+    ];
+
     private const RESULT_LIMIT = 25;
 
     private ApiManager $api;
@@ -56,7 +69,7 @@ class CurriculumSearch
      * Etapas educativas: los DefinedTermSet del marco configurado (ADR-0006).
      * Ayuda de navegación de la cascada; no se escribe en el REA.
      *
-     * @return array<int,array{id:int,title:string,description:string,block:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string,parentId:int,parentTitle:string}>
      */
     public function searchEtapas(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -72,6 +85,10 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
+            // `per_page` solo lo aplica el core si viene con `page`
+            // (AbstractEntityAdapter::limitQuery): sin esto el límite se
+            // ignoraba y el autocompletado traía el árbol entero (NFR-004).
+            'page' => 1,
             'per_page' => $limit,
         ];
         $this->addTitleFilter($query, $text);
@@ -83,7 +100,7 @@ class CurriculumSearch
      * el ancestro ya elegido (contexto), si lo hay (RF-014, NFR-004).
      *
      * @param array<string,int|string> $context ids de ancestros: etapa, level (curso), about (asignatura)
-     * @return array<int,array{id:int,title:string,description:string,block:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string,parentId:int,parentTitle:string}>
      */
     public function searchDimension(
         string $dimension,
@@ -109,6 +126,10 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
+            // `per_page` solo lo aplica el core si viene con `page`
+            // (AbstractEntityAdapter::limitQuery): sin esto el límite se
+            // ignoraba y el autocompletado traía el árbol entero (NFR-004).
+            'page' => 1,
             'per_page' => $limit,
         ];
         $contextFilter = $this->contextFilter($dimension, $context);
@@ -120,14 +141,17 @@ class CurriculumSearch
             ];
         }
         $this->addTitleFilter($query, $text);
-        return $this->mapResults($this->api->search('items', $query)->getContent());
+        return $this->mapResults(
+            $this->api->search('items', $query)->getContent(),
+            self::PARENT_TERMS[$dimension] ?? null
+        );
     }
 
     /**
      * Ejes temáticos (tags, dcterms:relation): términos del DefinedTermSet raíz
      * identificado por id de item en la configuración (ADR-0006).
      *
-     * @return array<int,array{id:int,title:string,description:string,block:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string,parentId:int,parentTitle:string}>
      */
     public function searchAxes(string $text, int $limit = self::RESULT_LIMIT): array
     {
@@ -145,6 +169,10 @@ class CurriculumSearch
             ]],
             'sort_by' => 'title',
             'sort_order' => 'asc',
+            // `per_page` solo lo aplica el core si viene con `page`
+            // (AbstractEntityAdapter::limitQuery): sin esto el límite se
+            // ignoraba y el autocompletado traía el árbol entero (NFR-004).
+            'page' => 1,
             'per_page' => $limit,
         ];
         $this->addTitleFilter($query, $text);
@@ -174,6 +202,10 @@ class CurriculumSearch
             ],
             'sort_by' => 'title',
             'sort_order' => 'asc',
+            // `per_page` solo lo aplica el core si viene con `page`
+            // (AbstractEntityAdapter::limitQuery): sin esto el límite se
+            // ignoraba y el autocompletado traía el árbol entero (NFR-004).
+            'page' => 1,
             'per_page' => $limit,
         ];
         $names = [];
@@ -218,6 +250,10 @@ class CurriculumSearch
             ],
             'sort_by' => 'title',
             'sort_order' => 'asc',
+            // `per_page` solo lo aplica el core si viene con `page`
+            // (AbstractEntityAdapter::limitQuery): sin esto el límite se
+            // ignoraba y el autocompletado traía el árbol entero (NFR-004).
+            'page' => 1,
             'per_page' => $limit,
         ];
         $results = [];
@@ -337,17 +373,20 @@ class CurriculumSearch
 
     /**
      * @param iterable $items
-     * @return array<int,array{id:int,title:string,description:string,block:string}>
+     * @return array<int,array{id:int,title:string,description:string,block:string,parentId:int,parentTitle:string}>
      */
-    private function mapResults($items): array
+    private function mapResults($items, ?string $parentTerm = null): array
     {
         $results = [];
         foreach ($items as $item) {
+            $parent = $parentTerm ? $this->firstResourceRef($item, $parentTerm) : ['id' => 0, 'title' => ''];
             $results[] = [
                 'id' => (int) $item->id(),
                 'title' => (string) $item->displayTitle(),
                 'description' => $this->firstLiteralValue($item, 'dcterms:description'),
                 'block' => $this->firstLiteralValue($item, 'dcterms:subject'),
+                'parentId' => (int) $parent['id'],
+                'parentTitle' => (string) $parent['title'],
             ];
         }
         return $results;

@@ -76,6 +76,52 @@ final class ModuleConfigTest extends TestCase
         );
     }
 
+    public function testOerColumnTypesAreRegistered(): void
+    {
+        $invokables = $this->config['column_types']['invokables'] ?? [];
+        $expected = [
+            'oerIsPublic' => \OERManager\ColumnType\IsPublic::class,
+            'oerModified' => \OERManager\ColumnType\Modified::class,
+            'oerId' => \OERManager\ColumnType\Id::class,
+            'oerResourceTemplate' => \OERManager\ColumnType\ResourceTemplate::class,
+        ];
+        foreach ($expected as $name => $class) {
+            $this->assertSame($class, $invokables[$name] ?? null, "Falta el column type '$name'");
+        }
+        $this->assertArrayHasKey(
+            'oerValue',
+            $this->config['column_types']['factories'] ?? [],
+            'oerValue necesita factory: el Value del core lleva dependencias'
+        );
+    }
+
+    /**
+     * Las columnas por defecto deben referirse a tipos realmente registrados;
+     * un tipo desconocido lo salta el core en silencio y la columna desaparece
+     * de la vista sin avisar.
+     */
+    public function testColumnDefaultsUseRegisteredTypes(): void
+    {
+        $columns = $this->config['column_defaults']['admin']['oer_items'] ?? null;
+        $this->assertIsArray($columns, 'Faltan las columnas por defecto de oer_items');
+        $this->assertCount(6, $columns, 'La v1 mostraba seis columnas');
+        $registered = array_merge(
+            array_keys($this->config['column_types']['invokables'] ?? []),
+            array_keys($this->config['column_types']['factories'] ?? [])
+        );
+        foreach ($columns as $column) {
+            $this->assertContains($column['type'], $registered, "Tipo sin registrar: {$column['type']}");
+        }
+    }
+
+    public function testBrowseDefaultsAreRegisteredForOerItems(): void
+    {
+        $defaults = $this->config['browse_defaults']['admin']['oer_items'] ?? null;
+        $this->assertIsArray($defaults);
+        $this->assertSame('modified', $defaults['sort_by'] ?? null);
+        $this->assertSame('desc', $defaults['sort_order'] ?? null);
+    }
+
     public function testAiInvokableServicesAreRegistered(): void
     {
         $invokables = $this->config['service_manager']['invokables'] ?? [];

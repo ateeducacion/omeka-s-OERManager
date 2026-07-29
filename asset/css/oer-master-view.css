@@ -1,24 +1,500 @@
-.oer-batch-actions {
-    margin-bottom: 1em;
+/**
+ * Vista maestra del catálogo REA.
+ *
+ * Hereda tipografía y color de acento del admin de Omeka (Lato, #a91919): un
+ * módulo que inventa su propia fuente y su propio fondo se lee como una pieza
+ * rota junto al resto de la aplicación. Lo que sí es propio es la jerarquía:
+ * esta pantalla existe para encontrar REA mal catalogados, así que el estado de
+ * alineamiento manda sobre el resto de columnas.
+ */
+
+:root {
+    --oer-ink: #2b3240;
+    --oer-muted: #79818f;
+    --oer-rule: #e3e5e9;
+    --oer-surface: #f6f7f9;
+    --oer-select: #eef2f7;
+    --oer-accent: #a91919;
+    --oer-accent-hover: #e11717;
+
+    --oer-ok: #1d7a5f;
+    --oer-warn: #b06d10;
+    --oer-bad: #a91919;
+
+    /* El riel invierte la saturación a propósito: «completo» se retira, el
+       defecto se queda. La vista se recorre buscando lo que falta. Aun así el
+       verde tiene que verse: si desaparece, el canto se lee como roto en vez
+       de como una escala continua. */
+    --oer-rail-ok: #a9cdbc;
+    --oer-rail-warn: #e8b25f;
+    --oer-rail-bad: #d47b7b;
 }
 
+.oer-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ==========================================================================
+   Barra de filtros
+   Las cuatro filas sueltas de controles (filtros, chips, orden, paginación)
+   se agrupan en una sola banda: son un instrumento, no cuatro.
+   ========================================================================== */
+
+.oer-toolbar {
+    border: 1px solid var(--oer-rule);
+    border-radius: 3px;
+    background-color: var(--oer-surface);
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.oer-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.oer-filter-row input[type="text"],
+.oer-filter-row select {
+    min-height: 34px;
+    border: 1px solid #d3d7dd;
+    border-radius: 3px;
+    background-color: #fff;
+    color: var(--oer-ink);
+    padding: 0 10px;
+    font-size: 14px;
+    line-height: 32px;
+}
+
+.oer-filter-row input[type="text"] {
+    flex: 1 1 14em;
+    min-width: 10em;
+    max-width: 24em;
+}
+
+.oer-filter-row input[type="text"]::placeholder {
+    color: var(--oer-muted);
+}
+
+.oer-filter-row input[type="text"]:focus,
+.oer-filter-row select:focus {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 1px;
+    border-color: var(--oer-accent);
+}
+
+/* La acción primaria pesa: es la que cierra el gesto de filtrar. */
+.oer-filter-row .oer-button-primary {
+    min-height: 34px;
+    margin: 0;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 3px;
+    background-color: var(--oer-ink);
+    box-shadow: none;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.oer-filter-row .oer-button-primary:hover {
+    background-color: #1c2231;
+    box-shadow: none;
+}
+
+/* El rojo de la casa queda reservado al estado defectuoso: un enlace rojo aquí
+   arriba compite con la única señal que se viene a buscar. */
+.oer-filter-row .advanced-search {
+    margin-left: auto;
+    color: var(--oer-muted);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.oer-filter-row .advanced-search:hover,
+.oer-filter-row .advanced-search:focus {
+    color: var(--oer-accent-hover);
+}
+
+/* Chips de filtros activos: solo aparecen cuando hay algo acotado, y entonces
+   se separan de la fila de controles con un filete. */
+.oer-search-filters {
+    display: block;
+    margin: 10px 0 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--oer-rule);
+    font-size: 13px;
+}
+
+.oer-search-filters .filter {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 6px 0 0;
+    border: 1px solid var(--oer-rule);
+    border-radius: 3px;
+    background-color: #fff;
+    overflow: hidden;
+}
+
+.oer-search-filters .filter-label {
+    background-color: rgba(0, 0, 0, 0.04);
+    border-radius: 0;
+    padding: 2px 8px;
+    color: var(--oer-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.oer-search-filters .filter-value {
+    padding: 2px 8px;
+    color: var(--oer-ink);
+}
+
+.oer-filter-remove {
+    margin-left: 6px;
+    color: var(--oer-muted);
+    text-decoration: none;
+    font-size: 14px;
+    line-height: 1;
+}
+
+.oer-filter-remove:hover,
+.oer-filter-remove:focus {
+    color: var(--oer-accent-hover);
+}
+
+/* ==========================================================================
+   Barra de resultados y barra de selección
+   ========================================================================== */
+
+.oer-results-bar {
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.oer-results-bar .pagination,
+.oer-results-bar .sorting {
+    margin-bottom: 0;
+}
+
+/* Paginación en un solo renglón: los tres bloques (página, saltos, recuento)
+   son una misma frase y partirlos la vuelve ilegible. Solo mientras quepa:
+   en estrecho vuelve a repartirse. */
+@media screen and (min-width: 641px) {
+    .oer-results-bar .pagination {
+        flex-wrap: nowrap;
+        align-items: center;
+    }
+}
+
+/* Las acciones de lote no se enseñan apagadas: aparecen cuando hay selección,
+   que es cuando significan algo. */
+.oer-selection-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border: 1px solid #cdd5e0;
+    border-left: 3px solid var(--oer-ink);
+    border-radius: 3px;
+    background-color: var(--oer-select);
+}
+
+.oer-selection-bar[hidden] {
+    display: none;
+}
+
+.oer-selection-count {
+    margin-right: 4px;
+    color: var(--oer-ink);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.oer-selection-bar .button {
+    margin-bottom: 0;
+    min-height: 30px;
+    padding: 4px 12px;
+    background-color: #fff;
+    font-size: 13px;
+}
+
+.oer-selection-clear {
+    margin-left: auto;
+    font-size: 13px;
+    background: none;
+    border: 0;
+    box-shadow: none;
+    min-height: 0;
+    padding: 0;
+    color: var(--oer-muted);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.oer-selection-clear:hover {
+    color: var(--oer-accent-hover);
+}
+
+.status-info {
+    margin-bottom: 8px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--oer-warn);
+    background-color: #fdf6e9;
+    color: var(--oer-ink);
+    font-size: 13px;
+}
+
+/* ==========================================================================
+   Tabla — el libro de registro
+   ========================================================================== */
+
+#oer-master-view-table {
+    border-color: var(--oer-rule);
+    color: var(--oer-ink);
+}
+
+/* Registro tipográfico único para las cabeceras: unifica el rótulo del
+   módulo con los que vienen del vocabulario del core («Is public», «about»,
+   «Rights»), que no comparten ni idioma ni caja. */
+#oer-master-view-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--oer-surface);
+    border-bottom: 1px solid #d3d7dd;
+    padding: 9px 10px;
+    color: var(--oer-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    line-height: 16px;
+}
+
+#oer-master-view-table thead th a {
+    color: inherit;
+}
+
+#oer-master-view-table td {
+    padding: 10px;
+    border-bottom: 1px solid var(--oer-rule);
+    font-size: 13px;
+    color: var(--oer-muted);
+    vertical-align: top;
+}
+
+#oer-master-view-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+#oer-master-view-table tbody tr:hover {
+    background-color: var(--oer-surface);
+}
+
+#oer-master-view-table tbody tr.is-selected {
+    background-color: var(--oer-select);
+}
+
+/* El riel: 3px en el canto de cada fila con el estado de alineamiento. Es lo
+   que permite leer la salud del catálogo de un vistazo, sin leer una sola
+   celda. */
+#oer-master-view-table tbody tr[data-alignment] td:first-child {
+    box-shadow: inset 3px 0 0 transparent;
+}
+
+#oer-master-view-table tbody tr[data-alignment="complete"] td:first-child {
+    box-shadow: inset 3px 0 0 var(--oer-rail-ok);
+}
+
+#oer-master-view-table tbody tr[data-alignment="partial"] td:first-child {
+    box-shadow: inset 3px 0 0 var(--oer-rail-warn);
+}
+
+#oer-master-view-table tbody tr[data-alignment="none"] td:first-child {
+    box-shadow: inset 3px 0 0 var(--oer-rail-bad);
+}
+
+/* Anchos: sin ellos el layout fijo del core reparte a partes iguales y los
+   títulos largos rompen la fila en cuatro renglones. */
+@media screen and (min-width: 641px) {
+    #oer-master-view-table .oer-column-select {
+        width: 2.6em;
+    }
+
+    #oer-master-view-table .oer-column-title {
+        width: 30%;
+    }
+
+    /* Holgura suficiente para que los rótulos en versalitas no partan palabra
+       («VISIBILID/AD», «ALINEAMIEN/TO»). */
+    #oer-master-view-table .column-oerIsPublic {
+        width: 9em;
+    }
+
+    #oer-master-view-table .column-oerAlignmentStatus {
+        width: 10.5em;
+    }
+
+    #oer-master-view-table .column-oerModified {
+        width: 8em;
+        text-align: right;
+    }
+}
+
+#oer-master-view-table .column-oerModified,
+#oer-master-view-table .column-oerId {
+    font-variant-numeric: tabular-nums;
+}
+
+#oer-master-view-table td.oer-column-select {
+    padding-left: 12px;
+}
+
+/* Título: la afordancia de enlace se conserva en hover y foco, pero en reposo
+   el título es tinta. Diecinueve enlaces rojos tapan la única señal que se
+   viene a buscar aquí. */
+#oer-master-view-table .oer-open-drawer {
+    color: var(--oer-ink);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    text-decoration: none;
+}
+
+#oer-master-view-table .oer-open-drawer:hover,
+#oer-master-view-table .oer-open-drawer:focus {
+    color: var(--oer-accent-hover);
+    text-decoration: underline;
+}
+
+#oer-master-view-table .oer-title-cell {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* La acción de editar deja de ocupar un renglón propio bajo cada título. */
+#oer-master-view-table .oer-title-cell .actions {
+    margin: 0;
+    flex-shrink: 0;
+    line-height: 20px;
+}
+
+@media (hover: hover) {
+    #oer-master-view-table .oer-title-cell .actions {
+        opacity: 0;
+        transition: opacity 120ms ease;
+    }
+
+    #oer-master-view-table tr:hover .oer-title-cell .actions,
+    #oer-master-view-table .oer-title-cell:focus-within .actions {
+        opacity: 1;
+    }
+}
+
+/* ==========================================================================
+   Estados
+   ========================================================================== */
+
+/* Escala ordinal marcada por forma además de por color: la completitud se lee
+   sin depender de la vista cromática. */
 .oer-alignment-status {
-    padding: 0.1em 0.6em;
-    border-radius: 1em;
-    font-size: 0.9em;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.oer-alignment-status::before {
+    font-size: 11px;
+    line-height: 1;
 }
 
 .oer-alignment-status-complete {
-    background-color: #d9f2d9;
+    color: var(--oer-ok);
+}
+
+.oer-alignment-status-complete::before {
+    content: "\25CF"; /* ● */
 }
 
 .oer-alignment-status-partial {
-    background-color: #fdf3cd;
+    color: var(--oer-warn);
+}
+
+.oer-alignment-status-partial::before {
+    content: "\25D0"; /* ◐ */
 }
 
 .oer-alignment-status-none {
-    background-color: #f2d9d9;
+    color: var(--oer-bad);
 }
+
+.oer-alignment-status-none::before {
+    content: "\25CB"; /* ○ */
+}
+
+.oer-visibility {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.oer-visibility::before {
+    font-size: 11px;
+    line-height: 1;
+}
+
+.oer-visibility-public {
+    color: var(--oer-ink);
+}
+
+.oer-visibility-public::before {
+    content: "\25CF"; /* ● */
+    color: var(--oer-ok);
+}
+
+.oer-visibility-private {
+    color: var(--oer-muted);
+}
+
+.oer-visibility-private::before {
+    content: "\25CB"; /* ○ */
+    color: var(--oer-muted);
+}
+
+.no-resources {
+    border: 1px solid var(--oer-rule);
+    border-radius: 3px;
+    background-color: var(--oer-surface);
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--oer-muted);
+}
+
+/* ==========================================================================
+   Drawer de detalle
+   ========================================================================== */
 
 .oer-drawer {
     position: fixed;
@@ -28,9 +504,11 @@
     width: 28em;
     max-width: 90vw;
     background: #fff;
-    box-shadow: -0.2em 0 0.6em rgba(0, 0, 0, 0.2);
+    border-left: 1px solid var(--oer-rule);
+    box-shadow: -0.2em 0 1.2em rgba(20, 26, 38, 0.16);
     overflow-y: auto;
     padding: 1.5em;
+    color: var(--oer-ink);
     z-index: 1000;
 }
 
@@ -43,21 +521,38 @@
     top: 0.5em;
     right: 0.5em;
     font-size: 1.5em;
+    line-height: 1;
     background: none;
     border: none;
+    color: var(--oer-muted);
     cursor: pointer;
 }
 
-.oer-drawer-content dt {
-    font-weight: bold;
-    margin-top: 1em;
+.oer-drawer-close:hover {
+    color: var(--oer-accent-hover);
 }
 
-/* Re-catalogador (TASK-004) */
+.oer-drawer-content dt {
+    margin-top: 1em;
+    color: var(--oer-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.oer-drawer-content dd {
+    margin-left: 0;
+}
+
+/* ==========================================================================
+   Re-catalogador (TASK-004)
+   ========================================================================== */
+
 .oer-recatalog {
     margin-top: 1.5em;
     padding-top: 1em;
-    border-top: 1px solid #ccc;
+    border-top: 1px solid var(--oer-rule);
 }
 
 .oer-recatalog-dim {
@@ -66,8 +561,12 @@
 
 .oer-recatalog-dim > label {
     display: block;
-    font-weight: bold;
     margin-bottom: 0.3em;
+    color: var(--oer-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
 }
 
 /* El selector reutiliza el widget Chosen del admin de Omeka (chosen-container).
@@ -92,41 +591,131 @@
 }
 
 .oer-diff-invalid {
-    color: #a32;
+    color: var(--oer-bad);
     font-weight: bold;
+}
+
+/* D7 (TASK-028): el diff lista títulos, así que cada grupo va en su renglón
+   para que se lean sin ambigüedad. */
+.oer-diff-added,
+.oer-diff-removed,
+.oer-diff-invalid {
+    display: block;
+    margin-left: 1em;
+}
+
+.oer-diff-added {
+    color: var(--oer-ok);
+}
+
+.oer-diff-removed {
+    color: var(--oer-bad);
+}
+
+/* Linaje del término en el desplegable (TASK-028): los nueve «Matemáticas»
+   solo se distinguen por su curso, así que va bajo el título. */
+.oer-term-title {
+    display: block;
+}
+
+.oer-term-lineage {
+    display: block;
+    font-size: 0.85em;
+    color: var(--oer-muted);
 }
 
 /* Panel de debug de calidad (TASK-015): intercambio LLM */
 .oer-ai-debug {
     margin-top: 1em;
-    border: 1px dashed #aaa;
-    border-radius: 4px;
+    border: 1px dashed #c3c8d0;
+    border-radius: 3px;
     padding: 0.5em 0.8em;
     font-size: 0.85em;
-    color: #555;
+    color: var(--oer-muted);
 }
 
 .oer-ai-debug summary {
     cursor: pointer;
     font-weight: bold;
-    color: #333;
+    color: var(--oer-ink);
 }
 
 .oer-ai-debug-section,
 .oer-ai-debug-step {
     margin-top: 0.7em;
-    border-top: 1px solid #e0e0e0;
+    border-top: 1px solid var(--oer-rule);
     padding-top: 0.5em;
 }
 
 .oer-ai-debug pre {
     white-space: pre-wrap;
     word-break: break-word;
-    background: #f7f7f7;
+    background: var(--oer-surface);
     padding: 0.4em 0.6em;
     border-radius: 3px;
     margin: 0.3em 0 0;
     max-height: 10em;
     overflow-y: auto;
     font-size: 0.9em;
+}
+
+/* ==========================================================================
+   Adaptación
+   ========================================================================== */
+
+/* Por debajo de 640px el core reapila la tabla en fichas (tablesaw, modo
+   `stack`): las anchuras de columna y la cabecera pegajosa no aplican, y el
+   riel pasa del canto de la primera celda al canto de la ficha entera. */
+@media screen and (max-width: 640px) {
+    .oer-filter-row input[type="text"],
+    .oer-filter-row select {
+        flex: 1 1 12em;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .oer-filter-row .advanced-search {
+        margin-left: 0;
+    }
+
+    #oer-master-view-table thead th {
+        position: static;
+    }
+
+    /* `.browse-controls` del core lleva `min-width: max-content`, que a estas
+       anchuras empuja toda la página fuera del viewport en vez de repartir el
+       orden y la paginación en dos renglones. */
+    .oer-results-bar {
+        min-width: 0;
+    }
+
+    #oer-master-view-table tbody tr[data-alignment] {
+        border-left: 3px solid transparent;
+    }
+
+    #oer-master-view-table tbody tr[data-alignment] td:first-child {
+        box-shadow: none;
+    }
+
+    #oer-master-view-table tbody tr[data-alignment="complete"] {
+        border-left-color: var(--oer-rail-ok);
+    }
+
+    #oer-master-view-table tbody tr[data-alignment="partial"] {
+        border-left-color: var(--oer-rail-warn);
+    }
+
+    #oer-master-view-table tbody tr[data-alignment="none"] {
+        border-left-color: var(--oer-rail-bad);
+    }
+
+    #oer-master-view-table td {
+        padding-left: 12px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #oer-master-view-table .oer-title-cell .actions {
+        transition: none;
+    }
 }
