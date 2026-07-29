@@ -104,6 +104,32 @@ CustomVocab es un módulo opcional de Omeka. Se opta por **dependencia blanda**:
 - **PEND-012** — **resuelto por este ADR** (2026-07-28) en cuanto a *quién crea qué y cuándo*: el módulo siembra la plantilla bajo demanda, la identifica por setting y nunca la asigna automáticamente. Queda abierto **solo qué campos marca como obligatorios**, que es una decisión editorial del propietario y condición previa a crearla.
 - **PEND-013** — ¿se muestra la justificación pedagógica de la IA en el historial de lo ya confirmado? Es un caso distinto del panel de propuesta, donde la decisión vigente de TASK-023 (no mostrarla, para no anclar al curador) **no se toca**.
 
+## Afinado (decisión del propietario, 2026-07-29): la columna de alineamiento no se retira, se comprime
+
+**Estado: Aceptado.** Afina la fila `~~Alineamiento~~ … RETIRA` de la tabla §4 del spec de TASK-027, que queda **sustituida por lo aquí decidido**. No toca el resto del ADR.
+
+### Qué obligó a revisarlo
+
+El propietario planteó que retirar la columna pierde **capacidad supervisora**: en producción habrá **miles de REA** y hace falta un control rápido de los que no se ajustan al currículo.
+
+Revisado el spec, el plan **no eliminaba** esa capacidad: la columna nueva de **Integridad** la absorbe explícitamente (`missing_alignment` es uno de sus avisos, spec §4) y **el filtro de alineamiento se mantenía** en todos los casos. Pero el planteamiento expone dos cosas que el plan sí daba por buenas y no lo son:
+
+1. **La premisa «varianza cero» está medida sobre 19 REA.** Es el argumento que sostiene la retirada, y **no sobrevive a la escala de producción**: con miles de REA entrando por vías distintas, el alineamiento dejará de ser uniforme, que es justo cuando la columna empieza a valer. El argumento era correcto para el catálogo de julio de 2026 y solo para él.
+2. **La columna ocupaba ancho desproporcionado a lo que comunica.** El problema real medido no era que la columna sobrase, sino que gastaba ~10 em en rendir un rótulo de texto. Eso se arregla comprimiendo, no retirando.
+
+### Qué se decide
+
+1. **La columna de alineamiento se mantiene**, comprimida a **solo glifo**: `✓` cuando está completo, `⚠` cuando no. El rótulo íntegro (`Completo` / `Parcial` / `Sin alinear`) viaja en el **nombre accesible** y en el `title`, no en la celda.
+2. **En la tabla la distinción es binaria** (ajustado / no ajustado al currículo), que es la que dispara la acción a velocidad de barrido. **La severidad no se pierde**: `parcial` y `sin alinear` se siguen distinguiendo por color, por el riel de la fila y por el nombre accesible, y el **filtro de tres estados no cambia**.
+3. **El triaje por severidad vive en la cola de calidad**, coherente con §4 de este ADR, que ya la materializa como presets de filtro y contadores sobre esta misma tabla y no como tabla nueva. Ahí la severidad **sí** dirige la decisión, así que ahí exige formas distintas por estado (ADR-0014 §3).
+4. **Cuando la columna de Integridad se estrene**, se reevalúa si absorbe a esta o conviven. Criterio para esa decisión, fijado ahora: **la integridad es la señal más fiable de las dos** —`AlignmentStatus` da `Completo` a un REA con la materia literal rota (D3), un falso positivo que `IntegrityChecker` no comete—, así que si conviven, la rectora es integridad y el riel de fila se ancla a ella (ADR-0014 §4). Lo que **no** se acepta es quedarse sin ninguna de las dos.
+
+### Consecuencias
+
+Se recupera ~4 em de ancho de tabla sin perder la señal. El coste es que la tabla deja de nombrar el estado en texto: quien no distinga `✓` de `⚠` depende del `title` y del lector de pantalla, que es exactamente el caso que ADR-0014 §3 obliga a cubrir y por el que la distinción accionable va por forma y no por color.
+
+**Queda pendiente:** medir el comportamiento del riel y del glifo sobre un volumen realista. Todo lo verificado hasta hoy lo ha sido sobre 19 filas, y esta decisión se toma para un escenario de miles que aún no existe.
+
 ## Fuentes
 
 - `docs/superpowers/specs/2026-07-27-campos-ui-design.md` (estudio de TASK-027).
