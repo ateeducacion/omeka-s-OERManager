@@ -133,6 +133,76 @@ class Module extends AbstractModule implements InitProviderInterface
             'form.add_elements',
             [$this, 'addBrowseConfigElements']
         );
+        // Chips de filtros activos (TASK-028, D-5): el helper nativo solo conoce
+        // los parámetros del core, así que el módulo añade los suyos por el
+        // evento que expone. El identificador es el `controller` del routeMatch
+        // (cfr. View\Helper\Trigger), es decir NUESTRO controlador.
+        $sharedEventManager->attach(
+            Controller\Admin\IndexController::class,
+            'view.search.filters',
+            [$this, 'addSearchFilters']
+        );
+    }
+
+    /**
+     * Etiqueta de cada filtro propio de la vista maestra. La usa el listener de
+     * chips y el partial que los pinta, para saber qué parámetro quita cada uno.
+     */
+    public const SEARCH_FILTER_LABELS = [
+        'title' => 'Título', // @translate
+        'visibility' => 'Visibilidad', // @translate
+        'alignment' => 'Alineamiento', // @translate
+        'stage' => 'Etapa', // @translate
+        'subject' => 'Materia', // @translate
+        'project' => 'Proyecto', // @translate
+        'axis' => 'Eje temático', // @translate
+        'resource_type' => 'Tipo de recurso', // @translate
+        'licence' => 'Licencia', // @translate
+    ];
+
+    /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
+    private const RESOURCE_FILTERS = ['stage', 'subject', 'project', 'axis'];
+
+    /** Valores codificados que no se pueden enseñar en crudo. */
+    private const FILTER_VALUE_LABELS = [
+        'visibility' => ['public' => 'Público', 'private' => 'Privado'], // @translate
+        'alignment' => [
+            'complete' => 'Completo', // @translate
+            'partial' => 'Parcial', // @translate
+            'none' => 'Sin alinear', // @translate
+        ],
+    ];
+
+    /**
+     * Añade los filtros del módulo a los chips de búsqueda activa (D-5).
+     *
+     * Los filtros curriculares llevan el id del item-término, que al curador no
+     * le dice nada: se resuelve su título por API. Si el término ya no existe se
+     * cae al id, que al menos identifica lo que se está filtrando.
+     */
+    public function addSearchFilters(Event $event): void
+    {
+        $filters = $event->getParam('filters');
+        $query = $event->getParam('query', []);
+        $api = $this->getServiceLocator()->get('Omeka\ApiManager');
+
+        foreach (self::SEARCH_FILTER_LABELS as $key => $label) {
+            $value = (string) ($query[$key] ?? '');
+            if ('' === $value) {
+                continue;
+            }
+            if (isset(self::FILTER_VALUE_LABELS[$key][$value])) {
+                $value = self::FILTER_VALUE_LABELS[$key][$value];
+            } elseif (in_array($key, self::RESOURCE_FILTERS, true)) {
+                try {
+                    $value = (string) $api->read('items', (int) $value)->getContent()->displayTitle();
+                } catch (\Exception $e) {
+                    // El término ya no existe: se deja el id.
+                }
+            }
+            $filters[$label][] = $value;
+        }
+        $event->setParam('filters', $filters);
     }
 
     /**

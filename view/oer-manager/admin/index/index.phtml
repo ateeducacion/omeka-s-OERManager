@@ -34,26 +34,27 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
             <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
             <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
         </select>
-        <input type="number" name="stage" value="<?php echo $escape($query['stage'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Etapa (id)')); ?>">
-        <input type="number" name="subject" value="<?php echo $escape($query['subject'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Materia (id)')); ?>">
-        <input type="text" name="licence" value="<?php echo $escape($query['licence'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Licencia')); ?>">
-        <input type="number" name="project" value="<?php echo $escape($query['project'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Proyecto (id)')); ?>">
-        <input type="number" name="axis" value="<?php echo $escape($query['axis'] ?? ''); ?>" placeholder="<?php echo $escape($translate('Eje temático (id)')); ?>">
-        <?php if ($resourceTypeValues): ?>
-        <select name="resource_type">
-            <option value=""><?php echo $translate('Tipo de recurso (todos)'); ?></option>
-            <?php foreach ($resourceTypeValues as $value): ?>
-            <option value="<?php echo $escape($value); ?>" <?php echo ($query['resource_type'] ?? '') === $value ? 'selected' : ''; ?>><?php echo $escape($value); ?></option>
-            <?php endforeach; ?>
-        </select>
-        <?php else: ?>
-        <input type="text" name="resource_type" value="<?php echo $escape($query['resource_type'] ?? ''); ?>"
-               placeholder="<?php echo $escape($translate('Tipo de recurso (texto libre)')); ?>"
-               title="<?php echo $escape($translate('Sin vocabulario de tipos configurado: se busca por texto exacto.')); ?>">
-        <?php endif; ?>
         <button type="submit"><?php echo $translate('Filtrar'); ?></button>
+        <?php echo $this->hyperlink(
+            $translate('Búsqueda avanzada'),
+            $this->url('admin/oer-manager', ['action' => 'search'], ['query' => $query]),
+            ['class' => 'advanced-search']
+        ); ?>
     </div>
+    <?php
+    // Los filtros avanzados viajan ocultos: sin esto, filtrar por título desde la
+    // barra rápida borraría en silencio lo que el curador acotó en la otra
+    // pantalla. Se quitan desde su chip.
+    foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence'] as $advanced):
+        if ('' === (string) ($query[$advanced] ?? '')) {
+            continue;
+        }
+        ?>
+    <input type="hidden" name="<?php echo $escape($advanced); ?>" value="<?php echo $escape($query[$advanced]); ?>">
+    <?php endforeach; ?>
 </form>
+
+<?php echo $this->searchFilters('oer-manager/common/search-filters'); ?>
 
 <div class="browse-controls">
     <?php echo $this->browse()->renderSortSelector('oer_items'); ?>

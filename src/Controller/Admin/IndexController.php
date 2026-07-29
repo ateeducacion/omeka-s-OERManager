@@ -161,6 +161,38 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * Búsqueda avanzada de la vista maestra (TASK-028, D-5): los filtros que no
+     * caben en la barra rápida. Solo pinta el formulario; el filtrado lo hace
+     * indexAction con los mismos parámetros GET.
+     */
+    public function searchAction()
+    {
+        $query = $this->params()->fromQuery();
+
+        // Los filtros curriculares llegan como id: se resuelve su título para que
+        // el chip precargado diga qué se está filtrando y no un número.
+        $titles = [];
+        foreach (['stage', 'subject', 'project', 'axis'] as $key) {
+            $id = (int) ($query[$key] ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            try {
+                $titles[$key] = (string) $this->api()->read('items', $id)->getContent()->displayTitle();
+            } catch (\Exception $e) {
+                // El término ya no existe: el chip se queda con el id.
+            }
+        }
+
+        $view = new ViewModel();
+        $view->setTemplate('oer-manager/admin/index/search');
+        $view->setVariable('query', $query);
+        $view->setVariable('resourceFilterTitles', $titles);
+        $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
+        return $view;
+    }
+
+    /**
      * Cambia is_public individual o en lote (ADR-0005 §7). Reusa el permiso
      * nativo de edición del item: la API deniega por sí misma a quien no
      * pueda editar (NFR-003 en v1; matriz rol×acción propia → TASK-004).
