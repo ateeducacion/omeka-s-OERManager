@@ -42,6 +42,7 @@
             "/blueprint.json",
             "/Makefile",
             "/composer.lock",
+            "/package.json",
             "/prompt_fase0.md",
             "/prompt_fase1.md",
             "/CLAUDE.md"
