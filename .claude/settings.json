@@ -47,7 +47,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "fp=$(jq -r '.tool_input.file_path // empty'); case \"$fp\" in *.php) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then echo 'NOTA: make lint no ejecutado (falta Makefile o vendor/bin/phpcs; ver TASK-008)' >&2; exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'AVISO (make lint, PSR-12) tras editar %s:\\n%s\\n' \"$fp\" \"$out\" >&2; exit 2; fi; exit 0"
+            "command": "fp=$(jq -r '.tool_input.file_path // empty'); case \"$fp\" in *.php) ;; *) exit 0 ;; esac; cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then echo 'NOTA: make lint no ejecutado (falta Makefile o vendor/bin/phpcs; ver TASK-008)' >&2; exit 0; fi; out=$(make lint < /dev/null 2>&1); if [ $? -ne 0 ]; then printf 'AVISO (make lint, PSR-12) tras editar %s:\\n%s\\n' \"$fp\" \"$out\" >&2; exit 2; fi; exit 0"
           }
         ]
       }
@@ -57,7 +57,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then exit 0; fi; out=$(make lint 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make lint (PSR-12) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$out\" >&2; exit 2; fi; if [ -x vendor/bin/phpunit ] && [ -f test/phpunit.xml ]; then tout=$(make test 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make test (PHPUnit) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$tout\" >&2; exit 2; fi; fi; exit 0"
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" || exit 0; if [ ! -f Makefile ] || [ ! -x vendor/bin/phpcs ]; then exit 0; fi; out=$(make lint < /dev/null 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make lint (PSR-12) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$out\" >&2; exit 2; fi; if [ -x vendor/bin/phpunit ] && [ -f test/phpunit.xml ]; then tout=$(make test < /dev/null 2>&1); if [ $? -ne 0 ]; then printf 'STOP BLOQUEADO: make test (PHPUnit) falla; corrigelo antes de cerrar el turno:\\n%s\\n' \"$tout\" >&2; exit 2; fi; fi; exit 0"
           }
         ]
       }
@@ -71,6 +71,7 @@
     "Stop hook ACTIVO desde 2026-06-12: gate de make lint + make test al cerrar turno. No cierra turno si lint (PSR-12) o los tests (PHPUnit) fallan (exit 2). Si falta la herramienta (vendor/ sin instalar, o sin test/phpunit.xml) salta ese gate con exit 0 para no bloquear; reinstalar con composer install.",
     "Hook de TEST ACTIVO desde 2026-06-12 (TASK-008): make test = vendor/bin/phpunit -c test/phpunit.xml. PHPUnit ^11.5 en require-dev; test/phpunit.xml y test/ModuleConfigTest.php creados. Los tests corren en el HOST sin arrancar Omeka (validan el array de config; ::class no autocarga). Tests de integracion que instancien clases del core: en fases posteriores, dentro del contenedor.",
     "Guardrail PreToolUse Write|Edit: protege el core de Omeka (extender, no parchear - NFR-001) bloqueando con exit 2 toda escritura fuera de este repo (omeka-s-OERManager, que ES la carpeta del modulo).",
-    "Guardrail PreToolUse Bash: bloquea con exit 2 comandos destructivos (rm -rf, DROP/TRUNCATE, git push --force, git reset --hard)."
+    "Guardrail PreToolUse Bash: bloquea con exit 2 comandos destructivos (rm -rf, DROP/TRUNCATE, git push --force, git reset --hard).",
+    "'< /dev/null' en TODA invocacion de make dentro de un hook (2026-07-30, autorizado por el propietario): OBLIGATORIO, no cosmetico. Los hooks reciben su payload JSON por stdin y make lo hereda; PHPCS entonces liniza ese JSON como si fuera PHP, lo marca por 'Line exceeds 120 characters' y sale con codigo 2 (PHPCS sale != 0 ante WARNINGS, no solo ante errores), tumbando el gate con un 'FILE: STDIN' que no corresponde a ningun fichero del repo. Sintoma: STOP BLOQUEADO con 0 ERRORS AND 1 WARNING mientras 'make lint' pasa en verde al invocarlo a mano. Afecta a los hooks Stop y PostToolUse. Si se anaden mas invocaciones de make en hooks, redirigir stdin igual."
   ]
 }
