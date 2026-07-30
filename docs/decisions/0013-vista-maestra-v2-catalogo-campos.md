@@ -2,7 +2,7 @@
 
 ## Estado
 
-Propuesto (2026-07-27) — pendiente de aprobación del propietario.
+**Aceptado (2026-07-28)** por el propietario. Propuesto el 2026-07-27 con el estudio de TASK-027 y aceptado al día siguiente, junto con la sección «Sembrar, no poseer» y el troceado de TASK-028 en rebanadas, que se decidieron ese mismo 2026-07-28. Con este ADR se aprueba también el catálogo de campos de `docs/superpowers/specs/2026-07-27-campos-ui-design.md` (§Decisión.2). Sello formal registrado el 2026-07-30, al detectarse que el registro seguía en `Propuesto` mientras la rebanada 1 que lo implementa ya estaba fusionada en `main`.
 
 Requerido por **ADR-0005 §25**: «Cambios futuros al alcance v1 (p. ej. panel configurable) requieren un ADR nuevo que reemplace o complemente este». Este ADR **complementa** ADR-0005, no lo deroga: el alcance v1 (columnas, filtros, drawer de lectura y curación de visibilidad) sigue siendo válido y es la base sobre la que se amplía.
 
