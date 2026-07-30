@@ -62,9 +62,19 @@ class AlignmentStatus implements ColumnTypeInterface
         ];
         $status = self::statusFor($resource);
         $escape = $view->plugin('escapeHtml');
+
+        // Columna comprimida a solo glifo (ADR-0013 §Afinado 2026-07-29): a
+        // miles de REA lo que se barre es «ajustado / no ajustado», y el
+        // rótulo de texto gastaba ~10 em en decirlo. El estado íntegro no se
+        // pierde: viaja en el nombre accesible y en el title, y la severidad
+        // sigue en el color y en el riel de la fila. El glifo lo pone el CSS
+        // (::before), que es presentación y no debe leerlo el lector de
+        // pantalla — ya lo dice el texto oculto.
         return sprintf(
-            '<span class="oer-alignment-status oer-alignment-status-%s">%s</span>',
+            '<span class="oer-alignment-status oer-alignment-status-%s" title="%s">'
+                . '<span class="oer-visually-hidden">%s</span></span>',
             $escape($status),
+            $escape($labels[$status]),
             $escape($labels[$status])
         );
     }
