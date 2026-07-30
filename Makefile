@@ -42,6 +42,20 @@ test-js:
 	node --test 'test/js/**/*.test.js'
 
 # ---------------------------------------------------------------------------
+# Diagnóstico de despliegue
+# ---------------------------------------------------------------------------
+
+# Sonda de extracción de PDF (TASK-024b). Se ejecuta DENTRO del despliegue que
+# se quiere verificar, porque lo que mide es la plataforma: en musl (Alpine)
+# `iconv` sin `//TRANSLIT` deja los PDF sin texto —entero o en parte— y nada lo
+# señala. Sale con 1 si la plataforma no sabe leerlos.
+#   make pdf-check                 # directorio estándar de ficheros de Omeka
+#   make pdf-check DIR=/ruta       # otra ruta, o un .pdf suelto
+.PHONY: pdf-check
+pdf-check:
+	php tools/pdf-check.php $(DIR)
+
+# ---------------------------------------------------------------------------
 # Empaquetado
 # ---------------------------------------------------------------------------
 
@@ -129,6 +143,9 @@ help:
 	@echo "Testing:"
 	@echo "  test              - Run unit tests with PHPUnit"
 	@echo "  test-js           - Run JS core unit tests (node --test)"
+	@echo ""
+	@echo "Deployment diagnostics:"
+	@echo "  pdf-check         - Probe PDF text extraction on THIS deployment (TASK-024b)"
 	@echo ""
 	@echo "Packaging:"
 	@echo "  package           - Generate a .zip package of the module with version tag"
