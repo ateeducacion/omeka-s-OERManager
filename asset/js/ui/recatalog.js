@@ -1,4 +1,5 @@
 import { diffRows, RECATALOG_DIMENSIONS } from '../core/diffModel.js';
+import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
@@ -41,7 +42,57 @@ function buildRecatalogPanel(config, itemId, itemJson) {
             .text(Omeka.jsTranslate('Confirmar')));
     $panel.append($actions);
     $panel.append($('<div>').addClass('oer-recatalog-diff'));
+    // Deshacer (TASK-007). Se pinta solo si el REA tiene un evento que revertir,
+    // así que la fila queda vacía hasta que el servidor conteste.
+    $panel.append($('<div>').addClass('oer-recatalog-undo'));
     return $panel;
+}
+
+/**
+ * Pinta el botón de deshacer si hay última re-catalogación (TASK-007). El evento
+ * lo resuelve el servidor: el payload que hace posible la reversión vive en una
+ * anotación de un valor privado, y no se le pide al cliente que lo interprete.
+ */
+function renderUndo(config, $panel, itemId) {
+    const $slot = $panel.find('.oer-recatalog-undo').empty();
+    $.post(config.recatalogLastEventUrl, { id: itemId }).done((response) => {
+        const label = undoLabel(response.event);
+        if (!label) {
+            return;
+        }
+        $slot.append($('<button>').attr('type', 'button').addClass('oer-recatalog-undo-btn')
+            .text(Omeka.jsTranslate(label)));
+    });
+}
+
+function postUndo(config, itemId, apiUrl, force) {
+    $.post(config.recatalogUndoUrl, {
+        id: itemId,
+        csrf: config.recatalogCsrf,
+        force: force ? '1' : ''
+    }).done((response) => {
+        if (response.updated) {
+            if (response.dropped && response.dropped.length) {
+                window.alert(Omeka.jsTranslate('Deshecho. Algunos términos ya no existen y no se pudieron restaurar: ')
+                    + response.dropped.join(', '));
+            }
+            openDrawer(apiUrl, itemId);
+            return;
+        }
+        // El REA cambió por otra vía después de esa re-catalogación: deshacer
+        // descartaría ese trabajo, así que se pide una segunda confirmación.
+        if ('stale' === response.error && !force) {
+            if (window.confirm(Omeka.jsTranslate(messageFor('stale'))
+                + '\n' + Omeka.jsTranslate('¿Deshacer de todos modos?'))) {
+                postUndo(config, itemId, apiUrl, true);
+            }
+            return;
+        }
+        window.alert(Omeka.jsTranslate('No se pudo deshacer: ')
+            + messageFor(response.error, Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')));
+    }).fail(() => {
+        window.alert(Omeka.jsTranslate('No se pudo deshacer.'));
+    });
 }
 
 function collectAlignmentPairs($panel) {
@@ -115,7 +166,19 @@ export function initRecatalog(config) {
             return;
         }
         const { itemId, itemJson, content } = event.detail;
-        $(content).append(buildRecatalogPanel(config, itemId, itemJson));
+        const $panel = buildRecatalogPanel(config, itemId, itemJson);
+        $(content).append($panel);
+        renderUndo(config, $panel, itemId);
+    });
+
+    $(document).on('click', '.oer-recatalog-undo-btn', function () {
+        const $panel = $(this).closest('.oer-recatalog');
+        if (!window.confirm(Omeka.jsTranslate('¿Deshacer la última re-catalogación de este REA?'))) {
+            return;
+        }
+        const itemId = $panel.data('item-id');
+        const apiUrl = $(`tr[data-resource-id="${itemId}"]`).data('api-url');
+        postUndo(config, itemId, apiUrl, false);
     });
 
     $(document).on('click', '.oer-recatalog-preview', function () {
@@ -146,6 +209,12 @@ export function initRecatalog(config) {
         $.post(config.recatalogApplyUrl, $.param(pairs)).done((response) => {
             if (response.updated) {
                 openDrawer(apiUrl, itemId);
+                return;
+            }
+            // Confirmar sin cambios no escribe (habría re-sellado las
+            // anotaciones con fecha nueva): no es un error, es un no-op.
+            if (response.unchanged) {
+                window.alert(Omeka.jsTranslate(messageFor('unchanged')));
                 return;
             }
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar: ')

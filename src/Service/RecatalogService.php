@@ -5,12 +5,18 @@ namespace OERManager\Service;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
+use Omeka\Api\Representation\ValueAnnotationRepresentation;
 use Omeka\Settings\Settings;
 
 /**
  * Escritura del alineamiento curricular y los ejes temáticos como resource
  * values RDF (RF-004/RF-005, ADR-0004), con preview del diff, validación de
  * destino y auditoría reversible vía value annotations dcterms (ADR-0002).
+ *
+ * La reversibilidad es real desde TASK-007: además de anotar cada valor, cada
+ * apply escribe un evento de curación sobre el propio item con el estado previo
+ * (ADR-0015), que es lo único que una anotación no puede registrar —porque vive
+ * en el valor que se borra—, y `undo()` lo usa para restaurarlo.
  *
  * Patrón obligatorio (skill recatalogador): preview + confirmación + auditoría.
  * Properties resueltas SIEMPRE por término, nunca por property_id hardcodeado.
@@ -99,19 +105,35 @@ class RecatalogService
 
     /**
      * Escribe el alineamiento propuesto (cardinalidad múltiple, RF-004) con
-     * auditoría dcterms sobre cada valor. Lanza si algún destino no existe.
+     * auditoría dcterms sobre cada valor y un evento de curación sobre el propio
+     * item que registra el estado previo (TASK-007, ADR-0015). Lanza si algún
+     * destino no existe.
      *
      * @param array<string,array<int|string>> $proposed
      * @param array<string,array<int,string>> $justifications term => {itemId => texto}
      *   justificación IA por saber/criterio (TASK-023); se anota como dcterms:description
-     * @return array{updated:bool,properties:string[]}
+     * @param string|null $undoOf `dcterms:modified` del evento que esta escritura revierte
+     * @return array{updated:bool,properties:string[],unchanged?:bool,event?:array<string,string>}
      */
-    public function apply(int $itemId, array $proposed, string $contributor, array $justifications = []): array
-    {
-        $now = (new \DateTimeImmutable())->format('c');
+    public function apply(
+        int $itemId,
+        array $proposed,
+        string $contributor,
+        array $justifications = [],
+        ?string $undoOf = null
+    ): array {
+        // Con precisión de segundo, dos escrituras seguidas (un doble clic en
+        // «Deshacer») comparten sello y `lastEvent()` tendría que desempatar por
+        // el orden de la colección, que Omeka no garantiza: restauraría el
+        // estado equivocado. Los microsegundos hacen el sello único, y sigue
+        // siendo el MISMO en el evento y en las anotaciones por valor, que es lo
+        // que mantiene el par (contributor, modified) como clave del evento.
+        $now = (new \DateTimeImmutable())->format('Y-m-d\TH:i:s.uP');
+        $item = $this->api->read('items', $itemId)->getContent();
         $data = [];
         $clear = [];
         $properties = [];
+        $dimensions = [];
         foreach (self::ALIGNMENT_TERMS as $term) {
             if (!array_key_exists($term, $proposed)) {
                 continue;
@@ -129,6 +151,15 @@ class RecatalogService
                     implode(', ', $invalid)
                 ));
             }
+            // El estado previo se lee ANTES de escribir: es lo único que una
+            // value annotation no puede registrar, porque al borrarse el valor
+            // se borra con él (ADR-0015).
+            $current = $this->currentTargets($item, $term);
+            $dimensions[$term] = [
+                'before' => $current['ids'],
+                'after' => $ids,
+                'why' => $current['reasons'],
+            ];
             // Limpiar SOLO esta property (clear_property_values) y anexar sus
             // nuevos valores. Vaciar una dimensión = limpiarla sin anexar.
             $clear[] = $propertyId;
@@ -147,6 +178,13 @@ class RecatalogService
         if (!$clear) {
             return ['updated' => false, 'properties' => []];
         }
+        // Un «Confirmar» que no cambia nada NO se escribe: reescribir los mismos
+        // valores les pondría anotaciones con fecha y autor nuevos, falsificando
+        // justo la auditoría que ADR-0002 viene a dar.
+        $event = CurationEvent::build($dimensions, $undoOf);
+        if (null === $event) {
+            return ['updated' => false, 'unchanged' => true, 'properties' => []];
+        }
         // El partial de Omeka reemplaza el set COMPLETO de values del item
         // (ValueHydrator recorre la colección plana y borra lo no reutilizado).
         // Para tocar SOLO las properties editadas: limpiar esas properties con
@@ -154,6 +192,13 @@ class RecatalogService
         // valores; en modo append Omeka no reutiliza ni borra el resto, así que
         // título, descripción, licencia, proyecto, etc. quedan intactos.
         $data['clear_property_values'] = $clear;
+        // El evento se ANEXA: dcterms:provenance nunca entra en
+        // clear_property_values, así que el registro es append-only y ninguna
+        // re-catalogación posterior borra la traza de las anteriores.
+        $eventValue = $this->eventValue($event, $contributor, $now);
+        if ($eventValue) {
+            $data['dcterms:provenance'] = [$eventValue];
+        }
         $this->api->update(
             'items',
             $itemId,
@@ -161,7 +206,153 @@ class RecatalogService
             [],
             ['isPartial' => true, 'collectionAction' => 'append']
         );
-        return ['updated' => true, 'properties' => $properties];
+        return [
+            'updated' => true,
+            'properties' => $properties,
+            'event' => ['when' => $now, 'summary' => CurationEvent::summary($event)],
+        ];
+    }
+
+    /**
+     * Último evento de curación del item, o null si no tiene ninguno legible.
+     *
+     * @return array{when:string,contributor:string,summary:string,payload:array<string,mixed>}|null
+     */
+    public function lastEvent(int $itemId): ?array
+    {
+        return $this->lastEventOf($this->api->read('items', $itemId)->getContent());
+    }
+
+    /**
+     * Deshace la última re-catalogación del item restaurando el estado previo
+     * que guardó su evento, justificaciones de la IA incluidas.
+     *
+     * La reversión NO es un camino de escritura privilegiado: se reaplica por
+     * `apply()`, así que hereda la validación de destino, las anotaciones por
+     * valor y su propio evento. Deshacer un deshacer es, por tanto, rehacer.
+     *
+     * @param bool $force salta el chequeo de obsolescencia (lo confirma el curador)
+     * @return array<string,mixed>
+     */
+    public function undo(int $itemId, string $contributor, bool $force = false): array
+    {
+        $item = $this->api->read('items', $itemId)->getContent();
+        $event = $this->lastEventOf($item);
+        if (null === $event) {
+            return ['updated' => false, 'error' => 'no-event'];
+        }
+        $payload = $event['payload'];
+
+        // ¿Sigue el REA como lo dejó ese evento? Si no, alguien lo tocó por otra
+        // vía (p. ej. el formulario nativo de Omeka) y deshacer tiraría su
+        // trabajo sin avisar. El curador tiene que confirmarlo explícitamente.
+        if (!$force) {
+            $stale = [];
+            foreach (CurationEvent::expectedTargets($payload) as $term => $expected) {
+                sort($expected);
+                if ($this->currentTargets($item, $term)['ids'] !== $expected) {
+                    $stale[] = $term;
+                }
+            }
+            if ($stale) {
+                return ['updated' => false, 'error' => 'stale', 'terms' => $stale];
+            }
+        }
+
+        // Un término del currículo puede haberse borrado desde entonces. Se
+        // descarta informando, en vez de que apply() lance y el deshacer falle
+        // entero por un destino de cinco.
+        $targets = CurationEvent::restoreTargets($payload);
+        $dropped = [];
+        foreach ($targets as $term => $ids) {
+            $invalid = $this->invalidTargets($term, $ids);
+            if ($invalid) {
+                $dropped = array_merge($dropped, $invalid);
+                $targets[$term] = array_values(array_diff($ids, $invalid));
+            }
+        }
+
+        $result = $this->apply(
+            $itemId,
+            $targets,
+            $contributor,
+            CurationEvent::restoreReasons($payload),
+            $event['when']
+        );
+        $result['dropped'] = $dropped;
+        $result['undoneAt'] = $event['when'];
+        return $result;
+    }
+
+    /**
+     * @return array{when:string,contributor:string,summary:string,payload:array<string,mixed>}|null
+     */
+    private function lastEventOf(ItemRepresentation $item): ?array
+    {
+        $best = null;
+        foreach ($item->value('dcterms:provenance', ['all' => true, 'default' => []]) as $value) {
+            $annotation = $value->valueAnnotation();
+            if (null === $annotation) {
+                continue;
+            }
+            // El marcador, no el resumen: el resumen es traducible y cambiaría.
+            if (CurationEvent::MARKER !== $this->annotationText($annotation, 'dcterms:provenance')) {
+                continue;
+            }
+            $payload = CurationEvent::decode($this->annotationText($annotation, 'dcterms:replaces'));
+            if (null === $payload) {
+                continue;
+            }
+            $candidate = [
+                'when' => $this->annotationText($annotation, 'dcterms:modified'),
+                'contributor' => $this->annotationText($annotation, 'dcterms:contributor'),
+                'summary' => trim((string) $value->value()),
+                'payload' => $payload,
+            ];
+            // ISO-8601 con offset fijo: el orden lexicográfico es el cronológico.
+            // A igualdad de instante gana el último escrito.
+            if (null === $best || $candidate['when'] >= $best['when']) {
+                $best = $candidate;
+            }
+        }
+        return $best;
+    }
+
+    private function annotationText(ValueAnnotationRepresentation $annotation, string $term): string
+    {
+        $value = $annotation->value($term);
+        return null === $value ? '' : trim((string) $value);
+    }
+
+    /**
+     * Valor de evento sobre el propio item (ADR-0015): resumen legible en el
+     * valor y payload exacto en su anotación. PRIVADO a propósito — es un
+     * registro de máquina y no debe salir en la ficha pública del REA.
+     *
+     * @param array<string,mixed> $event
+     * @return array<string,mixed>|null null si la instalación no tiene las
+     *   properties necesarias: preferible no dejar traza a dejarla incompleta
+     *   (un payload perdido haría que el deshacer restaurase un estado falso).
+     */
+    private function eventValue(array $event, string $contributor, string $when): ?array
+    {
+        $propertyId = $this->propertyId('dcterms:provenance');
+        $annotation = $this->annotationValues([
+            'dcterms:contributor' => $contributor,
+            'dcterms:modified' => $when,
+            'dcterms:provenance' => CurationEvent::MARKER,
+            'dcterms:replaces' => CurationEvent::encode($event),
+        ]);
+        if (null === $propertyId || !isset($annotation['dcterms:replaces'])) {
+            return null;
+        }
+        return [
+            'type' => 'literal',
+            'property_id' => $propertyId,
+            'is_public' => false,
+            '@value' => CurationEvent::summary($event),
+            '@annotation' => $annotation,
+        ];
     }
 
     /**
@@ -202,7 +393,6 @@ class RecatalogService
      */
     private function annotation(string $contributor, string $when, string $term, string $reason = ''): array
     {
-        $annotation = [];
         $map = [
             'dcterms:contributor' => $contributor,
             'dcterms:modified' => $when,
@@ -211,6 +401,19 @@ class RecatalogService
         if ('' !== $reason) {
             $map['dcterms:description'] = mb_substr($reason, 0, self::MAX_REASON_CHARS);
         }
+        return $this->annotationValues($map);
+    }
+
+    /**
+     * Literales de una value annotation, en el formato que espera ValueHydrator.
+     * Las properties que la instalación no tenga se omiten en silencio.
+     *
+     * @param array<string,string> $map term => literal
+     * @return array<string,array<int,array<string,mixed>>>
+     */
+    private function annotationValues(array $map): array
+    {
+        $annotation = [];
         foreach ($map as $annTerm => $literal) {
             $annPropertyId = $this->propertyId($annTerm);
             if (null === $annPropertyId) {
@@ -226,22 +429,33 @@ class RecatalogService
     }
 
     /**
-     * @return array{ids:int[],titles:array<int,string>}
+     * Estado actual de una dimensión. `reasons` recupera el «porqué» que la IA
+     * dejó anotado en cada valor (TASK-023) para que el evento pueda guardarlo
+     * y un deshacer lo restaure: regenerarlo costaría otra pasada de LLM.
+     *
+     * @return array{ids:int[],titles:array<int,string>,reasons:array<int,string>}
      */
     private function currentTargets(ItemRepresentation $item, string $term): array
     {
         $ids = [];
         $titles = [];
+        $reasons = [];
         foreach ($item->value($term, ['all' => true, 'default' => []]) as $value) {
             $resource = $value->valueResource();
-            if ($resource) {
-                $id = (int) $resource->id();
-                $ids[] = $id;
-                $titles[$id] = $this->qualifiedTitle($resource, $term);
+            if (!$resource) {
+                continue;
+            }
+            $id = (int) $resource->id();
+            $ids[] = $id;
+            $titles[$id] = $this->qualifiedTitle($resource, $term);
+            $annotation = $value->valueAnnotation();
+            $reason = $annotation ? $this->annotationText($annotation, 'dcterms:description') : '';
+            if ('' !== $reason) {
+                $reasons[$id] = $reason;
             }
         }
         sort($ids);
-        return ['ids' => $ids, 'titles' => $titles];
+        return ['ids' => $ids, 'titles' => $titles, 'reasons' => $reasons];
     }
 
     /**

@@ -16,7 +16,8 @@ test('cae al texto por defecto cuando no hay código', () => {
 });
 
 test('cubre los códigos que hoy emite el backend', () => {
-    ['csrf', 'denied', 'not_found', 'disabled', 'dispatch', 'llm', 'invalid', 'unexpected']
+    ['csrf', 'denied', 'not_found', 'disabled', 'dispatch', 'llm', 'invalid', 'unexpected',
+        'no-event', 'stale', 'unchanged']
         .forEach((code) => {
             assert.notEqual(messageFor(code), '', `falta mensaje para ${code}`);
         });

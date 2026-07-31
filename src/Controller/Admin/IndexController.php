@@ -318,6 +318,71 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * Último evento de curación del item (TASK-007, ADR-0015), para que el panel
+     * sepa si hay algo que deshacer y de cuándo. Solo lectura: sin CSRF, mismo
+     * criterio que el preview. La ACL la impone onBootstrap (editor+).
+     */
+    public function recatalogLastEventAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+
+        $id = (int) $this->params()->fromPost('id');
+        try {
+            $event = $this->recatalogService->lastEvent($id);
+        } catch (\Exception $e) {
+            return new JsonModel(['event' => null]);
+        }
+        if (null === $event) {
+            return new JsonModel(['event' => null]);
+        }
+
+        // El payload no sale al cliente: solo lo necesita el servidor al deshacer.
+        return new JsonModel(['event' => [
+            'when' => $event['when'],
+            'contributor' => $event['contributor'],
+            'summary' => $event['summary'],
+        ]]);
+    }
+
+    /**
+     * Deshace la última re-catalogación del item (TASK-007). Escribe, así que
+     * lleva CSRF y ACL igual que el apply: deshacer no es más privilegiado que
+     * hacer, pero tampoco menos (NFR-003).
+     */
+    public function recatalogUndoAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+
+        $id = (int) $this->params()->fromPost('id');
+        // El curador ya confirmó que el REA cambió por otra vía y aun así quiere
+        // revertir; sin esta confirmación explícita el servicio se niega.
+        $force = (bool) $this->params()->fromPost('force');
+        $identity = $this->identity();
+        $contributor = $identity ? $identity->getName() : 'unknown';
+
+        try {
+            $result = $this->recatalogService->undo($id, $contributor, $force);
+        } catch (PermissionDeniedException $e) {
+            return new JsonModel(['updated' => false, 'error' => 'denied']);
+        } catch (\RuntimeException $e) {
+            return new JsonModel(['updated' => false, 'error' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            $this->logger->err('OERManager recatalog undo item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['updated' => false, 'error' => 'unexpected']);
+        }
+
+        return new JsonModel($result);
+    }
+
+    /**
      * Propuesta IA (TASK-010, ADR-0007): extrae el contenido del item, clasifica
      * con el LLM y devuelve etiquetas+ids por dimensión para PRE-RELLENAR el panel.
      * No escribe nada: la IA propone, el curador confirma (luego usa el apply de
