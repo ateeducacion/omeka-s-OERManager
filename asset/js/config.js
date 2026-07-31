@@ -17,6 +17,8 @@ export function readConfig() {
         searchTermsUrl: d.searchTermsUrl,
         recatalogPreviewUrl: d.recatalogPreviewUrl,
         recatalogApplyUrl: d.recatalogApplyUrl,
+        recatalogLastEventUrl: d.recatalogLastEventUrl,
+        recatalogUndoUrl: d.recatalogUndoUrl,
         aiProposeUrl: d.aiProposeUrl,
         aiProposeStatusUrl: d.aiProposeStatusUrl,
         aiProposeCancelUrl: d.aiProposeCancelUrl,

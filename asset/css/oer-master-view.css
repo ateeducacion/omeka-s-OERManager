@@ -595,6 +595,34 @@
     margin-top: 1em;
 }
 
+/* Deshacer (TASK-007) es una salida de emergencia, no una acción del flujo
+   normal: se separa de la banda de acciones y se pinta en secundario para que
+   no compita con «Confirmar», que es lo que el curador viene a pulsar. */
+.oer-recatalog-undo {
+    margin-top: 1.25em;
+    border-top: 1px solid var(--oer-rule);
+    padding-top: 0.75em;
+}
+
+.oer-recatalog-undo:empty {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+}
+
+.oer-recatalog-undo-btn {
+    background: none;
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-recatalog-undo-btn:hover,
+.oer-recatalog-undo-btn:focus {
+    color: var(--oer-accent);
+    border-color: var(--oer-accent);
+}
+
 .oer-diff-invalid {
     color: var(--oer-bad);
     font-weight: bold;
