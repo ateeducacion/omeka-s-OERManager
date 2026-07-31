@@ -18,7 +18,7 @@ Concentrar las reglas de negocio del re-catalogador, el mapeo exacto de properti
 ## Invariantes ya fijados (no esperar al destilado)
 
 - El alineamiento se escribe como **resource value apuntando al item-término** del currículo (no literal); validar que el destino existe y es del tipo esperado.
-- Operaciones en lote: **previsualización + confirmación + vía de reversión** (auditoría vía value annotations `dcterms`, ADR-0002) antes de ejecutar.
+- Operaciones en lote: **previsualización + confirmación + vía de reversión** antes de ejecutar. La reversión es real desde TASK-007: auditoría por value annotations `dcterms` (ADR-0002) **más** un evento de curación con el estado previo sobre el item (ADR-0015), porque la anotación sola no puede registrar lo borrado.
 - Tras re-catalogar, el chequeo de integridad debe poder confirmar el estado resultante.
 - ACL estricta: solo roles con privilegio de curación (matriz rol×acción en PEND-007).
 - UX sobre jerarquía grande: no cargar el árbol completo; búsqueda incremental y lazy-load por nivel (NFR-004).
@@ -73,8 +73,29 @@ Verificado contra el contenedor (2026-06-24). Detalle en `docs/referencia/curric
 - **Acotación contextual (RF-014):** cada dimensión hija filtra por el ancestro elegido (cascada Etapa→Curso→Asignatura→{Saberes, Criterios}) usando esas aristas, además de `dcterms:type` + búsqueda incremental.
 - Mejora propuesta RF-013: migrar `dcterms:type` (literal) a `skos:Concept` (recurso) → el filtro pasaría de `eq` a `res`.
 
-## Auditoría (PEND-006 resuelto, ADR-0002)
+## Auditoría (PEND-006 resuelto, ADR-0002) y reversibilidad (TASK-007, ADR-0015)
 
-La auditoría de la re-catalogación es **RDF nativa**: value annotations `dcterms` sobre el valor curado (`dcterms:contributor` quién, `dcterms:modified` cuándo, `dcterms:provenance` qué). Sin módulo Log ni tablas propias (coherente con NFR-002).
+La auditoría de la re-catalogación es **RDF nativa**: value annotations `dcterms` sobre el valor curado (`dcterms:contributor` quién, `dcterms:modified` cuándo, `dcterms:provenance` qué, más `dcterms:description` con el porqué de la IA en saberes/criterios, TASK-023). Sin módulo Log ni tablas propias (coherente con NFR-002).
 
-> ⚠️ **Reversibilidad — estado real (TASK-004 4a):** la anotación actual registra quién/cuándo/qué, pero **no** guarda el conjunto de valores previo, así que tras un apply destructivo no permite reconstruir automáticamente lo borrado. Para que la reversión de ADR-0002 sea real, la anotación (o `dcterms:provenance`) debe incluir el estado anterior (ids added/removed). Pendiente al cerrar TASK-007 (auditoría); hoy la garantía efectiva es **preview + confirmación**, no el deshacer.
+> ⚠️ **Una value annotation NO puede registrar una eliminación.** Vive en el valor que anota, así que al borrarse el valor se borra con él: vaciar una dimensión no deja rastro. Es el límite estructural de ADR-0002, y por eso la anotación **nunca** es sitio para el estado previo.
+
+**El estado previo va en un evento de curación sobre el propio item** (ADR-0015): cada `apply` que cambia algo anexa un valor `dcterms:provenance` **privado** (`is_public = false`) con el resumen legible, y en su `@annotation` el marcador `OERManager/curation-event/1` (ASCII, **no traducible**) más el payload JSON en `dcterms:replaces`:
+
+```json
+{ "v": 1, "op": "recatalog|undo", "undoOf": null,
+  "terms": { "lrmi:teaches": { "before": [...], "after": [...], "why": { "<id>": "…" } } } }
+```
+
+Reglas que no se pueden romper al tocar esto:
+
+- **`dcterms:provenance` NUNCA entra en `clear_property_values`.** El registro es append-only; si se limpia, cada re-catalogación borra la historia de las anteriores.
+- **El sello `dcterms:modified` lleva microsegundos** (`format('Y-m-d\TH:i:s.uP')`) y es **el mismo** en el evento y en las anotaciones por valor de esa confirmación. Con precisión de segundo, dos escrituras seguidas (un doble clic en «Deshacer») lo comparten y la lectura del último evento tiene que desempatar por el orden de la colección, **que Omeka no garantiza**: restauraría el estado equivocado. El sello común es además la clave `(contributor, modified)` que agrupa el evento en ADR-0013 §7.2.
+- **`why` guarda el porqué de TODOS los valores previos**, no solo el de los eliminados: el deshacer reescribe la property entera desde `before` y cada valor restaurado necesita el suyo. Regenerarlo cuesta otra pasada de LLM.
+- **El payload va versionado** (`v`): lo que no se sepa leer se rechaza, no se interpreta a medias.
+- **La reversión no es un camino privilegiado:** `undo()` reaplica por `apply()`, así que hereda validación de destino, anotaciones y su propio evento. Deshacer un deshacer es rehacer.
+- **Guarda de obsolescencia:** si el estado actual no coincide con el `after` del último evento, alguien tocó el REA por otra vía; el servicio se niega y exige confirmación explícita.
+- **Confirmar sin cambios no escribe.** Reescribir los mismos valores les pondría anotaciones con fecha y autor nuevos, falsificando la auditoría.
+
+> **Límite vivo:** el valor del evento es privado, así que **no se ve sin autenticar** (comprobado en el contenedor) y un export anónimo no lo lleva. Cualquier lectura del historial —rebanada 3 de TASK-028— tiene que resolverse **en servidor**, no fiándola al JSON-LD que el drawer trae de la API. Y al restaurar, los valores recuperados llevan anotaciones nuevas: la autoría original solo pervive en el registro de eventos.
+
+Cobertura: el formato es puro y se prueba en el host (`CurationEventTest`, 17 tests); `RecatalogService` depende del core y **solo** se verifica con `test/container/undo-harness.php` (⚠️ escribe; exige `--write`; se autorrestaura).
