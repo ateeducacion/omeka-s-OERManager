@@ -6,13 +6,8 @@ use Laminas\EventManager\Event;
 use Laminas\EventManager\SharedEventManagerInterface;
 use Laminas\ModuleManager\Feature\InitProviderInterface;
 use Laminas\ModuleManager\ModuleManagerInterface;
-use Laminas\Mvc\Controller\AbstractController;
 use Laminas\Mvc\MvcEvent;
 use Laminas\ServiceManager\ServiceLocatorInterface;
-use Laminas\View\Renderer\PhpRenderer;
-use OERManager\Service\CurriculumSearch;
-use OERManager\Service\GovernanceSettings;
-use OERManager\Service\Llm\LlmSettings;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Module\AbstractModule;
 
@@ -23,29 +18,6 @@ use Omeka\Module\AbstractModule;
  */
 class Module extends AbstractModule implements InitProviderInterface
 {
-    /**
-     * Settings de gobernanza que identifican un artefacto por id (ADR-0013):
-     * se cargan y se guardan igual, con el mismo parser, así que van en bucle.
-     * El titular de derechos va aparte porque es texto, no id.
-     *
-     * Es un MÉTODO y no una constante de clase a propósito: Laminas instancia
-     * este Module (ModuleResolverListener) ANTES de registrar el autoloading
-     * PSR-4 del módulo, así que una constante que referencie
-     * `GovernanceSettings::` se evalúa cuando esa clase todavía no existe y el
-     * arranque muere con «Class not found» (verificado en el contenedor,
-     * 2026-07-28). Dentro de un método se resuelve al invocarlo, ya tarde.
-     *
-     * @return string[]
-     */
-    private function governanceIdSettings(): array
-    {
-        return [
-            GovernanceSettings::LICENCE_VOCAB_ID,
-            GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
-            GovernanceSettings::REA_TEMPLATE_ID,
-        ];
-    }
-
     /**
      * Registra el autoloader de las dependencias propias del módulo
      * (smalot/pdfparser, TASK-010).
@@ -78,20 +50,59 @@ class Module extends AbstractModule implements InitProviderInterface
     }
 
     /**
-     * ACL de curación (NFR-003): el re-catalogador y la vista maestra requieren
-     * rol editor o superior. global_admin y site_admin suelen tener allow global
-     * por el AclFactory de Omeka; se listan editor y site_admin explícitamente
-     * para garantizar el acceso (idempotente si ya estaban). El proyecto
-     * (schema:isPartOf) no se toca aquí: acción de gestor aparte (ADR-0004).
+     * ACL (NFR-003). Se concede **por privilegio**, nunca por controlador.
+     *
+     * Hasta TASK-029 esto era un `allow(['editor','site_admin'], [Controller])`
+     * sin lista de privilegios, o sea el controlador entero: cualquier acción
+     * nueva quedaba alcanzable por `editor` —y por `site_editor`, que el módulo
+     * IsolatedSites añade heredando de `editor`— con solo escribirla. Con la
+     * configuración colgando de este mismo controlador eso habría abierto la
+     * clave API del LLM y los vocabularios del catálogo a un editor.
+     *
+     * La lista va dentro del método a propósito, por el mismo motivo que
+     * `governanceIdSettings()` lo era: Laminas instancia este Module antes de
+     * registrar el autoloading PSR-4 del módulo. Aquí solo hay literales, pero
+     * el criterio se mantiene para no invitar a meter una referencia de clase.
+     *
+     * Los privilegios son los nombres de acción tal cual llegan en la ruta —con
+     * guiones—, que es lo que compara el core al despachar
+     * (`Mvc\MvcListeners::authorizeUserAgainstController`).
      */
     public function onBootstrap(MvcEvent $event): void
     {
         parent::onBootstrap($event);
         /** @var \Omeka\Permissions\Acl $acl */
         $acl = $this->getServiceLocator()->get('Omeka\Acl');
+
+        // Curación: vista maestra, re-catalogador, propuesta IA y visibilidad.
         $acl->allow(
             ['editor', 'site_admin'],
-            [Controller\Admin\IndexController::class]
+            [Controller\Admin\IndexController::class],
+            [
+                'index',
+                'search',
+                'search-terms',
+                'set-visibility',
+                'recatalog-preview',
+                'recatalog-apply',
+                'recatalog-last-event',
+                'recatalog-undo',
+                'ai-propose',
+                'ai-propose-status',
+                'ai-propose-cancel',
+                'ai-evaluate',
+            ]
+        );
+
+        // Configuración: solo Supervisor (site_admin) y superior, decisión del
+        // propietario (2026-07-28). Gobierna la clave API del LLM y los
+        // vocabularios de todo el catálogo, así que no es tarea de curación.
+        // `global_admin` no se lista porque el core ya le concede todo
+        // (`Service\AclFactory::addRulesForGlobalAdmin`, `$acl->allow('global_admin')`).
+        $acl->allow(
+            ['site_admin'],
+            [Controller\Admin\IndexController::class],
+            ['config']
         );
     }
 
@@ -278,120 +289,5 @@ class Module extends AbstractModule implements InitProviderInterface
                 ));
             }
         }
-    }
-
-    public function getConfigForm(PhpRenderer $renderer)
-    {
-        $services = $this->getServiceLocator();
-        $settings = $services->get('Omeka\Settings');
-        $form = $services->get('FormElementManager')->get(Form\ConfigForm::class);
-        $data = [
-            CurriculumSearch::AXIS_SETTING => $settings->get(CurriculumSearch::AXIS_SETTING),
-            CurriculumSearch::FRAMEWORK_SETTING => $settings->get(CurriculumSearch::FRAMEWORK_SETTING),
-        ];
-        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
-            $data[$setting] = $settings->get($setting);
-        }
-        // Gobernanza del catálogo (ADR-0013): vocabularios, plantilla y titular.
-        foreach ($this->governanceIdSettings() as $setting) {
-            $data[$setting] = $settings->get($setting);
-        }
-        $data[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = $settings->get(
-            GovernanceSettings::DEFAULT_RIGHTS_HOLDER
-        );
-        // Conexión LLM (TASK-010). La clave API NO se devuelve en claro (write-only):
-        // el campo se deja en blanco; solo se actualiza si el admin introduce un valor.
-        $data[LlmSettings::ENABLED] = (bool) $settings->get(LlmSettings::ENABLED);
-        $data[LlmSettings::PROVIDER] = $settings->get(LlmSettings::PROVIDER, LlmSettings::PROVIDER_ANTHROPIC);
-        $data[LlmSettings::BASE_URL] = $settings->get(LlmSettings::BASE_URL);
-        $data[LlmSettings::MODEL] = $settings->get(LlmSettings::MODEL);
-        $data[LlmSettings::CONTENT_TOKEN_CAP] = $settings->get(
-            LlmSettings::CONTENT_TOKEN_CAP,
-            LlmSettings::DEFAULT_CONTENT_TOKEN_CAP
-        );
-        // Perfil de inferencia compartido (paridad entre proveedores).
-        $data[LlmSettings::TEMPERATURE] = $settings->get(LlmSettings::TEMPERATURE);
-        $data[LlmSettings::MAX_TOKENS] = $settings->get(LlmSettings::MAX_TOKENS, LlmSettings::DEFAULT_MAX_TOKENS);
-        // Capa de contexto del LLM (ADR-0011): extracción/visión.
-        $data[LlmSettings::EXTRACTION_MODEL] = $settings->get(LlmSettings::EXTRACTION_MODEL);
-        $data[LlmSettings::VISION_ENABLED] = (bool) $settings->get(LlmSettings::VISION_ENABLED);
-        $data[LlmSettings::VISION_MAX_IMAGES] = $settings->get(
-            LlmSettings::VISION_MAX_IMAGES,
-            LlmSettings::DEFAULT_VISION_MAX_IMAGES
-        );
-        $data[LlmSettings::VISION_MAX_PDF_BYTES] = $settings->get(
-            LlmSettings::VISION_MAX_PDF_BYTES,
-            LlmSettings::DEFAULT_VISION_MAX_PDF_BYTES
-        );
-        $form->setData($data);
-        return $renderer->formCollection($form);
-    }
-
-    public function handleConfigForm(AbstractController $controller)
-    {
-        $settings = $this->getServiceLocator()->get('Omeka\Settings');
-        $params = $controller->getRequest()->getPost();
-
-        $axisId = (int) $params[CurriculumSearch::AXIS_SETTING];
-        $settings->set(CurriculumSearch::AXIS_SETTING, $axisId > 0 ? $axisId : null);
-        $settings->set(
-            CurriculumSearch::FRAMEWORK_SETTING,
-            trim((string) $params[CurriculumSearch::FRAMEWORK_SETTING])
-        );
-        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
-            $settings->set($setting, trim((string) ($params[$setting] ?? '')));
-        }
-
-        // Gobernanza del catálogo (ADR-0013). Los artefactos se identifican por id;
-        // un valor vacío o no numérico se guarda como null = «sin configurar», que
-        // hace degradar el campo a texto libre en vez de romper.
-        foreach ($this->governanceIdSettings() as $setting) {
-            $settings->set($setting, GovernanceSettings::parseId($params[$setting] ?? null));
-        }
-        $settings->set(
-            GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
-            GovernanceSettings::parseRightsHolder($params[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] ?? null)
-        );
-
-        // Conexión LLM (TASK-010, ADR-0008).
-        $settings->set(LlmSettings::ENABLED, !empty($params[LlmSettings::ENABLED]));
-        $provider = (string) ($params[LlmSettings::PROVIDER] ?? LlmSettings::PROVIDER_ANTHROPIC);
-        $allowed = [LlmSettings::PROVIDER_ANTHROPIC, LlmSettings::PROVIDER_OPENAI];
-        $settings->set(
-            LlmSettings::PROVIDER,
-            in_array($provider, $allowed, true) ? $provider : LlmSettings::PROVIDER_ANTHROPIC
-        );
-        $settings->set(LlmSettings::BASE_URL, trim((string) ($params[LlmSettings::BASE_URL] ?? '')));
-        $settings->set(LlmSettings::MODEL, trim((string) ($params[LlmSettings::MODEL] ?? '')));
-        $cap = (int) ($params[LlmSettings::CONTENT_TOKEN_CAP] ?? 0);
-        $settings->set(LlmSettings::CONTENT_TOKEN_CAP, $cap > 0 ? $cap : LlmSettings::DEFAULT_CONTENT_TOKEN_CAP);
-
-        // Perfil de inferencia compartido: temperatura vacía/no válida = no enviar.
-        $temperature = LlmSettings::parseTemperature($params[LlmSettings::TEMPERATURE] ?? null);
-        $settings->set(LlmSettings::TEMPERATURE, null === $temperature ? '' : (string) $temperature);
-        $settings->set(LlmSettings::MAX_TOKENS, LlmSettings::parseMaxTokens($params[LlmSettings::MAX_TOKENS] ?? null));
-
-        // Capa de contexto del LLM (ADR-0011): modelo de extracción + visión. La
-        // visión arranca apagada (egress de binarios a un tercero); el modelo de
-        // extracción vacío cae al del clasificador (lo resuelve la factoría).
-        $settings->set(LlmSettings::EXTRACTION_MODEL, trim((string) ($params[LlmSettings::EXTRACTION_MODEL] ?? '')));
-        $settings->set(LlmSettings::VISION_ENABLED, !empty($params[LlmSettings::VISION_ENABLED]));
-        $maxImages = (int) ($params[LlmSettings::VISION_MAX_IMAGES] ?? 0);
-        $settings->set(
-            LlmSettings::VISION_MAX_IMAGES,
-            $maxImages > 0 ? $maxImages : LlmSettings::DEFAULT_VISION_MAX_IMAGES
-        );
-        // Tope de envío de PDF a visión, separado del de parseo (TASK-025).
-        $settings->set(
-            LlmSettings::VISION_MAX_PDF_BYTES,
-            LlmSettings::parseVisionMaxPdfBytes($params[LlmSettings::VISION_MAX_PDF_BYTES] ?? null)
-        );
-
-        // Clave API write-only: solo se sobrescribe si llega un valor no vacío.
-        $apiKey = (string) ($params[LlmSettings::API_KEY] ?? '');
-        if ('' !== trim($apiKey)) {
-            $settings->set(LlmSettings::API_KEY, $apiKey);
-        }
-        return true;
     }
 }

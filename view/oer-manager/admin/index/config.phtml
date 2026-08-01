@@ -1,0 +1,26 @@
+<?php
+/**
+ * Configuración del módulo (TASK-029). Antes la rendía Omeka en el listado de
+ * Módulos con `$renderer->formCollection($form)`; aquí se sirve como página
+ * propia del módulo, así que hay que poner lo que aquello daba hecho: el
+ * `<form>`, el botón de guardar y el CSRF (que viaja como elemento del
+ * formulario, cfr. ConfigForm::init).
+ *
+ * @var \OERManager\Form\ConfigForm $form
+ */
+$translate = $this->plugin('translate');
+$form->prepare();
+
+$this->htmlElement('body')->appendAttribute('class', 'oer-manager config');
+?>
+<?php echo $this->pageTitle($translate('Configuración'), 1, $translate('OER Manager')); ?>
+
+<?php echo $this->form()->openTag($form); ?>
+<div id="page-actions">
+    <button type="submit" class="button"><?php echo $translate('Guardar'); ?></button>
+</div>
+
+<div class="field-container">
+    <?php echo $this->formCollection($form, false); ?>
+</div>
+<?php echo $this->form()->closeTag(); ?>

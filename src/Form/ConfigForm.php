@@ -3,20 +3,49 @@
 namespace OERManager\Form;
 
 use Laminas\Form\Form;
+use Laminas\InputFilter\InputFilterProviderInterface;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 
 /**
- * Formulario de configuración del módulo (module.ini: configurable = true).
+ * Formulario de configuración del módulo.
+ *
+ * Desde TASK-029 NO se rinde por el listado de Módulos (`module.ini` pasa a
+ * `configurable = false`): lo sirve `IndexController::configAction()` desde el
+ * menú lateral, con privilegio ACL propio. El mapeo settings↔POST vive en
+ * `Service\ConfigPayload`; aquí solo están los campos.
  *
  * Localización de los DefinedTermSet raíz (ADR-0006): el propietario fija el
  * item-raíz de ejes temáticos y el valor de lrmi:educationalFramework de los
  * marcos curriculares. La conexión LLM (RF-010/ADR-0008) se añade en la
  * entrega 4b (TASK-010).
  */
-class ConfigForm extends Form
+class ConfigForm extends Form implements InputFilterProviderInterface
 {
+    /**
+     * Ningún campo es obligatorio salvo el CSRF: «vacío» es un estado de diseño,
+     * no un error. ADR-0013 lo fija para la gobernanza —si el setting está vacío
+     * o el artefacto no existe, el campo degrada a texto libre y la UI lo dice— y
+     * CurriculumSearch hace lo mismo con las raíces del currículo. Con PEND-011
+     * abierto, además, el vocabulario de licencias TIENE que poder estar vacío.
+     *
+     * Sin esto, los `Number` de Laminas —obligatorios por defecto— hacen que un
+     * módulo recién instalado no pueda guardar su propia configuración.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    public function getInputFilterSpecification(): array
+    {
+        $spec = [];
+        foreach ($this->getElements() as $name => $element) {
+            if ('csrf' !== $name) {
+                $spec[$name] = ['required' => false];
+            }
+        }
+        return $spec;
+    }
+
     public function init(): void
     {
         $this->add([
@@ -73,6 +102,17 @@ class ConfigForm extends Form
 
         $this->addGovernanceFields();
         $this->addLlmFields();
+
+        // TASK-029: al salir del listado de Módulos, el CSRF deja de ponerlo
+        // Omeka y lo pone el formulario. Va aquí y no en el controlador para
+        // que viaje con el formulario allá donde se rinda.
+        $this->add([
+            'name' => 'csrf',
+            'type' => 'Csrf',
+            'options' => [
+                'csrf_options' => ['timeout' => 3600],
+            ],
+        ]);
     }
 
     /**
