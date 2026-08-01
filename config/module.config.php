@@ -34,7 +34,11 @@ return [
                     $container->get('Omeka\Job\Dispatcher'),
                     $container->get(Service\Ai\ProposalStore::class),
                     $container->get(Service\ComputedFilter::class),
-                    $container->get(Service\ResourceTypeVocab::class)
+                    $container->get(Service\ResourceTypeVocab::class),
+                    // TASK-029: la configuración se rinde desde el controlador,
+                    // no desde Module. El manager (y no la instancia) porque es
+                    // quien invoca `init()` del formulario.
+                    $container->get('FormElementManager')
                 );
             },
         ],
@@ -277,6 +281,20 @@ return [
                 'label' => 'OER Manager', // @translate
                 'route' => 'admin/oer-manager',
                 'resource' => Controller\Admin\IndexController::class,
+                'pages' => [
+                    // TASK-029: la configuración deja el listado de Módulos y
+                    // cuelga de aquí, junto a la vista maestra que es donde se
+                    // trabaja. `privilege` hace que la entrada solo se pinte a
+                    // quien puede entrar (Supervisor y superior): sin él, un
+                    // editor vería un enlace que le devuelve un 403.
+                    [
+                        'label' => 'Configuración', // @translate
+                        'route' => 'admin/oer-manager',
+                        'action' => 'config',
+                        'resource' => Controller\Admin\IndexController::class,
+                        'privilege' => 'config',
+                    ],
+                ],
             ],
         ],
     ],

@@ -2,6 +2,7 @@
 
 namespace OERManager\Controller\Admin;
 
+use Laminas\Form\FormElementManager;
 use Laminas\Log\LoggerInterface;
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\Session\Container as SessionContainer;
@@ -9,10 +10,12 @@ use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\ColumnType\AlignmentStatus;
+use OERManager\Form\ConfigForm;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\ComputedFilter;
+use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Llm\LlmSettings;
@@ -50,6 +53,7 @@ class IndexController extends AbstractActionController
     private ProposalStore $proposalStore;
     private ComputedFilter $computedFilter;
     private ResourceTypeVocab $resourceTypeVocab;
+    private FormElementManager $formElementManager;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -63,7 +67,8 @@ class IndexController extends AbstractActionController
         Dispatcher $jobDispatcher,
         ProposalStore $proposalStore,
         ComputedFilter $computedFilter,
-        ResourceTypeVocab $resourceTypeVocab
+        ResourceTypeVocab $resourceTypeVocab,
+        FormElementManager $formElementManager
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -77,6 +82,7 @@ class IndexController extends AbstractActionController
         $this->proposalStore = $proposalStore;
         $this->computedFilter = $computedFilter;
         $this->resourceTypeVocab = $resourceTypeVocab;
+        $this->formElementManager = $formElementManager;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -315,6 +321,48 @@ class IndexController extends AbstractActionController
         }
 
         return new JsonModel($result);
+    }
+
+    /**
+     * Configuración del módulo (TASK-029). Vivía en el listado de Módulos, a la
+     * que solo se llegaba por *Módulos → OER Manager → Configurar*; ahora cuelga
+     * del menú lateral, junto a la vista maestra que es donde se trabaja.
+     *
+     * La ACL la impone `Module::onBootstrap` con el privilegio `config`, que
+     * solo tienen Supervisor (site_admin) y global_admin: aquí se gobiernan la
+     * clave API del LLM y los vocabularios de todo el catálogo, así que no es
+     * una acción de curación.
+     *
+     * El CSRF lo ponía Omeka en la página de Módulos; al servir el formulario
+     * por nuestra cuenta hay que ponerlo nosotros (lo añade `ConfigForm::init`).
+     */
+    public function configAction()
+    {
+        /** @var ConfigForm $form */
+        $form = $this->formElementManager->get(ConfigForm::class);
+        $settings = $this->settings;
+        $form->setData(ConfigPayload::read(
+            static fn (string $key, mixed $default = null): mixed => $settings->get($key, $default)
+        ));
+
+        if ($this->getRequest()->isPost()) {
+            $post = $this->params()->fromPost();
+            $form->setData($post);
+            if ($form->isValid()) {
+                foreach (ConfigPayload::write($post) as $key => $value) {
+                    $settings->set($key, $value);
+                }
+                $this->messenger()->addSuccess('Configuración guardada.'); // @translate
+                // Redirect tras POST: recargar no reenvía el formulario, y el
+                // campo de la clave API vuelve a pintarse vacío (write-only).
+                return $this->redirect()->toRoute('admin/oer-manager', ['action' => 'config']);
+            }
+            $this->messenger()->addFormErrors($form);
+        }
+
+        $view = new ViewModel();
+        $view->setVariable('form', $form);
+        return $view;
     }
 
     /**
