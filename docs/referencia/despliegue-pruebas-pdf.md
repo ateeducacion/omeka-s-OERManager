@@ -160,3 +160,44 @@ un fatal de memoria **no capturable** que no aparece como motivo de descarte. Lo
 - TASK-024 en [../backlog.md](../backlog.md); medición A/B del 2026-07-22 y del 2026-07-30.
 - `src/Service/Content/ContentExtractor.php` (`parsePdf()`, `supportsIconvTranslit()`).
 - `tools/pdf-check.php` (esta sonda).
+
+## 5. Medición sobre la pila glibc levantada (2026-08-01)
+
+Pila de pruebas levantada según el §2 y medida contra el entorno Alpine del 8080 **sobre los
+mismos 129 PDF** del volumen, con el `ContentExtractor` real del módulo:
+
+| | Alpine (musl) | Debian (glibc) |
+| --- | ---: | ---: |
+| Total de caracteres extraídos | 242.356 | **271.105** (+28.749) |
+| Ficheros que mejoran / empeoran | — | **9 / 0** |
+| `pdf_iconv_unsupported` | 2 | **0** |
+| `pdf_too_large` (tope del módulo, no plataforma) | 14 | 14 |
+
+**Ocho REA recuperan contenido**, y en dos de ellos el texto no existía en absoluto:
+
+| REA | Antes | Después |
+| --- | ---: | ---: |
+| #40437 Guía de desayunos y recreos saludables | **0** | 23.345 |
+| #4676 Cuerpos geométricos | 105 | 1.451 |
+| #4674 Figuras Planas | **0** | 875 |
+| #5045 Resumen de fórmulas de áreas y perímetros | 57 | 838 |
+| #5051 Acebiño · #40422 Guaydil · #40425 Lentisco · #40439 Embarcaciones | 1.793–2.998 | 1.822–3.866 |
+
+> **Cuidado al comparar con la tabla del §1**, que da 10.525 vs 39.274: aquella medía **los 10
+> PDF de los REA**, y esta los **129 del volumen**. La proporción global es menor sencillamente
+> porque la mayoría de los PDF del volumen no están afectados; el daño en los REA es el de §1.
+
+**Trampa de medición, por si se repite:** ejecutar `pdf-check` en las dos pilas y comparar los
+totales **no vale**. La sonda toma una muestra de 25 ficheros y el orden de `glob` difiere entre
+contenedores, así que se comparan conjuntos distintos: da ~40.000 en ambas y parece que no hay
+diferencia. Hay que medir **fichero a fichero sobre una lista fija**.
+
+**El módulo funciona íntegro sobre la pila nueva:** `acl-check` 25/25, `config-page-check` 7/7 y
+`preview-harness` en verde dentro del contenedor Debian.
+
+### Estado
+
+La pila del 8081 es **temporal y desechable**; el entorno de trabajo del 8080 no se ha tocado.
+El cambio **permanente** —apuntar el `docker-compose` de `omeka-s-ModuleTemplate` a
+`ghcr.io/erseco/omeka-s-docker:master` con los cinco escollos del §3— sigue siendo del
+propietario: la configuración Docker no forma parte del módulo.
