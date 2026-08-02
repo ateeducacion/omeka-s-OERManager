@@ -218,10 +218,19 @@ El cambio **permanente** —apuntar el `docker-compose` de `omeka-s-ModuleTempla
 ## 6. Fichas destiladas de los PDF sobre glibc (2026-08-02, cierre de TASK-022)
 
 Medición del residuo de TASK-022 sobre esta misma pila: `propose-harness.php` con LLM real
-(OpenRouter, `openai/gpt-4o-mini`, visión activada), **3 repeticiones** por item, sobre los tres
-casos PDF del corpus (`test/fixtures/distiller-corpus/`). Los tres casos ZIP/SCORM ya se habían
-verificado en Alpine el 2026-07-22, y esta pila **no puede rehacerlos** por la extensión `zip`
-ausente (§3), así que se dejan como estaban.
+(OpenRouter, `openai/gpt-4o-mini`, visión activada), **3 repeticiones** por item, sobre el corpus
+completo (`test/fixtures/distiller-corpus/`). Primero los tres casos PDF; después, tras rehacer
+el contenedor con la imagen `zip` del §3, también los tres ZIP/SCORM, que hasta entonces solo
+tenían la verificación en Alpine del 2026-07-22.
+
+**Receta de la imagen con `zip`**, verificada (`ZipArchive` disponible, `ICONV_IMPL` sigue en
+`glibc`, `make pdf-check` exit 0 con 24 PDF OK, y coste de tamaño ≈ 0 porque
+`install-php-extensions` purga las dependencias de compilación):
+
+```dockerfile
+FROM ghcr.io/erseco/omeka-s-docker:master
+RUN install-php-extensions zip
+```
 
 | Item | Texto extraído | Tema ↔ referencia | «Nivel citado textualmente» |
 | --- | --- | --- | --- |
@@ -229,10 +238,24 @@ ausente (§3), así que se dejan como estaban.
 | #40437 Guía de desayunos | PDF 15 MB, sin truncar (en Alpine: 0 chars) | **3/3** | **3/3** `«Educación Primaria»`; r2/r3 añaden `«los tres ciclos de Educación Primaria»`, también literal |
 | #40442 Lámina: la cocina | **sin medios** (ver abajo) | **3/3** | 3/3 `«1º Primaria»`, `«Conocimiento del Medio…»`, **literales en los metadatos del item** |
 
+Y, tras añadir la extensión `zip` a la imagen (§3), los tres casos ZIP/SCORM **rehechos sobre
+glibc** el mismo día, otras 3 repeticiones cada uno:
+
+| Item | Extracción | Tema ↔ referencia | «Nivel citado textualmente» |
+| --- | --- | --- | --- |
+| #3181 Partes de la célula | SCORM, sin truncar | **3/3** | **3/3** `No consta` (correcto: el recurso no cita nivel) |
+| #4359 (sin título) Vasos sanguíneos | SCORM 13 MB, sin truncar | **3/3** | **3/3** `No consta` |
+| #37129 REF Secundaria | SCORM 41 MB, truncado por presupuesto | **3/3** | **3/3** `«2.º ESO»`, `«Matemáticas»`; r1/r3 añaden `«REF»`, que es el nombre del programa y también aparece literal |
+
+**Ruido vendor: 0 apariciones** de `ckeditor`, `apollo`, `wiris`, `imagelink_` ni
+`navigationSectionInteracted` en las 9 ejecuciones — la denylist y el reparto de presupuesto de
+TASK-022 se sostienen sobre glibc igual que en Alpine.
+
 Criterio del corpus (§Protocolo, coherente con ADR-0012): **tasa de acuerdo sobre repeticiones**,
-no identidad literal. Se cumple: el Tema y el «Qué enseña» concuerdan con la ficha de referencia
-en 9/9 ejecuciones, y la sección «Nivel citado textualmente» aparece siempre, siempre copiada del
-recurso o de sus metadatos y **nunca inferida** (invariante de ADR-0011). Lo que varía entre
+no identidad literal. Se cumple en el corpus completo: el Tema y el «Qué enseña» concuerdan con la
+ficha de referencia en **18/18 ejecuciones** (9 PDF + 9 SCORM), y la sección «Nivel citado
+textualmente» aparece siempre, siempre copiada del recurso o de sus metadatos y **nunca inferida**
+(invariante de ADR-0011) — incluido el `No consta` donde no consta. Lo que varía entre
 repeticiones es la forma de la cita, no su origen.
 
 **#40442 ya no ejercita lo que decía ejercitar:** el item **no tiene medios** en el catálogo

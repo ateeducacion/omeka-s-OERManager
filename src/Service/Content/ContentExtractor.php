@@ -43,6 +43,12 @@ final class ContentExtractor
         // que el PDF vuelve vacío sin estarlo (TASK-024b). Inyectable para poder
         // probar en host las dos ramas: el host tiene glibc y nunca vería la rota.
         'iconv_translit_supported' => null,
+        // ¿Trae la plataforma la extensión `zip` de PHP? null = detectar en
+        // runtime. La imagen Debian/glibc que arregla el PDF (TASK-024b) NO la
+        // trae, y sin ella `ZipArchive` no existe: hay que saltar el medio con
+        // un motivo propio en vez de reventar (TASK-031). Inyectable por el
+        // mismo motivo que `iconv_translit_supported`: el host la tiene.
+        'zip_supported' => null,
         // Tope de nodos del recorrido JSON (anti-JSON patológico/profundo).
         'max_json_nodes' => 5000,
         // Longitud mínima para aceptar un string suelto (sin varias palabras).
@@ -209,6 +215,19 @@ final class ContentExtractor
         return (bool) $this->limits['iconv_translit_supported'];
     }
 
+    /**
+     * Sonda de la plataforma, evaluada una sola vez. Sin la extensión `zip` la
+     * clase no existe y instanciarla lanza un `Error` que, sin esta guarda,
+     * tumbaba el propose entero en vez de perder solo ese medio (TASK-031).
+     */
+    private function supportsZipArchive(): bool
+    {
+        if (null === $this->limits['zip_supported']) {
+            $this->limits['zip_supported'] = class_exists(\ZipArchive::class);
+        }
+        return (bool) $this->limits['zip_supported'];
+    }
+
     private function readTextFile(string $path, string $ext): ?string
     {
         $bytes = file_get_contents($path, false, null, 0, (int) $this->limits['max_entry_bytes']);
@@ -342,6 +361,11 @@ final class ContentExtractor
      */
     private function extractZip(string $path, string $name): array
     {
+        if (!$this->supportsZipArchive()) {
+            $this->skip($name, 'zip_unsupported');
+            return [];
+        }
+
         $za = new \ZipArchive();
         if (true !== $za->open($path)) {
             $this->skip($name, 'zip_unreadable');
