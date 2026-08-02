@@ -40,3 +40,13 @@ contenedor:
 
 Los tests golden en host (`ContentExtractorTest`, `PromptBuilderTest`) cubren la
 parte determinista: extracción limpia y presencia de guía/ejemplos en el prompt.
+
+## Estado de la medición
+
+| Casos | Medido | Dónde |
+| --- | --- | --- |
+| ZIP/SCORM (#3181, #4359, #37129) | 2026-07-22, contenedor Alpine | TASK-022 en [../../../docs/backlog.md](../../../docs/backlog.md) |
+| PDF (#4674, #40437, #40442) | 2026-08-02, pila glibc, 3 repeticiones | [despliegue-pruebas-pdf.md](../../../docs/referencia/despliegue-pruebas-pdf.md) §6 |
+
+Acuerdo ficha↔referencia en Tema y «Qué enseña»: 9/9 ejecuciones en los tres casos PDF.
+**Caducado:** #40442 perdió sus medios (ver su ficha); ya no cubre «PDF escaneado → visión».

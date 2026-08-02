@@ -117,12 +117,14 @@ docker rmi ghcr.io/erseco/omeka-s-docker:master     # opcional, ~1 GB
 
 ## 3. Escollos verificados al migrar de Alpine a Debian
 
-Los dos primeros **rompen el arranque o la escritura**; no son opcionales.
+Los tres primeros **rompen el arranque, la escritura o la mitad del catálogo**; no son
+opcionales.
 
 | Escollo | Síntoma | Arreglo |
 | --- | --- | --- |
 | **`local.config.php` ausente** | Fatal al arrancar: `RuntimeException: Filename "/var/www/html/config/local.config.php" cannot be found` | Crear `volume/config/local.config.php` con `<?php return [];` |
 | **UID distinto** | Arranca y se ve bien, pero **no puede subir ficheros** | `chown -R 33:33` sobre el volumen |
+| **Extensión `zip` ausente** | `Error: Class "ZipArchive" not found` → el propose IA **muere** en todo REA empaquetado (9 de los 19) | Añadir la extensión `zip` a la imagen (`docker-php-ext-install zip`) |
 | Puerto | No responde en 8080 | La imagen expone **80**, no 8080 → `-p 8080:80` |
 | Ruta del `.ini` de PHP | El `custom.ini` se ignora en silencio | `/usr/local/etc/php/conf.d/`, no `/etc/php84/conf.d/` |
 | `nginx.conf` | Montaje inútil | La imagen usa **Apache 2**, no nginx: quitar ese volumen |
@@ -137,6 +139,17 @@ a `volume/config/local.config.php`; si el destino no existe, el symlink queda co
 **Por qué el `chown`:** el volumen viene de Alpine con `nobody:nobody` (65534) y modo 755;
 la imagen Debian corre como `www-data` (33), que con 755 puede leer pero **no escribir**. El
 entrypoint solo hace `chown` de `database.ini`.
+
+**Por qué la extensión `zip` es bloqueante:** `ghcr.io/erseco/omeka-s-docker:master` **no la
+trae** (`php -m` sin `zip`, `class_exists('ZipArchive') === false`), mientras que Alpine sí. El
+`ContentExtractor` descomprime en memoria con `ZipArchive` (TASK-010), así que sin la extensión
+ningún REA empaquetado aporta contenido; y **9 de los 19 REA son `application/zip`** (SCORM
+Netex y similares), o sea que el cambio de imagen tal cual **cambia un agujero de plataforma
+por otro del mismo tamaño**: Alpine pierde el texto de los PDF, Debian pierde el de los ZIP.
+Detectado el 2026-08-02 al medir TASK-022 (§6). Sonda: `php -r 'var_dump(class_exists("ZipArchive"));'`.
+Agravante del lado del módulo: la clase se instancia sin guarda, así que el fallo **no degrada**
+—como sí hace el PDF con `pdf_iconv_unsupported`— sino que propaga un `Error` que tumba el
+propose entero (→ TASK-031).
 
 **`memory_limit`:** con los 128 MB por defecto, algún PDF del catálogo aborta el proceso con
 un fatal de memoria **no capturable** que no aparece como motivo de descarte. Los 512 MB del
@@ -199,5 +212,33 @@ diferencia. Hay que medir **fichero a fichero sobre una lista fija**.
 
 La pila del 8081 es **temporal y desechable**; el entorno de trabajo del 8080 no se ha tocado.
 El cambio **permanente** —apuntar el `docker-compose` de `omeka-s-ModuleTemplate` a
-`ghcr.io/erseco/omeka-s-docker:master` con los cinco escollos del §3— sigue siendo del
-propietario: la configuración Docker no forma parte del módulo.
+`ghcr.io/erseco/omeka-s-docker:master` con los **seis** escollos del §3, incluida la extensión
+`zip`— sigue siendo del propietario: la configuración Docker no forma parte del módulo.
+
+## 6. Fichas destiladas de los PDF sobre glibc (2026-08-02, cierre de TASK-022)
+
+Medición del residuo de TASK-022 sobre esta misma pila: `propose-harness.php` con LLM real
+(OpenRouter, `openai/gpt-4o-mini`, visión activada), **3 repeticiones** por item, sobre los tres
+casos PDF del corpus (`test/fixtures/distiller-corpus/`). Los tres casos ZIP/SCORM ya se habían
+verificado en Alpine el 2026-07-22, y esta pila **no puede rehacerlos** por la extensión `zip`
+ausente (§3), así que se dejan como estaban.
+
+| Item | Texto extraído | Tema ↔ referencia | «Nivel citado textualmente» |
+| --- | --- | --- | --- |
+| #4674 Figuras Planas | PDF, sin truncar (en Alpine: 0 chars) | **3/3** | 3/3 presente; `«1º ESO», «MATEMÁTICAS»` en r1, `«1º ESOMATEMÁTICAS»` (literal del PDF, sin separar) en r2/r3 |
+| #40437 Guía de desayunos | PDF 15 MB, sin truncar (en Alpine: 0 chars) | **3/3** | **3/3** `«Educación Primaria»`; r2/r3 añaden `«los tres ciclos de Educación Primaria»`, también literal |
+| #40442 Lámina: la cocina | **sin medios** (ver abajo) | **3/3** | 3/3 `«1º Primaria»`, `«Conocimiento del Medio…»`, **literales en los metadatos del item** |
+
+Criterio del corpus (§Protocolo, coherente con ADR-0012): **tasa de acuerdo sobre repeticiones**,
+no identidad literal. Se cumple: el Tema y el «Qué enseña» concuerdan con la ficha de referencia
+en 9/9 ejecuciones, y la sección «Nivel citado textualmente» aparece siempre, siempre copiada del
+recurso o de sus metadatos y **nunca inferida** (invariante de ADR-0011). Lo que varía entre
+repeticiones es la forma de la cita, no su origen.
+
+**#40442 ya no ejercita lo que decía ejercitar:** el item **no tiene medios** en el catálogo
+(comprobado en las dos pilas, 8080 y 8081) — es el único de los 19 REA sin ninguno. El corpus lo
+recogió el 2026-07-07 como «PDF A3 escaneado → `pdf_empty` → solo visión», y ese PDF ya no está
+adjunto. Su ficha sale hoy solo de los metadatos, que son ricos, así que el caso mide *fallback
+a metadatos*, no *rescate por visión*. **Consecuencia:** la rasterización local de PDF escaneados
+(TASK-026) sigue **sin ejercitarse sobre un REA real**; hace falta otro item para esa cobertura
+(→ TASK-030).
