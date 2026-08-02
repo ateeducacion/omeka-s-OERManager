@@ -107,6 +107,52 @@ final class ContentExtractorTest extends TestCase
         $this->assertSame('pdf_empty', $content->skipped()['sin-texto.pdf'] ?? null);
     }
 
+    /**
+     * TASK-031: la imagen Debian/glibc que resuelve el PDF (TASK-024b) NO trae
+     * la extensión `zip` de PHP, así que `ZipArchive` no existe y el ZIP debe
+     * declararse no leíble en esta plataforma, igual que el PDF hace con
+     * `pdf_iconv_unsupported`. Inyectable por el mismo motivo que allí: el host
+     * SÍ tiene la extensión y nunca podría probar la rama rota.
+     */
+    public function testZipOnPlatformWithoutZipArchiveIsReportedAsUnsupported(): void
+    {
+        $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);
+        $extractor = new ContentExtractor(['zip_supported' => false]);
+
+        $content = $extractor->extract('', [['path' => $zip]]);
+
+        $this->assertSame('zip_unsupported', $content->skipped()['package.zip'] ?? null);
+    }
+
+    /**
+     * El defecto de fondo de TASK-031: sin `ZipArchive` el `new` lanzaba un
+     * `Error` no capturado que tumbaba el propose ENTERO, así que un item con un
+     * SCORM y un PDF perdía también el PDF. Debe seguir con el resto de medios.
+     */
+    public function testOtherMediaAreStillExtractedWhenZipArchiveIsMissing(): void
+    {
+        $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);
+        $txt = $this->tempFile('apuntes.txt', 'El aparato circulatorio transporta la sangre.');
+        $extractor = new ContentExtractor(['zip_supported' => false]);
+
+        $content = $extractor->extract('', [['path' => $zip], ['path' => $txt]]);
+
+        $this->assertStringContainsString('aparato circulatorio', $content->text());
+        $this->assertSame('zip_unsupported', $content->skipped()['package.zip'] ?? null);
+    }
+
+    /** No regresión: donde la extensión está, el ZIP se sigue leyendo igual. */
+    public function testZipIsStillExtractedOnPlatformWithZipArchive(): void
+    {
+        $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);
+        $extractor = new ContentExtractor(['zip_supported' => true]);
+
+        $content = $extractor->extract('', [['path' => $zip]]);
+
+        $this->assertStringContainsString('Hola SCORM', $content->text());
+        $this->assertSame([], $content->skipped());
+    }
+
     public function testZipEntryIsExtracted(): void
     {
         $zip = $this->tempZip('package.zip', ['index.html' => '<p>Hola SCORM</p>']);
