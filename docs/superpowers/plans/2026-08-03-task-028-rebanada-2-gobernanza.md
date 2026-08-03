@@ -2214,9 +2214,16 @@ if (null === $withTemplate) {
     echo "   (ningún REA tiene plantilla todavía — PEND-012 sigue abierto)\n";
     check('sin plantillas asignadas, la regla mínima gobierna sola', true);
 } else {
+    // D-6: con plantilla, el mínimo SIGUE evaluándose. Antes de la rebanada 2
+    // este REA no habría producido missing_license ni missing_alignment jamás,
+    // porque la plantilla era una rama excluyente.
     $codes = array_column($checker->check($withTemplate, false)->getIssues(), 'code');
-    check('un REA con plantilla sigue evaluando el mínimo',
-        !in_array('missing_license', $codes, true) || in_array('missing_license', $codes, true));
+    $hasLicence = (bool) $withTemplate->value(OERManager\Service\Governance\IntegrityPolicy::LICENSE_TERM);
+    check('un REA con plantilla sigue evaluando la licencia (D-6)',
+        $hasLicence === !in_array('missing_license', $codes, true),
+        $hasLicence
+            ? 'tiene licencia y aun asi se avisa de que falta'
+            : 'no tiene licencia y el aviso no aparece: la plantilla la esta silenciando');
 }
 
 echo "\n4. Columna Curricular\n";
