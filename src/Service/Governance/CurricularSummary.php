@@ -27,7 +27,7 @@ final class CurricularSummary
     {
         $hasLiteral = false;
         foreach ([...$subjects, ...$stages] as $value) {
-            if ($value['isLiteral'] && '' !== trim($value['title'])) {
+            if ($value['isLiteral']) {
                 $hasLiteral = true;
                 break;
             }
@@ -36,12 +36,11 @@ final class CurricularSummary
         $subjectTitles = self::uniqueTitles($subjects);
         $stageTitles = self::uniqueTitles($stages);
 
-        $tooltip = '';
-        if ([] !== $subjectTitles || [] !== $stageTitles) {
-            $tooltip = trim(
-                implode(', ', $subjectTitles)
-                . ([] !== $stageTitles ? ' — ' . implode(', ', $stageTitles) : '')
-            );
+        $tooltip = implode(', ', $subjectTitles);
+        if ([] !== $subjectTitles && [] !== $stageTitles) {
+            $tooltip .= ' — ' . implode(', ', $stageTitles);
+        } elseif ([] !== $stageTitles) {
+            $tooltip = implode(', ', $stageTitles);
         }
 
         return [

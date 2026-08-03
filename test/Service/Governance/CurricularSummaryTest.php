@@ -81,6 +81,18 @@ final class CurricularSummaryTest extends TestCase
         $this->assertTrue($result['hasLiteral']);
     }
 
+    /** Un literal sin título legible es el peor caso: no debe desaparecer sin marca. */
+    public function testLiteralWithBlankTitleStillRaisesTheFlag(): void
+    {
+        $result = CurricularSummary::summarise(
+            [['title' => '   ', 'isLiteral' => true]],
+            [$this->link('1º ESO')]
+        );
+
+        $this->assertTrue($result['hasLiteral']);
+        $this->assertSame([], $result['subjects']);
+    }
+
     public function testTooltipListsEverythingWithoutTruncating(): void
     {
         $result = CurricularSummary::summarise(
@@ -89,6 +101,20 @@ final class CurricularSummaryTest extends TestCase
         );
 
         $this->assertSame('Matemáticas — 1º ESO, 2º ESO', $result['tooltip']);
+    }
+
+    public function testTooltipWithOnlySubjectsHasNoDanglingSeparator(): void
+    {
+        $result = CurricularSummary::summarise([$this->link('Matemáticas')], []);
+
+        $this->assertSame('Matemáticas', $result['tooltip']);
+    }
+
+    public function testTooltipWithOnlyStagesHasNoDanglingSeparator(): void
+    {
+        $result = CurricularSummary::summarise([], [$this->link('1º ESO')]);
+
+        $this->assertSame('1º ESO', $result['tooltip']);
     }
 
     public function testEmptyInputIsNotAnError(): void
