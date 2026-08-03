@@ -2,138 +2,95 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Governance\IntegrityPolicy;
 use Omeka\Api\Representation\ItemRepresentation;
-use Omeka\Api\Representation\ResourceTemplateRepresentation;
 
 /**
- * Servicio de comprobación de integridad de valores RDF (RF-006, TASK-005, ADR-0004).
+ * Comprobación de integridad de valores RDF (RF-006, TASK-005, ADR-0004).
  *
- * Reglas (RF-006):
- *   1. Destino vivo: las resource values de alineamiento apuntan a items existentes.
- *   2. Completitud con plantilla REA: todos los campos obligatorios de la plantilla presentes.
- *   3. Completitud mínima (sin plantilla): alineamiento + licencia presentes.
+ * Desde la rebanada 2 de TASK-028 esta clase es un **proyector**: traduce la
+ * ItemRepresentation a datos planos y delega las reglas en IntegrityPolicy, que
+ * sí se puede probar en el host. Aquí no vive ninguna decisión.
  *
- * Este servicio opera sobre representaciones Omeka; no accede directamente a la BD.
  * Uso: $checker->check($item) → IntegrityResult.
  */
 class IntegrityChecker
 {
-    /** Properties de alineamiento curricular (ADR-0004). */
-    public const ALIGNMENT_TERMS = [
-        'lrmi:educationalLevel',
-        'schema:about',
-        'lrmi:teaches',
-        'lrmi:assesses',
-    ];
+    /** @var list<string> Alias de IntegrityPolicy, conservado por compatibilidad. */
+    public const ALIGNMENT_TERMS = IntegrityPolicy::ALIGNMENT_TERMS;
 
-    public const LICENSE_TERM = 'dcterms:rights';
+    public const LICENSE_TERM = IntegrityPolicy::LICENSE_TERM;
 
-    public function check(ItemRepresentation $item): IntegrityResult
+    /**
+     * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo.
+     *        Encendido en el listener de guardado (un item, coste irrelevante) y
+     *        en el drawer; APAGADO en la columna y en el filtro de la vista
+     *        maestra, porque valueResource() inicializa el proxy Doctrine de
+     *        cada destino —una consulta por valor— para perseguir un caso que la
+     *        FK en cascada del core hace casi imposible (D-7).
+     */
+    public function check(ItemRepresentation $item, bool $checkLinks = true): IntegrityResult
     {
-        $issues = [];
-        $this->checkLiveLinks($item, $issues);
-        $this->checkCompleteness($item, $issues);
-        return new IntegrityResult($issues);
+        $requiredTerms = $this->requiredTerms($item);
+
+        $terms = array_unique(array_merge(
+            IntegrityPolicy::ALIGNMENT_TERMS,
+            [IntegrityPolicy::LICENSE_TERM],
+            $requiredTerms
+        ));
+
+        return new IntegrityResult(
+            IntegrityPolicy::issuesFor($this->project($item, $terms, $checkLinks), $requiredTerms, $checkLinks)
+        );
     }
 
     /**
-     * Verifica que los resource values de alineamiento apunten a items que existen.
-     * Un enlace roto (valueResource = null con type resource) genera un error.
+     * Proyecta los valores del item a la forma plana que espera la policy.
      *
-     * @param array<int, array{severity: string, code: string, field: string, message: string}> $issues
+     * `hasResource` solo se resuelve si hace falta: es la llamada cara
+     * (valueResource() construye la representación del destino, despertando el
+     * proxy). Con $checkLinks a false se deja en true, valor que la policy no
+     * mira porque no evalúa la regla de enlace vivo.
+     *
+     * @param list<string> $terms
+     * @return array<string, list<array{type:string, hasResource:bool}>>
      */
-    private function checkLiveLinks(ItemRepresentation $item, array &$issues): void
+    private function project(ItemRepresentation $item, array $terms, bool $checkLinks): array
     {
         $allValues = $item->values();
-        foreach (self::ALIGNMENT_TERMS as $term) {
-            $termValues = $allValues[$term]['values'] ?? [];
-            foreach ($termValues as $value) {
-                // Cubre 'resource', 'resource:item', 'resource:media', 'resource:itemset'
-                if (str_starts_with($value->type(), 'resource') && !$value->valueResource()) {
-                    $issues[] = [
-                        'severity' => 'error',
-                        'code' => 'dead_link',
-                        'field' => $term,
-                        'message' => sprintf(
-                            'El valor de "%s" apunta a un recurso inexistente.', // @translate
-                            $term
-                        ),
-                    ];
-                }
+        $projected = [];
+
+        foreach ($terms as $term) {
+            $projected[$term] = [];
+            foreach ($allValues[$term]['values'] ?? [] as $value) {
+                $type = $value->type();
+                $projected[$term][] = [
+                    'type' => $type,
+                    'hasResource' => (!$checkLinks || !str_starts_with($type, 'resource'))
+                        ? true
+                        : (bool) $value->valueResource(),
+                ];
             }
         }
+
+        return $projected;
     }
 
-    /**
-     * @param array<int, array{severity: string, code: string, field: string, message: string}> $issues
-     */
-    private function checkCompleteness(ItemRepresentation $item, array &$issues): void
+    /** @return list<string> Campos obligatorios de la plantilla, [] si no hay plantilla. */
+    private function requiredTerms(ItemRepresentation $item): array
     {
         $template = $item->resourceTemplate();
-        if ($template) {
-            $this->checkTemplateCompleteness($item, $template, $issues);
-        } else {
-            $this->checkMinimumCompleteness($item, $issues);
+        if (!$template) {
+            return [];
         }
-    }
 
-    /**
-     * Con plantilla REA: valida los campos marcados como obligatorios.
-     *
-     * @param array<int, array{severity: string, code: string, field: string, message: string}> $issues
-     */
-    private function checkTemplateCompleteness(
-        ItemRepresentation $item,
-        ResourceTemplateRepresentation $template,
-        array &$issues
-    ): void {
+        $required = [];
         foreach ($template->resourceTemplateProperties() as $templateProperty) {
-            if (!$templateProperty->isRequired()) {
-                continue;
-            }
-            $term = $templateProperty->property()->term();
-            if (!$item->value($term)) {
-                $issues[] = [
-                    'severity' => 'warning',
-                    'code' => 'missing_required',
-                    'field' => $term,
-                    'message' => sprintf(
-                        'El campo obligatorio "%s" de la plantilla no tiene valor.', // @translate
-                        $term
-                    ),
-                ];
-            }
-        }
-    }
-
-    /**
-     * Sin plantilla: mínimo = alineamiento vivo + licencia presente (RF-006).
-     *
-     * @param array<int, array{severity: string, code: string, field: string, message: string}> $issues
-     */
-    private function checkMinimumCompleteness(ItemRepresentation $item, array &$issues): void
-    {
-        foreach (self::ALIGNMENT_TERMS as $term) {
-            if (!$item->value($term)) {
-                $issues[] = [
-                    'severity' => 'warning',
-                    'code' => 'missing_alignment',
-                    'field' => $term,
-                    'message' => sprintf(
-                        'Falta el campo de alineamiento "%s".', // @translate
-                        $term
-                    ),
-                ];
+            if ($templateProperty->isRequired()) {
+                $required[] = $templateProperty->property()->term();
             }
         }
 
-        if (!$item->value(self::LICENSE_TERM)) {
-            $issues[] = [
-                'severity' => 'warning',
-                'code' => 'missing_license',
-                'field' => self::LICENSE_TERM,
-                'message' => 'El REA no tiene licencia asignada.', // @translate
-            ];
-        }
+        return $required;
     }
 }
