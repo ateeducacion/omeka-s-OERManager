@@ -72,8 +72,7 @@ final class IntegrityPolicy
                         'code' => 'literal_in_link_property',
                         'field' => $term,
                         'message' => sprintf(
-                            // @translate
-                            'El campo "%s" tiene un valor literal donde debería enlazar a un item-término.',
+                            'El campo "%s" tiene un literal donde debería enlazar a un item-término.', // @translate
                             $term
                         ),
                     ];
