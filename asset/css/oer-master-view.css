@@ -311,22 +311,25 @@
     background-color: var(--oer-select);
 }
 
-/* El riel: 3px en el canto de cada fila con el estado de alineamiento. Es lo
-   que permite leer la salud del catálogo de un vistazo, sin leer una sola
-   celda. */
-#oer-master-view-table tbody tr[data-alignment] td:first-child {
-    box-shadow: inset 3px 0 0 transparent;
-}
-
-#oer-master-view-table tbody tr[data-alignment="complete"] td:first-child {
+/*
+ * Riel de fila (ADR-0014 regla 4). Se re-ancla de `data-alignment` a
+ * `data-integrity` en la rebanada 2 de TASK-028: la integridad es la señal más
+ * fiable de las dos —AlignmentStatus da «Completo» a un REA con la materia
+ * literal rota (D3), falso positivo que IntegrityChecker ya no comete—.
+ * El mecanismo es la escala visual, no la property: si la señal rectora cambia
+ * otra vez, se re-ancla aquí y no se elimina.
+ *
+ * Saturación invertida a propósito: lo correcto se retira, el defecto se queda.
+ */
+#oer-master-view-table tbody tr[data-integrity="ok"] {
     box-shadow: inset 3px 0 0 var(--oer-rail-ok);
 }
 
-#oer-master-view-table tbody tr[data-alignment="partial"] td:first-child {
+#oer-master-view-table tbody tr[data-integrity="warning"] {
     box-shadow: inset 3px 0 0 var(--oer-rail-warn);
 }
 
-#oer-master-view-table tbody tr[data-alignment="none"] td:first-child {
+#oer-master-view-table tbody tr[data-integrity="error"] {
     box-shadow: inset 3px 0 0 var(--oer-rail-bad);
 }
 
@@ -722,23 +725,20 @@
         min-width: 0;
     }
 
-    #oer-master-view-table tbody tr[data-alignment] {
+    #oer-master-view-table tbody tr[data-integrity] {
         border-left: 3px solid transparent;
-    }
-
-    #oer-master-view-table tbody tr[data-alignment] td:first-child {
         box-shadow: none;
     }
 
-    #oer-master-view-table tbody tr[data-alignment="complete"] {
+    #oer-master-view-table tbody tr[data-integrity="ok"] {
         border-left-color: var(--oer-rail-ok);
     }
 
-    #oer-master-view-table tbody tr[data-alignment="partial"] {
+    #oer-master-view-table tbody tr[data-integrity="warning"] {
         border-left-color: var(--oer-rail-warn);
     }
 
-    #oer-master-view-table tbody tr[data-alignment="none"] {
+    #oer-master-view-table tbody tr[data-integrity="error"] {
         border-left-color: var(--oer-rail-bad);
     }
 
@@ -751,4 +751,70 @@
     #oer-master-view-table .oer-title-cell .actions {
         transition: none;
     }
+}
+
+/* --- Celdas de gobernanza (TASK-028 rebanada 2) --- */
+
+/*
+ * Glifo SOLO donde dispara una acción (ADR-0014 regla 3). Dos por fila como
+ * máximo: integridad —abrir el drawer— y literal en property de enlace
+ * —promover el valor a enlace—. El texto accesible ya lo pone el PHP, así que
+ * el glifo va por ::before, que es presentación y el lector de pantalla ignora.
+ */
+.oer-integrity {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.oer-integrity-ok::before {
+    content: "\2713";
+    color: var(--oer-ok);
+}
+
+.oer-integrity-warning::before {
+    content: "\26A0";
+    color: var(--oer-warn);
+    margin-right: 0.25em;
+}
+
+.oer-integrity-warning {
+    color: var(--oer-warn);
+}
+
+.oer-integrity-error::before {
+    content: "\26D4";
+    color: var(--oer-bad);
+    margin-right: 0.25em;
+}
+
+.oer-curricular-literal::before {
+    content: "\26A0";
+    color: var(--oer-warn);
+    margin-right: 0.25em;
+}
+
+.oer-curricular-stage {
+    display: block;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+/*
+ * La ausencia se lee, no se marca: con 18/19 sin licencia y 16/19 con el tipo
+ * fuera del vocabulario, un glifo aquí estaría en el 90 % de las filas y
+ * dejaría de señalar la excepción (ADR-0014 regla 2).
+ */
+.oer-value-missing {
+    color: var(--oer-muted);
+    font-style: italic;
+}
+
+.oer-title-missing {
+    font-style: italic;
+}
+
+.oer-title-id {
+    display: block;
+    color: var(--oer-muted);
+    font-size: 0.85em;
 }

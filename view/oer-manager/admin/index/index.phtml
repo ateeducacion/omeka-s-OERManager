@@ -38,7 +38,8 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
             <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
             <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
         </select>
-        <select name="integrity" aria-label="<?php echo $escape($translate('Integridad')); ?>">
+        <label class="oer-visually-hidden" for="oer-filter-integrity"><?php echo $translate('Integridad'); ?></label>
+        <select id="oer-filter-integrity" name="integrity">
             <option value=""><?php echo $translate('Integridad: todas'); ?></option>
             <option value="ok" <?php echo 'ok' === ($query['integrity'] ?? '') ? 'selected' : ''; ?>>
                 <?php echo $translate('Ficha completa'); ?>
@@ -118,11 +119,20 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     <tbody>
         <?php foreach ($items as $item): ?>
         <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>"
-            data-alignment="<?php echo $escape(\OERManager\ColumnType\AlignmentStatus::statusFor($item)); ?>">
+            data-alignment="<?php echo $escape(\OERManager\ColumnType\AlignmentStatus::statusFor($item)); ?>"
+            data-integrity="<?php echo $escape($integrityStatuses[$item->id()] ?? 'ok'); ?>">
             <td class="oer-column-select"><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>
             <td class="oer-column-title">
                 <div class="oer-title-cell">
-                    <a href="#" class="oer-open-drawer" data-item-id="<?php echo $item->id(); ?>"><?php echo $escape($item->displayTitle()); ?></a>
+                    <?php
+                    // El item 4359 del catálogo real no tiene dcterms:title y salía
+                    // como enlace vacío: invisible en cualquier listado (TASK-027 §3).
+                    $title = trim((string) $item->displayTitle(''));
+                    ?>
+                    <a href="#" class="oer-open-drawer<?php echo '' === $title ? ' oer-title-missing' : ''; ?>" data-item-id="<?php echo $item->id(); ?>">
+                        <?php echo $escape('' === $title ? $translate('(sin título)') : $title); ?>
+                    </a>
+                    <span class="oer-title-id"><?php echo $escape((string) $item->id()); ?></span>
                     <ul class="actions">
                         <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
                     </ul>
