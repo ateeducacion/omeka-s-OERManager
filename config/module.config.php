@@ -317,6 +317,7 @@ return [
             'oerModified' => ColumnType\Modified::class,
             'oerId' => ColumnType\Id::class,
             'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
+            'oerCurricular' => ColumnType\Curricular::class,
         ],
         'factories' => [
             // Value necesita FormElementManager y ApiManager, igual que el del core.
