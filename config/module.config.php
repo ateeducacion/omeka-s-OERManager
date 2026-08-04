@@ -318,6 +318,7 @@ return [
             'oerId' => ColumnType\Id::class,
             'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
             'oerCurricular' => ColumnType\Curricular::class,
+            'oerGovernanceValue' => ColumnType\GovernanceValue::class,
         ],
         'factories' => [
             // Value necesita FormElementManager y ApiManager, igual que el del core.
