@@ -104,7 +104,7 @@ final class ModuleConfigTest extends TestCase
     {
         $columns = $this->config['column_defaults']['admin']['oer_items'] ?? null;
         $this->assertIsArray($columns, 'Faltan las columnas por defecto de oer_items');
-        $this->assertCount(6, $columns, 'La v1 mostraba seis columnas');
+        $this->assertCount(7, $columns, 'El reequilibrio de ADR-0013 (TASK-028 rebanada 2) deja siete columnas');
         $registered = array_merge(
             array_keys($this->config['column_types']['invokables'] ?? []),
             array_keys($this->config['column_types']['factories'] ?? [])
@@ -112,6 +112,70 @@ final class ModuleConfigTest extends TestCase
         foreach ($columns as $column) {
             $this->assertContains($column['type'], $registered, "Tipo sin registrar: {$column['type']}");
         }
+    }
+
+    public function testGovernanceColumnTypesAreRegistered(): void
+    {
+        $config = include __DIR__ . '/../config/module.config.php';
+        $types = array_merge(
+            array_keys($config['column_types']['invokables'] ?? []),
+            array_keys($config['column_types']['factories'] ?? [])
+        );
+
+        foreach (['oerIntegrity', 'oerCurricular', 'oerGovernanceValue'] as $type) {
+            $this->assertContains($type, $types);
+        }
+    }
+
+    /**
+     * Ocho columnas: el tope que TASK-027 §3 fijó (selección + 8). El Título no
+     * cuenta aquí porque lo pinta la plantilla, no el mecanismo de columnas.
+     */
+    public function testDefaultColumnsAreTheGovernanceSet(): void
+    {
+        $config = include __DIR__ . '/../config/module.config.php';
+        $defaults = $config['column_defaults']['admin']['oer_items'] ?? [];
+
+        $this->assertCount(7, $defaults);
+        $this->assertSame([
+            'oerAlignmentStatus',
+            'oerIntegrity',
+            'oerCurricular',
+            'oerGovernanceValue',
+            'oerGovernanceValue',
+            'oerIsPublic',
+            'oerModified',
+        ], array_column($defaults, 'type'));
+    }
+
+    public function testTheTwoGovernanceValueColumnsPointAtLicenceAndResourceType(): void
+    {
+        $config = include __DIR__ . '/../config/module.config.php';
+        $defaults = $config['column_defaults']['admin']['oer_items'] ?? [];
+
+        $terms = array_values(array_filter(array_column($defaults, 'property_term')));
+        $this->assertSame(['lrmi:learningResourceType', 'dcterms:rights'], $terms);
+    }
+
+    /**
+     * El rótulo pasa a «Anclaje» (decisión del propietario, 2026-08-03).
+     *
+     * No se instancia AlignmentStatus: implementa Omeka\ColumnType\ColumnTypeInterface,
+     * ausente del vendor/ del módulo en el host, y ese autoload produce un fatal aquí
+     * (ya ocurrió en una tarea anterior). Se lee el literal del fuente en su lugar.
+     */
+    public function testAlignmentColumnIsLabelledAnclaje(): void
+    {
+        $source = file_get_contents(self::MODULE_ROOT . '/src/ColumnType/AlignmentStatus.php');
+        $this->assertIsString($source, 'No se pudo leer AlignmentStatus.php');
+
+        $start = strpos($source, 'function getLabel(): string');
+        $this->assertIsInt($start, 'No se encuentra el método getLabel() en AlignmentStatus');
+        $end = strpos($source, 'function getResourceTypes', $start);
+        $this->assertIsInt($end, 'No se encuentra el método getResourceTypes() en AlignmentStatus');
+
+        $body = substr($source, $start, $end - $start);
+        $this->assertStringContainsString("return 'Anclaje'; // @translate", $body);
     }
 
     public function testBrowseDefaultsAreRegisteredForOerItems(): void

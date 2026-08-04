@@ -25,7 +25,11 @@ class AlignmentStatus implements ColumnTypeInterface
 
     public function getLabel(): string
     {
-        return 'Alineamiento'; // @translate
+        // Renombrado de «Alineamiento» a «Anclaje» por decisión del propietario
+        // (2026-08-03). Solo el rótulo: la clase, sus constantes y el parámetro
+        // de query `alignment` espejan el vocabulario RDF (lrmi:educationalAlignment)
+        // y sostienen los enlaces ya existentes.
+        return 'Anclaje'; // @translate
     }
 
     public function getResourceTypes(): array

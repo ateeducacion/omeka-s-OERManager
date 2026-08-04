@@ -335,15 +335,38 @@ return [
             },
         ],
     ],
-    // Mismas seis columnas que la v1; el reequilibrio de ADR-0013 es posterior.
+    // Reequilibrio de ADR-0013 (TASK-028 rebanada 2): la tabla pasa de mostrar
+    // el anclaje —que está al 100 %— a mostrar la gobernanza, que está vacía.
+    // Ocho columnas contando el Título, que lo pinta la plantilla: es el tope
+    // que TASK-027 §3 fijó para no forzar scroll horizontal en el admin.
+    //
+    // Los oerValue de lrmi:educationalLevel y schema:about salen (los fusiona
+    // oerCurricular) y el de dcterms:rights también (lo sustituye la celda con
+    // estado vacío). Siguen REGISTRADOS: un curador puede reactivarlos desde la
+    // configuración nativa de columnas.
+    //
+    // OJO: column_defaults solo aplica a quien NO haya guardado su propia
+    // selección. Quien la guardó tras la rebanada 1 conserva las columnas
+    // viejas hasta que la reajuste.
     'column_defaults' => [
         'admin' => [
             'oer_items' => [
-                ['type' => 'oerIsPublic'],
-                ['type' => 'oerValue', 'property_term' => 'lrmi:educationalLevel', 'max_values' => 1],
-                ['type' => 'oerValue', 'property_term' => 'schema:about', 'max_values' => 1],
                 ['type' => 'oerAlignmentStatus'],
-                ['type' => 'oerValue', 'property_term' => 'dcterms:rights', 'max_values' => 1],
+                ['type' => 'oerIntegrity'],
+                ['type' => 'oerCurricular'],
+                [
+                    'type' => 'oerGovernanceValue',
+                    'property_term' => 'lrmi:learningResourceType',
+                    'header' => 'Tipo de recurso', // @translate
+                    'empty_label' => 'Sin tipo', // @translate
+                ],
+                [
+                    'type' => 'oerGovernanceValue',
+                    'property_term' => 'dcterms:rights',
+                    'header' => 'Licencia', // @translate
+                    'empty_label' => 'Sin licencia', // @translate
+                ],
+                ['type' => 'oerIsPublic'],
                 ['type' => 'oerModified'],
             ],
         ],
