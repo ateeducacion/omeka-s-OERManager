@@ -162,7 +162,7 @@ class Module extends AbstractModule implements InitProviderInterface
     public const SEARCH_FILTER_LABELS = [
         'title' => 'Título', // @translate
         'visibility' => 'Visibilidad', // @translate
-        'alignment' => 'Alineamiento', // @translate
+        'alignment' => 'Anclaje', // @translate
         'stage' => 'Etapa', // @translate
         'subject' => 'Materia', // @translate
         'project' => 'Proyecto', // @translate

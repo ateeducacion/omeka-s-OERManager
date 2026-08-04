@@ -31,12 +31,21 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
             <option value="public" <?php echo ($query['visibility'] ?? '') === 'public' ? 'selected' : ''; ?>><?php echo $translate('Público'); ?></option>
             <option value="private" <?php echo ($query['visibility'] ?? '') === 'private' ? 'selected' : ''; ?>><?php echo $translate('Privado'); ?></option>
         </select>
-        <label class="oer-visually-hidden" for="oer-filter-alignment"><?php echo $translate('Alineamiento'); ?></label>
+        <label class="oer-visually-hidden" for="oer-filter-alignment"><?php echo $translate('Anclaje'); ?></label>
         <select id="oer-filter-alignment" name="alignment">
-            <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
+            <option value=""><?php echo $translate('Anclaje: todos'); ?></option>
             <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
             <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
             <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
+        </select>
+        <select name="integrity" aria-label="<?php echo $escape($translate('Integridad')); ?>">
+            <option value=""><?php echo $translate('Integridad: todas'); ?></option>
+            <option value="ok" <?php echo 'ok' === ($query['integrity'] ?? '') ? 'selected' : ''; ?>>
+                <?php echo $translate('Ficha completa'); ?>
+            </option>
+            <option value="warning" <?php echo 'warning' === ($query['integrity'] ?? '') ? 'selected' : ''; ?>>
+                <?php echo $translate('Con incidencias'); ?>
+            </option>
         </select>
         <button type="submit" class="button oer-button-primary"><?php echo $translate('Filtrar'); ?></button>
         <?php echo $this->hyperlink(

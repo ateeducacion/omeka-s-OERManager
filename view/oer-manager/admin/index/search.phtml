@@ -128,11 +128,11 @@ $curricular = [
 
     <div class="field">
         <div class="field-meta">
-            <label for="oer-search-alignment"><?php echo $translate('Alineamiento'); ?></label>
+            <label for="oer-search-alignment"><?php echo $translate('Anclaje'); ?></label>
         </div>
         <div class="inputs">
             <select id="oer-search-alignment" name="alignment">
-                <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
+                <option value=""><?php echo $translate('Anclaje: todos'); ?></option>
                 <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
                 <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
                 <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>

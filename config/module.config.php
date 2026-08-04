@@ -38,7 +38,8 @@ return [
                     // TASK-029: la configuración se rinde desde el controlador,
                     // no desde Module. El manager (y no la instancia) porque es
                     // quien invoca `init()` del formulario.
-                    $container->get('FormElementManager')
+                    $container->get('FormElementManager'),
+                    $container->get(Service\IntegrityChecker::class)
                 );
             },
         ],
