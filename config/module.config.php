@@ -326,6 +326,11 @@ return [
                     $container->get('Omeka\ApiManager')
                 );
             },
+            'oerIntegrity' => function ($container) {
+                return new ColumnType\Integrity(
+                    $container->get(Service\IntegrityChecker::class)
+                );
+            },
         ],
     ],
     // Mismas seis columnas que la v1; el reequilibrio de ADR-0013 es posterior.
