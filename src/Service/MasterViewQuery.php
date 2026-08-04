@@ -14,6 +14,18 @@ class MasterViewQuery
 {
     public const LEARNING_RESOURCE_CLASS_TERM = 'lrmi:LearningResource';
 
+    /**
+     * Filtros de gobernanza expresables como query de la API (`nex`), así que no
+     * pagan barrido computado. Los afectados hoy, medidos en TASK-027: licencia
+     * 18/19, descripción 4/19, tipo 3/19, título 1/19.
+     */
+    public const MISSING_FILTERS = [
+        'licence' => 'dcterms:rights',
+        'description' => 'dcterms:description',
+        'title' => 'dcterms:title',
+        'resource_type' => 'lrmi:learningResourceType',
+    ];
+
     private ApiManager $api;
     private bool $classIdResolved = false;
     private ?int $learningResourceClassId = null;
@@ -89,6 +101,18 @@ class MasterViewQuery
                 'type' => 'eq',
                 'text' => $query['resource_type'],
             ];
+        }
+
+        // Filtros «sin X» de gobernanza. Se piden como missing[]=clave para no
+        // colisionar con los filtros de valor: `licence` filtra POR licencia y
+        // `missing[]=licence` filtra por su AUSENCIA.
+        foreach ((array) ($query['missing'] ?? []) as $key) {
+            if (is_string($key) && isset(self::MISSING_FILTERS[$key])) {
+                $params['property'][] = [
+                    'property' => self::MISSING_FILTERS[$key],
+                    'type' => 'nex',
+                ];
+            }
         }
 
         $this->addAlignmentFilter($params, $query['alignment'] ?? '');
