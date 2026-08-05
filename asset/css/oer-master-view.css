@@ -10,7 +10,7 @@
 
 :root {
     --oer-ink: #2b3240;
-    --oer-muted: #79818f;
+    --oer-muted: #666d79;
     --oer-rule: #e3e5e9;
     --oer-surface: #f6f7f9;
     --oer-select: #eef2f7;
@@ -18,7 +18,7 @@
     --oer-accent-hover: #e11717;
 
     --oer-ok: #1d7a5f;
-    --oer-warn: #b06d10;
+    --oer-warn: #955c0d;
     --oer-bad: #a91919;
 
     /* El riel invierte la saturación a propósito: «completo» se retira, el
