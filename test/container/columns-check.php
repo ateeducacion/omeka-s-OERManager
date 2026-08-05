@@ -98,10 +98,39 @@ echo "   dead_link=$deadLinks  literal_in_link_property=$literals  missing_licen
 check('los valores literales en properties de enlace afloran', $literals > 0,
     "se esperaban ~4 y se han encontrado $literals");
 
-// D-5: si esto fuera > 0, el semáforo SÍ necesita su tercer estado y hay que
-// volver sobre la decisión.
-check('dead_link sigue sin productor (D-5)', 0 === $deadLinks,
-    "han aparecido $deadLinks enlaces muertos: reabrir D-5");
+// D-5: el check anterior aquí comparaba $deadLinks con 0, y $deadLinks SIEMPRE
+// es 0 por el mismo motivo por el que esta comprobación existe — es el mismo
+// defecto que ya se corrigió en la sección 2 de este arnés (comprobación
+// tautológica, no podía fallar jamás para ningún catálogo). dead_link es
+// inalcanzable POR CONSTRUCCIÓN, no por la FK en cascada del core:
+// AbstractResourceEntityRepresentation::values() descarta los valores ocultos
+// (enlace con destino colgante) antes de devolverlos, así que ninguno llega
+// nunca a IntegrityChecker. Lo que sí se puede verificar es la premisa misma:
+// que todo valor de tipo resource que values() devuelve tiene destino vivo.
+$resourceValues = 0;
+$liveResourceValues = 0;
+foreach ($items as $item) {
+    foreach ($item->values() as $info) {
+        foreach ($info['values'] as $value) {
+            if (!str_starts_with($value->type(), 'resource')) {
+                continue;
+            }
+            $resourceValues++;
+            if ($value->valueResource()) {
+                $liveResourceValues++;
+            }
+        }
+    }
+}
+check(
+    'todo valor de tipo resource que devuelve values() tiene destino vivo (D-5, estructural)',
+    $resourceValues === $liveResourceValues,
+    "resource_values=$resourceValues vivos=$liveResourceValues"
+);
+echo "   NOTA: la ausencia de dead_link es ESTRUCTURAL (filtrado de values()), no\n"
+    . "   una propiedad de este catálogo ni de la FK en cascada del core. El único\n"
+    . "   hueco honesto sería un data type de terceros con nombre 'resource:*' que\n"
+    . "   no extendiera AbstractResource.\n";
 
 echo "\n2. D-7: la comprobación de enlaces se puede apagar\n";
 

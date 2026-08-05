@@ -26,8 +26,11 @@ class IntegrityChecker
      *        Encendido en el listener de guardado (un item, coste irrelevante) y
      *        en el drawer; APAGADO en la columna y en el filtro de la vista
      *        maestra, porque valueResource() inicializa el proxy Doctrine de
-     *        cada destino —una consulta por valor— para perseguir un caso que la
-     *        FK en cascada del core hace casi imposible (D-7).
+     *        cada destino —una consulta por valor— para perseguir un caso que
+     *        `AbstractResourceEntityRepresentation::values()` hace inalcanzable
+     *        POR CONSTRUCCIÓN (no la FK en cascada del core, que es un nivel más
+     *        débil): esa `values()` descarta los valores ocultos —enlace con
+     *        destino colgante— antes de devolverlos (D-7).
      */
     public function check(ItemRepresentation $item, bool $checkLinks = true): IntegrityResult
     {

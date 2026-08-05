@@ -24,7 +24,7 @@ class GovernanceValue implements ColumnTypeInterface
 {
     public function getLabel(): string
     {
-        return 'Valor'; // @translate
+        return 'Valor con estado vacío'; // @translate
     }
 
     public function getResourceTypes(): array

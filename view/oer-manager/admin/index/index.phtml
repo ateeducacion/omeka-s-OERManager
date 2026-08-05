@@ -66,6 +66,16 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
         ?>
     <input type="hidden" name="<?php echo $escape($advanced); ?>" value="<?php echo $escape($query[$advanced]); ?>">
     <?php endforeach; ?>
+    <?php
+    // `missing` es un array (missing[]=licence&missing[]=title, ...): no cabe en
+    // el bucle plano de arriba, necesita su propio bucle anidado con name="missing[]"
+    // por cada clave marcada. Sin esto, los cuatro filtros «sin X» de gobernanza se
+    // borraban en silencio al filtrar desde la barra rápida, igual que el resto de
+    // filtros avanzados de arriba.
+    foreach ((array) ($query['missing'] ?? []) as $missingValue):
+        ?>
+    <input type="hidden" name="missing[]" value="<?php echo $escape((string) $missingValue); ?>">
+    <?php endforeach; ?>
 </form>
 <?php echo $this->searchFilters('oer-manager/common/search-filters'); ?>
 </div>
@@ -119,7 +129,6 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     <tbody>
         <?php foreach ($items as $item): ?>
         <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>"
-            data-alignment="<?php echo $escape(\OERManager\ColumnType\AlignmentStatus::statusFor($item)); ?>"
             data-integrity="<?php echo $escape($integrityStatuses[$item->id()] ?? 'ok'); ?>">
             <td class="oer-column-select"><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>
             <td class="oer-column-title">

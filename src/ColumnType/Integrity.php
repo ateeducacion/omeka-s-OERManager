@@ -87,10 +87,11 @@ class Integrity implements ColumnTypeInterface
             );
         }
 
-        $label = sprintf(
-            $view->translate('%s incidencias en la ficha'), // @translate
-            $count
-        );
+        // Dos literales completos, no fragmentos concatenados: un singular y un
+        // plural se traducen mal si se componen a partir de trozos (A-8).
+        $label = 1 === $count
+            ? sprintf($view->translate('%s incidencia en la ficha'), $count) // @translate
+            : sprintf($view->translate('%s incidencias en la ficha'), $count); // @translate
 
         return sprintf(
             '<span class="oer-integrity %s%s" title="%s">%s<span class="oer-visually-hidden">%s</span></span>',

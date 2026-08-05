@@ -114,6 +114,36 @@ final class IntegrityPolicyTest extends TestCase
         $this->assertSame([], IntegrityPolicy::issuesFor($values, ['dcterms:description'], false));
     }
 
+    /**
+     * A-3 (revisión final, TASK-028 rebanada 2): cuando un término de la
+     * plantilla SOLAPA con las reglas mínimas (aquí la licencia), el campo no
+     * debe contar dos veces. A diferencia de
+     * testTemplateRequirementsAddToTheMinimumInsteadOfReplacingIt (que usa
+     * dcterms:description, que NO solapa con nada), este usa LICENSE_TERM como
+     * obligatorio de plantilla, así que antes del arreglo producía
+     * ['missing_license', 'missing_required'] para el mismo campo real.
+     */
+    public function testATemplateRequiredTermThatOverlapsTheMinimumIsNotDoubleCounted(): void
+    {
+        $values = $this->healthy();
+        unset($values[IntegrityPolicy::LICENSE_TERM]);
+
+        $issues = IntegrityPolicy::issuesFor($values, [IntegrityPolicy::LICENSE_TERM], false);
+
+        $this->assertSame(['missing_license'], $this->codes($issues));
+    }
+
+    /** Mismo defecto, pero con un término de anclaje en vez de la licencia. */
+    public function testATemplateRequiredAlignmentTermIsNotDoubleCounted(): void
+    {
+        $values = $this->healthy();
+        unset($values['schema:about']);
+
+        $issues = IntegrityPolicy::issuesFor($values, ['schema:about'], false);
+
+        $this->assertSame(['missing_alignment'], $this->codes($issues));
+    }
+
     /** D-7: la comprobación de enlace vivo está apagada en columna y filtro. */
     public function testDeadLinkIsOnlyReportedWhenLinkCheckingIsOn(): void
     {

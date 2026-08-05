@@ -185,6 +185,29 @@ class Module extends AbstractModule implements InitProviderInterface
     ];
 
     /**
+     * Etiquetas de los filtros «sin X» de gobernanza (`missing[]`), mismo orden
+     * que el formulario avanzado (search.phtml). No viven en SEARCH_FILTER_LABELS
+     * porque ese mapa alimenta un bucle que hace `(string) $query[$key]`, y
+     * `missing` es un array: entraría como "Array to string conversion".
+     */
+    private const MISSING_FILTER_LABELS = [
+        'licence' => 'Sin licencia', // @translate
+        'description' => 'Sin descripción', // @translate
+        'title' => 'Sin título', // @translate
+        'resource_type' => 'Sin tipo de recurso', // @translate
+    ];
+
+    /**
+     * Etiquetas del filtro computado `integrity` (ComputedPredicates::INTEGRITY).
+     * Fuera de SEARCH_FILTER_LABELS porque no viaja como property de la API: es
+     * un predicado evaluado en el controlador sobre IntegrityChecker::check().
+     */
+    private const INTEGRITY_FILTER_LABELS = [
+        'ok' => 'Ficha completa', // @translate
+        'warning' => 'Con incidencias', // @translate
+    ];
+
+    /**
      * Añade los filtros del módulo a los chips de búsqueda activa (D-5).
      *
      * Los filtros curriculares llevan el id del item-término, que al curador no
@@ -213,6 +236,23 @@ class Module extends AbstractModule implements InitProviderInterface
             }
             $filters[$label][] = $value;
         }
+
+        // `missing[]` es un array: rama propia, un chip (valor) por cada clave
+        // marcada, agrupado bajo la misma etiqueta que la sección "Gobernanza"
+        // del formulario avanzado.
+        foreach ((array) ($query['missing'] ?? []) as $missingKey) {
+            if (is_string($missingKey) && isset(self::MISSING_FILTER_LABELS[$missingKey])) {
+                $filters['Gobernanza'][] = self::MISSING_FILTER_LABELS[$missingKey]; // @translate
+            }
+        }
+
+        // `integrity` es escalar pero, igual que `missing`, no viaja como
+        // property de la API (ver INTEGRITY_FILTER_LABELS): rama propia.
+        $integrityValue = (string) ($query['integrity'] ?? '');
+        if (isset(self::INTEGRITY_FILTER_LABELS[$integrityValue])) {
+            $filters['Integridad'][] = self::INTEGRITY_FILTER_LABELS[$integrityValue]; // @translate
+        }
+
         $event->setParam('filters', $filters);
     }
 

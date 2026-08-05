@@ -11,8 +11,10 @@ const css = readFileSync(
 const tokens = parseTokens(css);
 
 // El admin de Omeka pinta la tabla sobre blanco; las filas alternas usan el
-// token de superficie. El estado debe leerse sobre las dos.
-const BACKGROUNDS = ['#ffffff', tokens['--oer-surface']];
+// token de superficie, y una fila seleccionada usa --oer-select, más oscuro
+// que ambos (--oer-muted solo pasa con 0.14 de margen sobre ese fondo). El
+// estado debe leerse sobre las tres.
+const BACKGROUNDS = ['#ffffff', tokens['--oer-surface'], tokens['--oer-select']];
 const AA = 4.5;
 
 test('parseTokens lee los tokens del CSS real', () => {

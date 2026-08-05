@@ -21,9 +21,16 @@ namespace OERManager\Service\Governance;
  *  - D-3: un literal en una property de enlace es un aviso propio. Antes contaba
  *    como valor presente y la integridad decía «ok» (defecto D2 del estudio).
  *  - D-7: la comprobación de enlace vivo es opcional. Es la única que necesita
- *    el destino de cada valor, y en el core el FK cascadea al borrar
- *    (Value.php, @JoinColumn(onDelete="CASCADE")), así que el enlace muerto es
- *    casi inalcanzable: no se paga por buscarlo en cada fila de la tabla.
+ *    el destino de cada valor, y el enlace muerto es inalcanzable POR
+ *    CONSTRUCCIÓN, no por la FK en cascada del core (esa FK solo evita que SE
+ *    CREE un valor colgante, un nivel más arriba y más débil):
+ *    `AbstractResourceEntityRepresentation::values()` descarta los valores
+ *    ocultos antes de devolverlos, y `ValueRepresentation::isHidden()` es
+ *    exactamente «es un data type de recurso y `getValueResource()` es null».
+ *    Un valor de enlace con destino colgante nunca llega hasta aquí. Reserva
+ *    honesta: un data type de terceros con nombre `resource:*` que no
+ *    extendiera `AbstractResource` sí sería un hueco. No se paga por buscarlo
+ *    en cada fila de la tabla.
  */
 final class IntegrityPolicy
 {
@@ -101,7 +108,19 @@ final class IntegrityPolicy
             ];
         }
 
+        // A-3 (revisión final, TASK-028 rebanada 2): saltar los términos que las
+        // reglas mínimas ya cubren (los cuatro de anclaje y la licencia). Sin
+        // este guard, una plantilla que declarase obligatorio uno de esos mismos
+        // términos emitía DOS issues para un solo campo real —missing_license/
+        // missing_alignment más missing_required—, y el número de incidencias es
+        // lo único que el curador lee de la celda de integridad. Se activa justo
+        // cuando aterrice la plantilla REA (PEND-012), el escenario que la regla
+        // de plantilla vino a proteger.
+        $minimumTerms = [...self::ALIGNMENT_TERMS, self::LICENSE_TERM];
         foreach ($requiredTerms as $term) {
+            if (in_array($term, $minimumTerms, true)) {
+                continue;
+            }
             if ([] === ($values[$term] ?? [])) {
                 $issues[] = [
                     'severity' => 'warning',

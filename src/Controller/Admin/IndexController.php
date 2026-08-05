@@ -138,6 +138,14 @@ class IndexController extends AbstractActionController
             );
             $items = array_map(static fn (int $id) => $candidates[$id], $filtered['ids']);
             $this->paginator($filtered['total']);
+            // `$filtered['truncated']` está aquí por CONTRATO de ComputedFilter (su
+            // API lo expone, así que se respeta), pero con $fullParams['per_page'] =
+            // HARD_CAP nunca se dispara en esta llamada: ComputedFilter aplica ese
+            // mismo tope internamente, así que su propio truncado no puede activarse
+            // sobre una lista que ya venía acotada a HARD_CAP. Quien de verdad detecta
+            // que se ha recortado el catálogo es la comparación siguiente: si la
+            // búsqueda base ya devolvía más de HARD_CAP candidatos antes de aplicar el
+            // predicado computado, el aviso de "resultado acotado" debe mostrarse.
             $isTruncated = $filtered['truncated']
                 || $response->getTotalResults() > ComputedFilter::HARD_CAP;
         } else {
