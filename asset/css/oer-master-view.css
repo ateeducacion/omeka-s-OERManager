@@ -860,8 +860,12 @@
     color: var(--oer-bad);
 }
 
-/* Cursos que ninguna materia cubre: se declaran, no se esconden. */
+/*
+ * Cursos que ninguna materia del REA sostiene. No son una nota neutra: desde el
+ * 2026-08-10 degradan el anclaje a `partial` (ADR-0005 §4 ampliado), así que se
+ * pintan con la tinta de aviso, no con la de texto secundario.
+ */
 .oer-curricular-orphan .oer-curricular-subject {
-    color: var(--oer-muted);
+    color: var(--oer-warn);
     font-style: italic;
 }

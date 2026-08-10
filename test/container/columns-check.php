@@ -255,8 +255,8 @@ foreach ($items as $item) {
     // «Tiene anclaje» = renderContent() produciría contenido: al menos un
     // título no vacío en materia o en curso. Es el subconjunto exacto que la
     // etiqueta promete, no «al menos uno rinde en todo el catálogo».
-    $hasAnchor = '' !== anchorTitle($item, OERManager\ColumnType\Curricular::SUBJECT_TERM)
-        || '' !== anchorTitle($item, OERManager\ColumnType\Curricular::STAGE_TERM);
+    $hasAnchor = '' !== anchorTitle($item, OERManager\Service\Governance\CurricularPairs::SUBJECT_TERM)
+        || '' !== anchorTitle($item, OERManager\Service\Governance\CurricularPairs::STAGE_TERM);
     if ($hasAnchor) {
         $withAnchor++;
     }
@@ -273,6 +273,37 @@ foreach ($items as $item) {
 check('la celda curricular rinde exactamente en los REA con anclaje (ni más ni menos)',
     $rendered === $withAnchor,
     "ha rendido en $rendered de $withAnchor REA con anclaje (catálogo completo: " . count($items) . ')');
+
+echo "\n5. Curso huérfano ⇒ anclaje parcial (ADR-0005 §4 ampliado 2026-08-10)\n";
+
+// Un nivel educativo que ninguna materia del REA sostiene es un anclaje MAL
+// HECHO, no un caso de visualización. Antes de esta regla los 19 REA estaban
+// en `complete` y el filtro «parcial» no tenía con qué ejercitarse.
+$statuses = ['complete' => 0, 'partial' => 0, 'none' => 0];
+$orphanNotPartial = [];
+foreach ($items as $item) {
+    $status = OERManager\ColumnType\AlignmentStatus::statusFor($item);
+    $statuses[$status]++;
+    $hasOrphan = [] !== OERManager\Service\Governance\CurricularPairs::of($item)['orphanCourses'];
+    if ($hasOrphan && 'complete' === $status) {
+        $orphanNotPartial[] = $item->id();
+    }
+}
+echo "   estados: complete={$statuses['complete']} partial={$statuses['partial']} none={$statuses['none']}\n";
+
+check(
+    'ningún REA con curso huérfano se cuenta como completo',
+    [] === $orphanNotPartial,
+    'siguen en complete: ' . implode(', ', $orphanNotPartial)
+);
+
+// Guarda contra la regresión que motivó la regla: si TODOS volvieran a estar en
+// complete, el filtro «parcial» habría vuelto a quedarse sin datos reales.
+check(
+    'el filtro «parcial» tiene datos con los que ejercitarse',
+    $statuses['partial'] > 0,
+    'los ' . count($items) . ' REA vuelven a estar en complete/none'
+);
 
 echo "\n" . str_repeat('-', 60) . "\n";
 echo "$passed OK, $failed FAIL, $skipped SKIP\n";

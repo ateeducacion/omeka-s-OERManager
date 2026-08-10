@@ -4,6 +4,7 @@ namespace OERManager\ColumnType;
 
 use Laminas\View\Renderer\PhpRenderer;
 use OERManager\Service\Governance\AlignmentStatusValue;
+use OERManager\Service\Governance\CurricularPairs;
 use OERManager\Service\Governance\CurricularSummary;
 use Omeka\Api\Representation\AbstractEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -30,19 +31,6 @@ use Omeka\ColumnType\ColumnTypeInterface;
  */
 class Curricular implements ColumnTypeInterface
 {
-    public const SUBJECT_TERM = 'schema:about';
-    public const STAGE_TERM = 'lrmi:educationalLevel';
-
-    /**
-     * Aristas por las que una Asignatura declara su curso, en orden de
-     * preferencia. Mismo juego que `RecatalogService::QUALIFIER_TERMS`.
-     */
-    private const COURSE_TERMS = [
-        'lrmi:educationalLevel',
-        'lrmi:educationalAlignment',
-        'schema:inDefinedTermSet',
-    ];
-
     public function getLabel(): string
     {
         return 'Anclaje curricular'; // @translate
@@ -82,13 +70,13 @@ class Curricular implements ColumnTypeInterface
 
         $escape = $view->plugin('escapeHtml');
         $translate = $view->plugin('translate');
-        [$pairs, $orphans] = $this->pairsFor($resource);
-        $summary = CurricularSummary::summarise($pairs, $orphans);
+        $resolved = CurricularPairs::of($resource);
+        $summary = CurricularSummary::summarise($resolved['pairs'], $resolved['orphanCourses']);
         $status = AlignmentStatus::statusFor($resource);
 
         $lines = [];
 
-        $badge = $this->badge($view, $status, $summary['hasLiteral']);
+        $badge = $this->badge($view, $status, $summary['hasLiteral'], [] !== $summary['orphanCourses']);
         if ('' !== $badge) {
             $lines[] = $badge;
         }
@@ -127,7 +115,7 @@ class Curricular implements ColumnTypeInterface
      * Marca solo lo accionable (ADR-0014 regla 3). Un anclaje completo y sin
      * literales no produce ningún glifo.
      */
-    private function badge(PhpRenderer $view, string $status, bool $hasLiteral): string
+    private function badge(PhpRenderer $view, string $status, bool $hasLiteral, bool $hasOrphan): string
     {
         $escape = $view->plugin('escapeHtml');
         $translate = $view->plugin('translate');
@@ -146,6 +134,9 @@ class Curricular implements ColumnTypeInterface
         if (AlignmentStatusValue::PARTIAL === $status) {
             $flags[] = $translate('Anclaje incompleto'); // @translate
         }
+        if ($hasOrphan) {
+            $flags[] = $translate('Hay cursos que ninguna materia del REA sostiene'); // @translate
+        }
         if ($hasLiteral) {
             $flags[] = $translate('Hay un valor literal donde debería haber un enlace al item-término'); // @translate
         }
@@ -161,65 +152,5 @@ class Curricular implements ColumnTypeInterface
             $escape($label),
             $escape($label)
         );
-    }
-
-    /**
-     * Empareja cada materia con su curso y recoge aparte los cursos del item
-     * que ninguna materia cubre — 7 de los 19 REA del catálogo real los tienen,
-     * y descartarlos en silencio sería peor que la celda que se sustituye.
-     *
-     * @return array{0: list<array{subject:string, course:string, isLiteral:bool}>, 1: list<string>}
-     */
-    private function pairsFor(ItemRepresentation $item): array
-    {
-        $pairs = [];
-        $covered = [];
-
-        foreach ($item->value(self::SUBJECT_TERM, ['all' => true, 'default' => []]) as $value) {
-            if (!str_starts_with($value->type(), 'resource')) {
-                $pairs[] = ['subject' => (string) $value->value(), 'course' => '', 'isLiteral' => true];
-                continue;
-            }
-            $subject = $value->valueResource();
-            if (null === $subject) {
-                continue;
-            }
-            $course = $this->courseOf($subject);
-            if (null !== $course) {
-                $covered[$course->id()] = true;
-            }
-            $pairs[] = [
-                'subject' => (string) $subject->displayTitle(''),
-                'course' => null !== $course ? (string) $course->displayTitle('') : '',
-                'isLiteral' => false,
-            ];
-        }
-
-        $orphans = [];
-        foreach ($item->value(self::STAGE_TERM, ['all' => true, 'default' => []]) as $value) {
-            if (!str_starts_with($value->type(), 'resource')) {
-                $orphans[] = (string) $value->value();
-                continue;
-            }
-            $level = $value->valueResource();
-            if (null !== $level && !isset($covered[$level->id()])) {
-                $orphans[] = (string) $level->displayTitle('');
-            }
-        }
-
-        return [$pairs, $orphans];
-    }
-
-    /** El curso al que pertenece una Asignatura, o null si no lo declara. */
-    private function courseOf(AbstractEntityRepresentation $subject): ?AbstractEntityRepresentation
-    {
-        foreach (self::COURSE_TERMS as $term) {
-            $value = $subject->value($term);
-            $course = $value ? $value->valueResource() : null;
-            if (null !== $course) {
-                return $course;
-            }
-        }
-        return null;
     }
 }

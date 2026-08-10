@@ -7,6 +7,7 @@ use Omeka\Api\Representation\AbstractEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\ColumnType\ColumnTypeInterface;
 use OERManager\Service\Governance\AlignmentStatusValue;
+use OERManager\Service\Governance\CurricularPairs;
 
 /**
  * Indicador ligero de alineamiento curricular para la vista maestra v1
@@ -89,25 +90,29 @@ class AlignmentStatus implements ColumnTypeInterface
     }
 
     /**
-     * Calcula el estado de alineamiento de un item (ADR-0005 §4):
-     * completo = etapa + materia + ≥1 criterio + ≥1 saber;
-     * sin alinear = sin criterios ni saberes; parcial = el resto.
+     * Calcula el estado de anclaje de un item (ADR-0005 §4):
+     * completo = etapa + materia + ≥1 criterio + ≥1 saber **y ningún curso
+     * huérfano**; sin alinear = sin criterios ni saberes; parcial = el resto.
+     *
+     * La condición del curso huérfano se añadió el 2026-08-10: un nivel
+     * educativo que ninguna materia del REA sostiene es un anclaje mal hecho.
+     * Cuesta el recorrido de `CurricularPairs`, que antes esta función no
+     * pagaba — relevante en el filtro computado, que lo evalúa sobre hasta
+     * 2 000 items (el coste real está acotado por el tamaño del grafo
+     * curricular, que se comparte entre REA vía el identity map de Doctrine).
      */
     public static function statusFor(ItemRepresentation $item): string
     {
-        $hasCriteria = (bool) $item->value('lrmi:assesses');
-        $hasSkills = (bool) $item->value('lrmi:teaches');
-
-        if (!$hasCriteria && !$hasSkills) {
-            return self::NONE;
-        }
-
-        $hasStage = (bool) $item->value('lrmi:educationalLevel');
-        $hasSubject = (bool) $item->value('schema:about');
-        if ($hasStage && $hasSubject && $hasCriteria && $hasSkills) {
-            return self::COMPLETE;
-        }
-
-        return self::PARTIAL;
+        // Proyector: resuelve las banderas desde la representación y delega la
+        // decisión en AlignmentStatusValue, que es pura y está probada en host.
+        // El curso huérfano —un nivel educativo que ninguna materia del REA
+        // sostiene— degrada a `partial` desde el 2026-08-10; ver esa clase.
+        return AlignmentStatusValue::fromFlags(
+            (bool) $item->value('lrmi:educationalLevel'),
+            (bool) $item->value('schema:about'),
+            (bool) $item->value('lrmi:assesses'),
+            (bool) $item->value('lrmi:teaches'),
+            [] !== CurricularPairs::of($item)['orphanCourses']
+        );
     }
 }
