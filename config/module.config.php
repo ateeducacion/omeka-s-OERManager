@@ -352,7 +352,11 @@ return [
     'column_defaults' => [
         'admin' => [
             'oer_items' => [
-                ['type' => 'oerAlignmentStatus'],
+                // `oerAlignmentStatus` sale del juego por defecto: su señal la
+                // absorbe `oerCurricular`, que ahora rotula «Anclaje curricular»
+                // y funde el estado con los pares materia→curso. Sigue
+                // REGISTRADA y su `statusFor()` alimenta el filtro de tres
+                // estados, que no cambia.
                 ['type' => 'oerIntegrity'],
                 ['type' => 'oerCurricular'],
                 [

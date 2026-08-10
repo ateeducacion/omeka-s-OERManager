@@ -141,7 +141,6 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
                     <a href="#" class="oer-open-drawer<?php echo '' === $title ? ' oer-title-missing' : ''; ?>" data-item-id="<?php echo $item->id(); ?>">
                         <?php echo $escape('' === $title ? $translate('(sin título)') : $title); ?>
                     </a>
-                    <span class="oer-title-id"><?php echo $escape((string) $item->id()); ?></span>
                     <ul class="actions">
                         <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
                     </ul>

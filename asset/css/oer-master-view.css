@@ -354,8 +354,22 @@
         width: 6.25rem;
     }
 
+    /* Sigue registrada y reactivable por el curador, aunque ya no esté en el
+       juego por defecto: su señal la absorbió «Anclaje curricular». */
     #oer-master-view-table .column-oerAlignmentStatus {
         width: 7.5rem;
+        text-align: center;
+    }
+
+    /* La columna de más contenido de la tabla: un bloque por materia con sus
+       cursos. Se le da el ancho que liberó fundir Anclaje y Curricular. */
+    #oer-master-view-table .column-oerCurricular {
+        width: 22%;
+    }
+
+    /* Glifo y contador: el ancho lo fija la cabecera, no la celda. */
+    #oer-master-view-table .column-oerIntegrity {
+        width: 7rem;
         text-align: center;
     }
 
@@ -813,8 +827,41 @@
     font-style: italic;
 }
 
-.oer-title-id {
+/*
+ * Celda «Anclaje curricular»: un bloque por materia con sus cursos debajo, y
+ * el glifo SOLO cuando hay algo que hacer (ADR-0014 regla 3). Un anclaje
+ * completo no pinta nada: la vista se recorre buscando lo que falta.
+ */
+.oer-curricular-group {
     display: block;
+    margin-bottom: 0.4em;
+}
+
+.oer-curricular-group:last-child {
+    margin-bottom: 0;
+}
+
+.oer-curricular-subject {
+    display: block;
+}
+
+.oer-anchor-flag {
+    display: block;
+    margin-bottom: 0.25em;
+}
+
+.oer-anchor-partial::before {
+    content: "\26A0";
+    color: var(--oer-warn);
+}
+
+.oer-anchor-none::before {
+    content: "\2717";
+    color: var(--oer-bad);
+}
+
+/* Cursos que ninguna materia cubre: se declaran, no se esconden. */
+.oer-curricular-orphan .oer-curricular-subject {
     color: var(--oer-muted);
-    font-size: 0.85em;
+    font-style: italic;
 }

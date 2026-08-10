@@ -8,131 +8,191 @@ use OERManager\Service\Governance\CurricularSummary;
 use PHPUnit\Framework\TestCase;
 
 /**
- * La columna Curricular fusiona lrmi:educationalLevel y schema:about. El caso
- * que la motiva es real: el currículo repite «Matemáticas» en cuatro cursos y
- * la tabla pintaba cuatro chips idénticos (TASK-027 §3).
+ * La celda de anclaje curricular muestra los PARES materia→curso a los que el
+ * REA está vinculado, agrupados por materia.
+ *
+ * El motivo no es solo el espacio. Deduplicar materias por un lado y cursos por
+ * otro producía una lectura FALSA: el item 4362 del catálogo real tiene
+ * «Biología y Geología» en 1º ESO y «Descubrimiento y exploración del entorno»
+ * en tres cursos de Infantil, y la celda plana los mezclaba insinuando que
+ * Biología estaba en Infantil.
  */
 final class CurricularSummaryTest extends TestCase
 {
-    private function link(string $title): array
+    private function pair(string $subject, string $course): array
     {
-        return ['title' => $title, 'isLiteral' => false];
+        return ['subject' => $subject, 'course' => $course, 'isLiteral' => false];
     }
 
-    public function testSingleSubjectAndStage(): void
+    public function testSinglePair(): void
     {
-        $result = CurricularSummary::summarise([$this->link('Biología')], [$this->link('3º ESO')]);
+        $result = CurricularSummary::summarise([$this->pair('Biología y Geología', '1º ESO')], []);
 
-        $this->assertSame(['Biología'], $result['subjects']);
-        $this->assertSame('3º ESO', $result['primaryStage']);
-        $this->assertSame(0, $result['extraStages']);
+        $this->assertSame('Biología y Geología', $result['groups'][0]['subject']);
+        $this->assertSame(['1º ESO'], $result['groups'][0]['courses']);
         $this->assertFalse($result['hasLiteral']);
     }
 
-    public function testRepeatedSubjectTitleIsDeduplicated(): void
+    /** El caso que motiva la agrupación: una materia repetida en varios cursos. */
+    public function testSameSubjectGroupsItsCourses(): void
     {
-        $result = CurricularSummary::summarise(
-            [$this->link('Matemáticas'), $this->link('Matemáticas'), $this->link('Matemáticas')],
-            [$this->link('1º ESO'), $this->link('2º ESO')]
-        );
+        $result = CurricularSummary::summarise([
+            $this->pair('Conocimiento del Medio', '3º Primaria'),
+            $this->pair('Conocimiento del Medio', '4º Primaria'),
+            $this->pair('Conocimiento del Medio', '5º Primaria'),
+        ], []);
 
-        $this->assertSame(['Matemáticas'], $result['subjects']);
+        $this->assertCount(1, $result['groups']);
+        $this->assertSame(['3º Primaria', '4º Primaria', '5º Primaria'], $result['groups'][0]['courses']);
     }
 
-    public function testExtraStagesAreCountedNotListed(): void
+    /** El caso 4362: dos materias que NO deben mezclarse. */
+    public function testDistinctSubjectsKeepTheirOwnCourses(): void
     {
-        $result = CurricularSummary::summarise(
-            [$this->link('Matemáticas')],
-            [$this->link('1º ESO'), $this->link('2º ESO'), $this->link('3º ESO'), $this->link('4º ESO')]
-        );
+        $result = CurricularSummary::summarise([
+            $this->pair('Biología y Geología', '1º ESO'),
+            $this->pair('Descubrimiento', '4º Infantil de 3 años'),
+            $this->pair('Descubrimiento', '5º Infantil de 4 años'),
+        ], []);
 
-        $this->assertSame('1º ESO', $result['primaryStage']);
-        $this->assertSame(3, $result['extraStages']);
+        $this->assertCount(2, $result['groups']);
+        $this->assertSame(['1º ESO'], $result['groups'][0]['courses']);
+        $this->assertSame(
+            ['4º Infantil de 3 años', '5º Infantil de 4 años'],
+            $result['groups'][1]['courses']
+        );
     }
 
-    public function testRepeatedStageTitleIsDeduplicatedBeforeCounting(): void
+    public function testRepeatedPairIsNotListedTwice(): void
     {
-        $result = CurricularSummary::summarise(
-            [$this->link('Matemáticas')],
-            [$this->link('1º ESO'), $this->link('1º ESO')]
-        );
+        $result = CurricularSummary::summarise([
+            $this->pair('Matemáticas', '1º ESO'),
+            $this->pair('Matemáticas', '1º ESO'),
+        ], []);
 
-        $this->assertSame(0, $result['extraStages']);
+        $this->assertSame(['1º ESO'], $result['groups'][0]['courses']);
     }
 
-    /** D2: un literal en una property de enlace se marca; los 4 casos del catálogo real. */
+    /**
+     * 7 de los 19 REA del catálogo real tienen un curso que ninguna materia
+     * cubre. Perderlos en silencio sería peor que la celda que se sustituye.
+     */
+    public function testOrphanCoursesSurvive(): void
+    {
+        $result = CurricularSummary::summarise(
+            [$this->pair('Matemáticas', '1º ESO')],
+            ['2º ESO']
+        );
+
+        $this->assertSame(['2º ESO'], $result['orphanCourses']);
+    }
+
+    public function testOrphanCoursesAreDeduplicated(): void
+    {
+        $result = CurricularSummary::summarise([], ['2º ESO', '2º ESO']);
+
+        $this->assertSame(['2º ESO'], $result['orphanCourses']);
+    }
+
+    public function testAnchoredOnlyToCoursesIsStillShown(): void
+    {
+        $result = CurricularSummary::summarise([], ['1º Bachillerato']);
+
+        $this->assertSame([], $result['groups']);
+        $this->assertSame(['1º Bachillerato'], $result['orphanCourses']);
+    }
+
     public function testALiteralAnywhereRaisesTheFlag(): void
     {
         $result = CurricularSummary::summarise(
-            [['title' => 'Matemáticas', 'isLiteral' => true]],
-            [$this->link('1º ESO')]
+            [['subject' => 'Matemáticas', 'course' => '1º ESO', 'isLiteral' => true]],
+            []
         );
 
         $this->assertTrue($result['hasLiteral']);
+        $this->assertTrue($result['groups'][0]['isLiteral']);
     }
 
-    public function testLiteralInStagesAlsoRaisesTheFlag(): void
+    /** Un literal sin título sigue levantando la bandera (regresión de la rebanada 2). */
+    public function testLiteralWithBlankSubjectStillRaisesTheFlag(): void
     {
         $result = CurricularSummary::summarise(
-            [$this->link('Matemáticas')],
-            [['title' => '1º ESO', 'isLiteral' => true]]
+            [['subject' => '   ', 'course' => '', 'isLiteral' => true]],
+            []
         );
 
         $this->assertTrue($result['hasLiteral']);
-    }
-
-    /** Un literal sin título legible es el peor caso: no debe desaparecer sin marca. */
-    public function testLiteralWithBlankTitleStillRaisesTheFlag(): void
-    {
-        $result = CurricularSummary::summarise(
-            [['title' => '   ', 'isLiteral' => true]],
-            [$this->link('1º ESO')]
-        );
-
-        $this->assertTrue($result['hasLiteral']);
-        $this->assertSame([], $result['subjects']);
-    }
-
-    public function testTooltipListsEverythingWithoutTruncating(): void
-    {
-        $result = CurricularSummary::summarise(
-            [$this->link('Matemáticas')],
-            [$this->link('1º ESO'), $this->link('2º ESO')]
-        );
-
-        $this->assertSame('Matemáticas — 1º ESO, 2º ESO', $result['tooltip']);
-    }
-
-    public function testTooltipWithOnlySubjectsHasNoDanglingSeparator(): void
-    {
-        $result = CurricularSummary::summarise([$this->link('Matemáticas')], []);
-
-        $this->assertSame('Matemáticas', $result['tooltip']);
-    }
-
-    public function testTooltipWithOnlyStagesHasNoDanglingSeparator(): void
-    {
-        $result = CurricularSummary::summarise([], [$this->link('1º ESO')]);
-
-        $this->assertSame('1º ESO', $result['tooltip']);
+        $this->assertSame([], $result['groups']);
     }
 
     public function testEmptyInputIsNotAnError(): void
     {
         $result = CurricularSummary::summarise([], []);
 
-        $this->assertSame([], $result['subjects']);
-        $this->assertSame('', $result['primaryStage']);
-        $this->assertSame(0, $result['extraStages']);
+        $this->assertSame([], $result['groups']);
+        $this->assertSame([], $result['orphanCourses']);
         $this->assertFalse($result['hasLiteral']);
         $this->assertSame('', $result['tooltip']);
     }
 
-    public function testBlankTitlesAreDiscarded(): void
+    public function testTooltipListsEveryPairInFull(): void
     {
-        $result = CurricularSummary::summarise([$this->link('  ')], [$this->link('')]);
+        $result = CurricularSummary::summarise([
+            $this->pair('Matemáticas', '1º ESO'),
+            $this->pair('Matemáticas', '2º ESO'),
+        ], ['3º ESO']);
 
-        $this->assertSame([], $result['subjects']);
-        $this->assertSame('', $result['primaryStage']);
+        $this->assertSame('Matemáticas: 1º ESO, 2º ESO — Sin materia: 3º ESO', $result['tooltip']);
+    }
+
+    // --- Abreviatura de cursos ---------------------------------------------
+
+    /**
+     * «3º Primaria, 4º Primaria, 5º Primaria» comparten la última palabra y sus
+     * partes distintivas son de UNA palabra: se puede factorizar sin perder nada.
+     */
+    public function testCoursesSharingATailAreAbbreviated(): void
+    {
+        $this->assertSame(
+            '3º · 4º · 5º Primaria',
+            CurricularSummary::abbreviateCourses(['3º Primaria', '4º Primaria', '5º Primaria'])
+        );
+    }
+
+    /**
+     * «4º Infantil de 3 años» y «5º Infantil de 4 años» comparten «años», pero lo
+     * que queda delante son varias palabras: factorizar produciría «4º Infantil
+     * de 3 · 5º Infantil de 4 años», que es peor que no abreviar. No se abrevia.
+     */
+    public function testCoursesWithMultiWordRemaindersAreNotAbbreviated(): void
+    {
+        $this->assertSame(
+            '4º Infantil de 3 años · 5º Infantil de 4 años',
+            CurricularSummary::abbreviateCourses(['4º Infantil de 3 años', '5º Infantil de 4 años'])
+        );
+    }
+
+    public function testCoursesWithNothingInCommonAreListedInFull(): void
+    {
+        $this->assertSame(
+            '1º ESO · 2º Bachillerato',
+            CurricularSummary::abbreviateCourses(['1º ESO', '2º Bachillerato'])
+        );
+    }
+
+    public function testASingleCourseIsNeverAbbreviated(): void
+    {
+        $this->assertSame('3º Primaria', CurricularSummary::abbreviateCourses(['3º Primaria']));
+    }
+
+    public function testNoCoursesGivesEmptyString(): void
+    {
+        $this->assertSame('', CurricularSummary::abbreviateCourses([]));
+    }
+
+    /** Un curso de una sola palabra no deja parte distintiva: no se abrevia. */
+    public function testIdenticalSingleWordCoursesAreNotAbbreviated(): void
+    {
+        $this->assertSame('Primaria · Primaria', CurricularSummary::abbreviateCourses(['Primaria', 'Primaria']));
     }
 }

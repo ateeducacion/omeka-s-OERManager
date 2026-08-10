@@ -104,7 +104,7 @@ final class ModuleConfigTest extends TestCase
     {
         $columns = $this->config['column_defaults']['admin']['oer_items'] ?? null;
         $this->assertIsArray($columns, 'Faltan las columnas por defecto de oer_items');
-        $this->assertCount(7, $columns, 'El reequilibrio de ADR-0013 (TASK-028 rebanada 2) deja siete columnas');
+        $this->assertCount(6, $columns, 'Anclaje y Curricular se funden en una sola columna');
         $registered = array_merge(
             array_keys($this->config['column_types']['invokables'] ?? []),
             array_keys($this->config['column_types']['factories'] ?? [])
@@ -136,9 +136,11 @@ final class ModuleConfigTest extends TestCase
         $config = include __DIR__ . '/../config/module.config.php';
         $defaults = $config['column_defaults']['admin']['oer_items'] ?? [];
 
-        $this->assertCount(7, $defaults);
+        // Seis: `oerAlignmentStatus` sale del juego por defecto porque
+        // `oerCurricular` absorbe su señal («Anclaje curricular»). Sigue
+        // registrada y su statusFor() alimenta el filtro, que no cambia.
+        $this->assertCount(6, $defaults);
         $this->assertSame([
-            'oerAlignmentStatus',
             'oerIntegrity',
             'oerCurricular',
             'oerGovernanceValue',
