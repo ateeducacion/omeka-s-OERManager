@@ -190,7 +190,9 @@ class Module extends AbstractModule implements InitProviderInterface
      * porque ese mapa alimenta un bucle que hace `(string) $query[$key]`, y
      * `missing` es un array: entraría como "Array to string conversion".
      */
-    private const MISSING_FILTER_LABELS = [
+    public const MISSING_GROUP_LABEL = 'Gobernanza'; // @translate
+
+    public const MISSING_FILTER_LABELS = [
         'licence' => 'Sin licencia', // @translate
         'description' => 'Sin descripción', // @translate
         'title' => 'Sin título', // @translate
@@ -202,7 +204,9 @@ class Module extends AbstractModule implements InitProviderInterface
      * Fuera de SEARCH_FILTER_LABELS porque no viaja como property de la API: es
      * un predicado evaluado en el controlador sobre IntegrityChecker::check().
      */
-    private const INTEGRITY_FILTER_LABELS = [
+    public const INTEGRITY_GROUP_LABEL = 'Integridad'; // @translate
+
+    public const INTEGRITY_FILTER_LABELS = [
         'ok' => 'Ficha completa', // @translate
         'warning' => 'Con incidencias', // @translate
     ];
@@ -242,7 +246,7 @@ class Module extends AbstractModule implements InitProviderInterface
         // del formulario avanzado.
         foreach ((array) ($query['missing'] ?? []) as $missingKey) {
             if (is_string($missingKey) && isset(self::MISSING_FILTER_LABELS[$missingKey])) {
-                $filters['Gobernanza'][] = self::MISSING_FILTER_LABELS[$missingKey]; // @translate
+                $filters[self::MISSING_GROUP_LABEL][] = self::MISSING_FILTER_LABELS[$missingKey];
             }
         }
 
@@ -250,7 +254,7 @@ class Module extends AbstractModule implements InitProviderInterface
         // property de la API (ver INTEGRITY_FILTER_LABELS): rama propia.
         $integrityValue = (string) ($query['integrity'] ?? '');
         if (isset(self::INTEGRITY_FILTER_LABELS[$integrityValue])) {
-            $filters['Integridad'][] = self::INTEGRITY_FILTER_LABELS[$integrityValue]; // @translate
+            $filters[self::INTEGRITY_GROUP_LABEL][] = self::INTEGRITY_FILTER_LABELS[$integrityValue];
         }
 
         $event->setParam('filters', $filters);

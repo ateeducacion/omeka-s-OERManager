@@ -15,11 +15,16 @@ use Omeka\ColumnType\ColumnTypeInterface;
  * Estrena en la UI un activo que llevaba desde TASK-005 calculándose en cada
  * guardado y yendo SOLO al log de Omeka.
  *
- * Dos estados, no tres (D-5): «error» solo lo produciría un enlace muerto, y el
- * core cascadea el borrado del valor cuando desaparece su destino
- * (Value.php, @JoinColumn(onDelete="CASCADE")), así que hoy ningún dato puede
- * producirlo. La constante sigue existiendo en IntegrityResult; lo que no se
- * hace es pintar un rojo que nunca se encenderá.
+ * Dos estados, no tres (D-5): «error» solo lo produciría un enlace muerto, y
+ * ese enlace es inalcanzable **por construcción**, no por la FK en cascada del
+ * core (esa FK solo evita que SE CREE un valor colgante, un nivel más arriba y
+ * más débil): `AbstractResourceEntityRepresentation::values()` descarta los
+ * valores ocultos antes de devolverlos, y `ValueRepresentation::isHidden()` es
+ * exactamente «es un data type de recurso y `getValueResource()` es null», así
+ * que un enlace con destino colgante nunca llega hasta aquí. Reserva honesta:
+ * un data type de terceros con nombre `resource:*` que no extendiera
+ * `AbstractResource` sí sería un hueco. La constante sigue existiendo en
+ * IntegrityResult; lo que no se hace es pintar un rojo que nunca se encenderá.
  *
  * La comprobación de enlace vivo va APAGADA (D-7): es la única que despierta el
  * proxy Doctrine de cada destino, y aquí se renderizan 25 filas por página.
