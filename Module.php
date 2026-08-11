@@ -86,6 +86,7 @@ class Module extends AbstractModule implements InitProviderInterface
                 'recatalog-preview',
                 'recatalog-apply',
                 'recatalog-last-event',
+                'drawer-details',
                 'recatalog-undo',
                 'ai-propose',
                 'ai-propose-status',

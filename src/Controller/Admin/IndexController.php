@@ -453,6 +453,45 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * Detalle del drawer que el cliente NO puede calcular ni leer por su cuenta
+     * (rebanada 3a de TASK-028): incidencias de integridad e historial de
+     * curación, en una sola llamada.
+     *
+     * Va por el servidor por obligación, no por comodidad: el valor del evento
+     * se escribe con `is_public => false` (ADR-0015) y el drawer carga el item
+     * con `fetch(apiUrl)` sin autenticar, así que por el JSON-LD no llegaría
+     * nunca. Lo dejó anotado el cierre de TASK-007 como aviso para esta cara de
+     * lectura.
+     *
+     * Solo lectura: sin CSRF. La comprobación de enlaces va ENCENDIDA —al
+     * contrario que en la tabla— porque aquí es un item a la vez y el detalle
+     * es justo lo que se viene a ver.
+     */
+    public function drawerDetailsAction()
+    {
+        $id = (int) $this->params()->fromQuery('id');
+        if ($id <= 0) {
+            return new JsonModel(['integrity' => null, 'history' => []]);
+        }
+
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['integrity' => null, 'history' => []]);
+        }
+
+        $result = $this->integrityChecker->check($item, true);
+
+        return new JsonModel([
+            'integrity' => [
+                'status' => $result->getStatus(),
+                'issues' => $result->getIssues(),
+            ],
+            'history' => $this->recatalogService->history($id),
+        ]);
+    }
+
+    /**
      * Deshace la última re-catalogación del item (TASK-007). Escribe, así que
      * lleva CSRF y ACL igual que el apply: deshacer no es más privilegiado que
      * hacer, pero tampoco menos (NFR-003).
