@@ -246,7 +246,38 @@ class RecatalogService
         if ([] === $events) {
             return [];
         }
-        return CurationHistory::rows($events, $this->titlesFor(CurationHistory::referencedIds($events)));
+        $titles = $this->titlesFor(CurationHistory::referencedIds($events), $this->dimensionsOf($events));
+        return CurationHistory::rows($events, $titles);
+    }
+
+    /**
+     * Dimensión (término) de la que viene cada id referenciado en los eventos.
+     *
+     * `titlesFor()` necesita el término real, no una constante, porque
+     * `qualifiedTitle()` trata `UNQUALIFIED_TERM` (`dcterms:relation`, los ejes
+     * temáticos) como caso especial: no le añade sufijo de ancestro. Pasar
+     * siempre `lrmi:teaches` calificaría los ejes con el sufijo constante de su
+     * `DefinedTermSet`, justo lo que ese caso especial existe para evitar.
+     *
+     * Un id que apareciera en más de una dimensión conserva la primera que lo
+     * referencia; en la práctica no colisiona porque cada dimensión resuelve
+     * ids de su propio vocabulario.
+     *
+     * @param list<array{payload:array}> $events
+     * @return array<int,string> id → término (p.ej. 'lrmi:teaches', 'dcterms:relation')
+     */
+    private function dimensionsOf(array $events): array
+    {
+        $dimensionOf = [];
+        foreach ($events as $event) {
+            foreach ($event['payload']['terms'] ?? [] as $term => $entry) {
+                $ids = [...($entry['before'] ?? []), ...($entry['after'] ?? [])];
+                foreach ($ids as $id) {
+                    $dimensionOf[(int) $id] ??= (string) $term;
+                }
+            }
+        }
+        return $dimensionOf;
     }
 
     /**
@@ -254,9 +285,10 @@ class RecatalogService
      * omite del mapa; `CurationHistory` lo rinde como `#<id>` en vez de romper.
      *
      * @param list<int> $ids
+     * @param array<int,string> $dimensionOf id → término, ver dimensionsOf()
      * @return array<int,string>
      */
-    private function titlesFor(array $ids): array
+    private function titlesFor(array $ids, array $dimensionOf): array
     {
         $titles = [];
         foreach ($ids as $id) {
@@ -265,7 +297,7 @@ class RecatalogService
             } catch (\Exception $e) {
                 continue;
             }
-            $titles[$id] = $this->qualifiedTitle($target, 'lrmi:teaches');
+            $titles[$id] = $this->qualifiedTitle($target, $dimensionOf[$id] ?? 'lrmi:teaches');
         }
         return $titles;
     }
