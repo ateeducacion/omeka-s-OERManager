@@ -1,5 +1,6 @@
 /vendor/
 /test/.phpunit.cache/
+/.superpowers/
 .claude/settings.local.json
 .DS_Store
 /prompt_fase*.md

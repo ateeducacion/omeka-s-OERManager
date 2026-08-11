@@ -38,7 +38,8 @@ return [
                     // TASK-029: la configuración se rinde desde el controlador,
                     // no desde Module. El manager (y no la instancia) porque es
                     // quien invoca `init()` del formulario.
-                    $container->get('FormElementManager')
+                    $container->get('FormElementManager'),
+                    $container->get(Service\IntegrityChecker::class)
                 );
             },
         ],
@@ -317,6 +318,8 @@ return [
             'oerModified' => ColumnType\Modified::class,
             'oerId' => ColumnType\Id::class,
             'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
+            'oerCurricular' => ColumnType\Curricular::class,
+            'oerGovernanceValue' => ColumnType\GovernanceValue::class,
         ],
         'factories' => [
             // Value necesita FormElementManager y ApiManager, igual que el del core.
@@ -326,17 +329,49 @@ return [
                     $container->get('Omeka\ApiManager')
                 );
             },
+            'oerIntegrity' => function ($container) {
+                return new ColumnType\Integrity(
+                    $container->get(Service\IntegrityChecker::class)
+                );
+            },
         ],
     ],
-    // Mismas seis columnas que la v1; el reequilibrio de ADR-0013 es posterior.
+    // Reequilibrio de ADR-0013 (TASK-028 rebanada 2): la tabla pasa de mostrar
+    // el anclaje —que está al 100 %— a mostrar la gobernanza, que está vacía.
+    // Ocho columnas contando el Título, que lo pinta la plantilla: es el tope
+    // que TASK-027 §3 fijó para no forzar scroll horizontal en el admin.
+    //
+    // Los oerValue de lrmi:educationalLevel y schema:about salen (los fusiona
+    // oerCurricular) y el de dcterms:rights también (lo sustituye la celda con
+    // estado vacío). Siguen REGISTRADOS: un curador puede reactivarlos desde la
+    // configuración nativa de columnas.
+    //
+    // OJO: column_defaults solo aplica a quien NO haya guardado su propia
+    // selección. Quien la guardó tras la rebanada 1 conserva las columnas
+    // viejas hasta que la reajuste.
     'column_defaults' => [
         'admin' => [
             'oer_items' => [
+                // `oerAlignmentStatus` sale del juego por defecto: su señal la
+                // absorbe `oerCurricular`, que ahora rotula «Anclaje curricular»
+                // y funde el estado con los pares materia→curso. Sigue
+                // REGISTRADA y su `statusFor()` alimenta el filtro de tres
+                // estados, que no cambia.
+                ['type' => 'oerIntegrity'],
+                ['type' => 'oerCurricular'],
+                [
+                    'type' => 'oerGovernanceValue',
+                    'property_term' => 'lrmi:learningResourceType',
+                    'header' => 'Tipo de recurso', // @translate
+                    'empty_label' => 'Sin tipo', // @translate
+                ],
+                [
+                    'type' => 'oerGovernanceValue',
+                    'property_term' => 'dcterms:rights',
+                    'header' => 'Licencia', // @translate
+                    'empty_label' => 'Sin licencia', // @translate
+                ],
                 ['type' => 'oerIsPublic'],
-                ['type' => 'oerValue', 'property_term' => 'lrmi:educationalLevel', 'max_values' => 1],
-                ['type' => 'oerValue', 'property_term' => 'schema:about', 'max_values' => 1],
-                ['type' => 'oerAlignmentStatus'],
-                ['type' => 'oerValue', 'property_term' => 'dcterms:rights', 'max_values' => 1],
                 ['type' => 'oerModified'],
             ],
         ],

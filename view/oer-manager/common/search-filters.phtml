@@ -1,40 +1,97 @@
 <?php
+
 /**
  * Chips de filtros activos de la vista maestra (TASK-028, D-5).
  *
  * El partial del core solo pinta etiqueta y valor; este añade el enlace para
- * quitar el filtro, que es lo que convierte el chip en algo accionable. La clave
- * a quitar se deduce de la etiqueta con el mapa que declara el módulo, así que
- * los filtros que añadan otros módulos por el mismo evento se siguen mostrando,
- * solo que sin enlace.
+ * quitar el filtro, que es lo que convierte el chip en algo accionable.
+ *
+ * Hay **tres formas distintas de quitar un filtro**, y por eso el mapeo no es
+ * uno solo (residuo de la revisión final de la rebanada 2, cerrado 2026-08-11):
+ *
+ *  1. **Escalares con property** (etapa, materia, licencia…): la clave se deduce
+ *     de la etiqueta y se quita entera.
+ *  2. **`missing[]`**: es un ARRAY agrupado bajo una sola etiqueta, así que hay
+ *     que quitar **el valor concreto**, no la clave — quitar la clave se llevaría
+ *     por delante los demás filtros de gobernanza que el curador tenga puestos.
+ *  3. **`integrity`**: escalar pero fuera del mapa de properties, porque es un
+ *     predicado computado y no viaja como consulta a la API.
+ *
+ * Los filtros que añadan otros módulos por el mismo evento se siguen mostrando,
+ * solo que sin enlace: no sabemos qué clave los produce.
  *
  * @var array $filters etiqueta => valores, ya resueltos a texto legible
  */
+
 $escape = $this->plugin('escapeHtml');
 $translate = $this->plugin('translate');
 
-$query = $this->params()->fromQuery();
+// La query se puede inyectar como variable de vista; si no viene, se lee del
+// request. La costura existe para que el arnés de contenedor pueda comprobar
+// los enlaces de retirada, que son la parte con lógica y la única que no se ve
+// hasta pulsarlos: fuera del ciclo MVC completo `params()->fromQuery()` no
+// devuelve la query (y puede devolver null, que sin el cast reventaría la vista
+// entera al primer chip — lo destapó el arnés de render, no el lint).
+$query = isset($query) && is_array($query)
+    ? $query
+    : (array) $this->params()->fromQuery();
+
+// (1) Escalares con property: etiqueta traducida => clave de la query.
 $keyByLabel = [];
 foreach (\OERManager\Module::SEARCH_FILTER_LABELS as $key => $label) {
     $keyByLabel[$translate($label)] = $key;
 }
+
+// (2) y (3): valor legible => clave/valor a retirar, dentro de su grupo.
+$missingKeyByValue = [];
+foreach (\OERManager\Module::MISSING_FILTER_LABELS as $key => $label) {
+    $missingKeyByValue[$translate($label)] = $key;
+}
+$missingGroup = $translate(\OERManager\Module::MISSING_GROUP_LABEL);
+$integrityGroup = $translate(\OERManager\Module::INTEGRITY_GROUP_LABEL);
+
+/** URL de la vista maestra con la query dada, siempre volviendo a la página 1. */
+$urlWithout = function (array $without) {
+    unset($without['page']);
+    return $this->url('admin/oer-manager', [], ['query' => $without]);
+};
 ?>
-<?php if (count($filters) > 0): ?>
+<?php if (count($filters) > 0) : ?>
 <div class="search-filters oer-search-filters">
-    <?php foreach ($filters as $filterLabel => $filterValues): ?>
+    <?php foreach ($filters as $filterLabel => $filterValues) : ?>
     <div class="filter">
         <span class="filter-label"><?php echo $escape($filterLabel); ?></span>
-        <?php foreach ($filterValues as $filterValue): ?>
+        <?php foreach ($filterValues as $filterValue) : ?>
+        <?php
+        $removeUrl = null;
+
+        if (isset($keyByLabel[$filterLabel])) {
+            $without = $query;
+            unset($without[$keyByLabel[$filterLabel]]);
+            $removeUrl = $urlWithout($without);
+        } elseif ($filterLabel === $missingGroup && isset($missingKeyByValue[$filterValue])) {
+            // Solo este valor sale del array; los demás «sin X» se conservan.
+            $without = $query;
+            $without['missing'] = array_values(array_filter(
+                (array) ($query['missing'] ?? []),
+                static fn ($key): bool => $key !== $missingKeyByValue[$filterValue]
+            ));
+            if ([] === $without['missing']) {
+                unset($without['missing']);
+            }
+            $removeUrl = $urlWithout($without);
+        } elseif ($filterLabel === $integrityGroup) {
+            $without = $query;
+            unset($without['integrity']);
+            $removeUrl = $urlWithout($without);
+        }
+        ?>
         <span class="filter-value">
             <?php echo $escape($filterValue); ?>
-            <?php if (isset($keyByLabel[$filterLabel])): ?>
-                <?php
-                $without = $query;
-                unset($without[$keyByLabel[$filterLabel]], $without['page']);
-                ?>
+            <?php if (null !== $removeUrl) : ?>
             <a class="oer-filter-remove"
-               href="<?php echo $escape($this->url('admin/oer-manager', [], ['query' => $without])); ?>"
-               aria-label="<?php echo $escape(sprintf($translate('Quitar el filtro %s'), $filterLabel)); ?>"
+               href="<?php echo $escape($removeUrl); ?>"
+               aria-label="<?php echo $escape(sprintf($translate('Quitar el filtro %s'), $filterValue)); ?>"
                title="<?php echo $escape($translate('Quitar')); ?>">&times;</a>
             <?php endif; ?>
         </span>

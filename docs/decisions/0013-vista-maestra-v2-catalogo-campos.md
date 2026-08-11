@@ -130,8 +130,24 @@ Se recupera ~4 em de ancho de tabla sin perder la señal. El coste es que la tab
 
 **Queda pendiente:** medir el comportamiento del riel y del glifo sobre un volumen realista. Todo lo verificado hasta hoy lo ha sido sobre 19 filas, y esta decisión se toma para un escenario de miles que aún no existe.
 
+## Afinado (TASK-028 rebanada 2, 2026-08-05)
+
+**Estado: Aceptado.** Cierra la rebanada 2 (spec `docs/superpowers/specs/2026-08-03-task-028-rebanada-2-design.md`), que estrena la columna de Integridad prevista en §Decisión.7 y en el afinado del 2026-07-29 de este mismo ADR. Commits `fabe205`…`9bf5765`.
+
+**RF-006 cambia de semántica.** Las reglas mínimas —anclaje presente y licencia presente— dejan de ser la rama «else» de la comprobación de integridad y pasan a aplicarse **siempre**; los campos obligatorios de la plantilla REA se **suman**, no sustituyen. Antes de este afinado eran ramas excluyentes: asignar una plantilla que no declarase obligatorios el anclaje y la licencia habría silenciado ambos avisos sin que el catálogo mejorase un ápice, la trampa que TASK-027 §8.1 anticipó y que PEND-012 iba a abrir en cuanto se sembrase la plantilla. Se añade también el aviso `literal_in_link_property` (severidad aviso, D-3 del spec): un literal en una property de enlace contaba como valor presente y la integridad decía «ok»; medido sobre el catálogo real, 4 valores lo disparan (`schema:about` ×3, `educationalLevel` ×1), coincidiendo con el defecto D2 que TASK-027 había contado. Nota gemela en `docs/requirements.md`, fila RF-006.
+
+**Dos revisiones conscientes de §4 de este ADR, ambas deliberadas y no accidentales:**
+
+1. **La columna de Licencia no marca sus tres estados en la celda.** El estudio de TASK-027 §3 pedía para Licencia tres estados marcados (valor del vocabulario / fuera del vocabulario / sin licencia). Con **18 de 19 REA sin licencia**, marcar los tres estados en la fila habría marcado la tabla entera, y una marca presente en el 95 % de las filas deja de señalar la excepción (regla 3 de ADR-0014 al pie de la letra). La columna queda en texto y tinta apagada, sin glifo; los tres estados **siguen existiendo** en el filtro y quedan para el drawer de la rebanada 3.
+2. **La columna de Anclaje no se retira.** Decisión ya tomada por el propietario en el afinado del 2026-07-29 de este mismo ADR (más arriba): esta rebanada la hereda tal cual. Anclaje e Integridad **conviven y se solapan en parte, a propósito**: Anclaje gradúa el ajuste curricular en tres estados con filtro propio; Integridad agrega «ficha sana» en un contador. Responden preguntas distintas —«¿está ajustado al currículo?» frente a «¿está completa la ficha?»—. El riel de 3px de la fila (ADR-0014 regla 4) se re-ancla de Anclaje a Integridad, que es el movimiento que la pasada visual de la rebanada 1 dejó previsto por escrito.
+
+**Verificado sobre el catálogo real (19 REA), arnés `test/container/columns-check.php`, salida `6 OK, 0 FAIL, 1 SKIP`, exit 0:** `ok=1`, `warning=18`, `error=0`; `dead_link=0` confirma D-5 (el tercer estado del semáforo sigue sin productor real, ver §4.1 del spec); `literal_in_link_property=4` coincide con lo medido en TASK-027; `missing_license=18` de 19. La comprobación de D-6 (suma plantilla+mínimo) quedó **SKIP**: ningún REA tiene plantilla asignada todavía (PEND-012 sigue abierto), así que esa rama del comprobador no se ejerció sobre datos reales — queda para cuando la plantilla se siembre y se asigne.
+
+**285 tests PHP (669 aserciones) y 48 tests JS**, subiendo desde 252/37 al empezar la rebanada. **No verificado y declarado como tal:** la UI en navegador con sesión real (columna Integridad, columna Curricular, riel re-anclado), que entra en la deuda de TASK-030 junto con el resto del JS del módulo.
+
 ## Fuentes
 
 - `docs/superpowers/specs/2026-07-27-campos-ui-design.md` (estudio de TASK-027).
+- `docs/superpowers/specs/2026-08-03-task-028-rebanada-2-design.md` (diseño de la rebanada 2, decisiones D-1…D-8).
 - Medición del catálogo real (19 REA, `resource_class_id` 4758) e inventario funcional de la UI, 2026-07-27.
-- ADR-0002 (auditoría), ADR-0004 (mapeo RDF), ADR-0005 (vista maestra v1), ADR-0009 (grafo curricular), ADR-0011 (capa de contexto).
+- ADR-0002 (auditoría), ADR-0004 (mapeo RDF), ADR-0005 (vista maestra v1), ADR-0009 (grafo curricular), ADR-0011 (capa de contexto), ADR-0014 (norma visual).

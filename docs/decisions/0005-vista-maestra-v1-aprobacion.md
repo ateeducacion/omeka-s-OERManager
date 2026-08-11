@@ -4,6 +4,8 @@
 
 Aceptado (2026-06-16)
 
+**Parcialmente modificado por [ADR-0016](0016-ampliacion-reglas-integridad-y-anclaje.md) (2026-08-11):** la regla de estado de anclaje de §4 exige además que ningún curso del REA quede sin materia que lo sostenga. El resto de esta decisión —columnas, filtros, drawer, arquitectura y manejo de errores— sigue vigente y **no** queda reemplazado.
+
 ## Contexto
 
 TASK-003 (vista maestra del catálogo en el panel admin) estaba bloqueada por PEND-007, que agrupa todos los detalles de RF/NFR aún sin fijar. El 2026-06-15 se redactó un borrador de diseño (`docs/superpowers/specs/2026-06-15-vista-maestra-design.md`) que cubre el punto 1 de PEND-007 (columnas, filtros y panel de detalle) para un alcance v1 limitado a lectura + curación de visibilidad. El borrador quedó marcado «propuesto (pendiente de revisión del propietario)» y no se formalizó como decisión hasta confirmarlo con el propietario.

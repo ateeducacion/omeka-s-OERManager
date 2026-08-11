@@ -15,9 +15,11 @@ use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\ComputedFilter;
+use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\IntegrityChecker;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
@@ -54,6 +56,7 @@ class IndexController extends AbstractActionController
     private ComputedFilter $computedFilter;
     private ResourceTypeVocab $resourceTypeVocab;
     private FormElementManager $formElementManager;
+    private IntegrityChecker $integrityChecker;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -68,7 +71,8 @@ class IndexController extends AbstractActionController
         ProposalStore $proposalStore,
         ComputedFilter $computedFilter,
         ResourceTypeVocab $resourceTypeVocab,
-        FormElementManager $formElementManager
+        FormElementManager $formElementManager,
+        IntegrityChecker $integrityChecker
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -83,6 +87,7 @@ class IndexController extends AbstractActionController
         $this->computedFilter = $computedFilter;
         $this->resourceTypeVocab = $resourceTypeVocab;
         $this->formElementManager = $formElementManager;
+        $this->integrityChecker = $integrityChecker;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -103,18 +108,17 @@ class IndexController extends AbstractActionController
         $this->browse()->setDefaults('oer_items');
         $query = $this->params()->fromQuery();
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
-        $isPartialFilter = AlignmentStatus::PARTIAL === ($query['alignment'] ?? '');
 
-        if ($isPartialFilter) {
-            // D4: «parcial» no se puede expresar como query de Omeka, así que es
-            // un filtro computado y sigue el patrón obligatorio de ADR-0013:
-            // conjunto completo → predicado → paginar. Cribar la página ya
-            // paginada daba un total aproximado y filas que bailaban.
-            //
+        // Una sola rama computada (TASK-028 rebanada 2). Antes había un if/else
+        // escrito a medida del filtro «parcial»; con un segundo filtro computado
+        // ese bloque —búsqueda con tope, ComputedFilter, paginator, isTruncated—
+        // se habría duplicado entero, que es cómo se propagan los defectos D4.
+        $computedKeys = ComputedPredicates::activeKeys($query);
+
+        if ([] !== $computedKeys) {
             // Las representaciones se piden de una vez, acotadas al tope, en vez
-            // de resolver ids y releer cada uno: el predicado necesita el item
-            // entero, así que un read por id serían hasta HARD_CAP consultas en
-            // una sola carga de página.
+            // de resolver ids y releer cada uno: los predicados necesitan el item
+            // entero, así que un read por id serían hasta HARD_CAP consultas.
             $fullParams = $searchParams;
             $fullParams['page'] = 1;
             $fullParams['per_page'] = ComputedFilter::HARD_CAP;
@@ -124,17 +128,24 @@ class IndexController extends AbstractActionController
             foreach ($response->getContent() as $candidate) {
                 $candidates[(int) $candidate->id()] = $candidate;
             }
+
+            $predicate = $this->computedPredicate($computedKeys, $candidates, $query);
             $filtered = $this->computedFilter->apply(
                 array_keys($candidates),
-                fn (int $id): bool => AlignmentStatus::PARTIAL
-                    === AlignmentStatus::statusFor($candidates[$id]),
+                $predicate,
                 (int) ($query['page'] ?? 1),
                 (int) $this->settings->get('pagination_per_page', 25)
             );
             $items = array_map(static fn (int $id) => $candidates[$id], $filtered['ids']);
             $this->paginator($filtered['total']);
-            // El tope puede alcanzarse por la propia lista o porque el filtro
-            // base ya devolvía más de HARD_CAP antes de acotar la página.
+            // `$filtered['truncated']` está aquí por CONTRATO de ComputedFilter (su
+            // API lo expone, así que se respeta), pero con $fullParams['per_page'] =
+            // HARD_CAP nunca se dispara en esta llamada: ComputedFilter aplica ese
+            // mismo tope internamente, así que su propio truncado no puede activarse
+            // sobre una lista que ya venía acotada a HARD_CAP. Quien de verdad detecta
+            // que se ha recortado el catálogo es la comparación siguiente: si la
+            // búsqueda base ya devolvía más de HARD_CAP candidatos antes de aplicar el
+            // predicado computado, el aviso de "resultado acotado" debe mostrarse.
             $isTruncated = $filtered['truncated']
                 || $response->getTotalResults() > ComputedFilter::HARD_CAP;
         } else {
@@ -142,6 +153,17 @@ class IndexController extends AbstractActionController
             $items = $response->getContent();
             $this->paginator($response->getTotalResults());
             $isTruncated = false;
+        }
+
+        // Estado de integridad de las filas visibles, para el riel de ADR-0014.
+        // Con la comprobación de enlaces apagada (D-7) esto son lecturas en
+        // memoria; la columna lo recalcula por su cuenta porque el mecanismo
+        // nativo de columnas no ofrece un canal para pasárselo.
+        $integrityStatuses = [];
+        foreach ($items as $item) {
+            $integrityStatuses[(int) $item->id()] = $this->integrityChecker
+                ->check($item, false)
+                ->getStatus();
         }
 
         // CSRF: token por sesión, consumido por setVisibilityAction via JS.
@@ -155,6 +177,7 @@ class IndexController extends AbstractActionController
         $view->setVariable('items', $items);
         $view->setVariable('query', $query);
         $view->setVariable('isTruncated', $isTruncated);
+        $view->setVariable('integrityStatuses', $integrityStatuses);
         // D1: si el vocabulario degrada, la plantilla cae a texto libre.
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
         // CSRF de visibilidad (QA TASK-003) y de la confirmación del
@@ -164,6 +187,41 @@ class IndexController extends AbstractActionController
         // Pre-relleno IA (TASK-010): solo si la conexión LLM está activa y con modelo.
         $view->setVariable('aiEnabled', $this->aiEnabled());
         return $view;
+    }
+
+    /**
+     * Compone los predicados computados activos en uno solo (AND).
+     *
+     * @param list<string> $keys
+     * @param array<int,ItemRepresentation> $candidates
+     * @return callable(int):bool
+     */
+    private function computedPredicate(array $keys, array $candidates, array $query): callable
+    {
+        $predicates = [];
+
+        foreach ($keys as $key) {
+            if (ComputedPredicates::ALIGNMENT_PARTIAL === $key) {
+                $predicates[] = static fn (int $id): bool => AlignmentStatus::PARTIAL
+                    === AlignmentStatus::statusFor($candidates[$id]);
+                continue;
+            }
+            if (ComputedPredicates::INTEGRITY === $key) {
+                $wanted = (string) $query['integrity'];
+                $checker = $this->integrityChecker;
+                $predicates[] = static fn (int $id): bool => $wanted
+                    === $checker->check($candidates[$id], false)->getStatus();
+            }
+        }
+
+        return static function (int $id) use ($predicates): bool {
+            foreach ($predicates as $predicate) {
+                if (!$predicate($id)) {
+                    return false;
+                }
+            }
+            return true;
+        };
     }
 
     /**

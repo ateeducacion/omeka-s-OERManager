@@ -128,15 +128,41 @@ $curricular = [
 
     <div class="field">
         <div class="field-meta">
-            <label for="oer-search-alignment"><?php echo $translate('Alineamiento'); ?></label>
+            <label for="oer-search-alignment"><?php echo $translate('Anclaje'); ?></label>
         </div>
         <div class="inputs">
             <select id="oer-search-alignment" name="alignment">
-                <option value=""><?php echo $translate('Alineamiento (todos)'); ?></option>
+                <option value=""><?php echo $translate('Anclaje: todos'); ?></option>
                 <option value="complete" <?php echo ($query['alignment'] ?? '') === 'complete' ? 'selected' : ''; ?>><?php echo $translate('Completo'); ?></option>
                 <option value="partial" <?php echo ($query['alignment'] ?? '') === 'partial' ? 'selected' : ''; ?>><?php echo $translate('Parcial'); ?></option>
                 <option value="none" <?php echo ($query['alignment'] ?? '') === 'none' ? 'selected' : ''; ?>><?php echo $translate('Sin alinear'); ?></option>
             </select>
+        </div>
+    </div>
+
+    <?php
+    // Filtros de gobernanza (TASK-028 rebanada 2). Son queries `nex` puras: no
+    // pagan el barrido computado del filtro de integridad.
+    $missing = (array) ($query['missing'] ?? []);
+    $missingLabels = [
+        'licence' => $translate('Sin licencia'),
+        'description' => $translate('Sin descripción'),
+        'title' => $translate('Sin título'),
+        'resource_type' => $translate('Sin tipo de recurso'),
+    ];
+    ?>
+    <div class="field">
+        <div class="field-meta">
+            <span class="label"><?php echo $translate('Gobernanza'); ?></span>
+        </div>
+        <div class="inputs">
+            <?php foreach ($missingLabels as $key => $label): ?>
+            <label class="oer-checkbox">
+                <input type="checkbox" name="missing[]" value="<?php echo $escape($key); ?>"
+                    <?php echo in_array($key, $missing, true) ? 'checked' : ''; ?>>
+                <?php echo $escape($label); ?>
+            </label>
+            <?php endforeach; ?>
         </div>
     </div>
 
