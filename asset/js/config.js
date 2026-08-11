@@ -24,6 +24,7 @@ export function readConfig() {
         aiProposeCancelUrl: d.aiProposeCancelUrl,
         aiEnabled: flag(d.aiEnabled),
         canRecatalog: flag(d.canRecatalog),
-        recatalogCsrf: d.recatalogCsrf
+        recatalogCsrf: d.recatalogCsrf,
+        drawerDetailsUrl: d.drawerDetailsUrl
     });
 }

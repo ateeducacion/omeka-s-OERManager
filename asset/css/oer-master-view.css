@@ -869,3 +869,72 @@
     color: var(--oer-warn);
     font-style: italic;
 }
+
+/* --- Secciones de lectura del drawer (TASK-028 rebanada 3a) --- */
+
+.oer-drawer-section {
+    margin-top: 1.25em;
+    padding-top: 0.75em;
+    border-top: 1px solid var(--oer-rule);
+}
+
+.oer-drawer-empty {
+    color: var(--oer-muted);
+    font-style: italic;
+}
+
+.oer-integrity-issues {
+    margin: 0;
+    padding-left: 1.2em;
+}
+
+/* La severidad se distingue por FORMA además de por color (ADR-0014 regla 3):
+   el glifo lo pone el marcador de lista, no solo la tinta. */
+.oer-integrity-issues-error > li {
+    list-style-type: "⛔ ";
+    color: var(--oer-bad);
+}
+
+.oer-integrity-issues-warning > li {
+    list-style-type: "⚠ ";
+    color: var(--oer-warn);
+}
+
+.oer-history-entry {
+    margin-bottom: 1em;
+}
+
+.oer-history-header {
+    color: var(--oer-muted);
+    font-size: 0.9em;
+    margin: 0;
+}
+
+.oer-history-summary {
+    margin: 0.15em 0;
+}
+
+.oer-history-change {
+    margin-left: 1em;
+}
+
+.oer-history-term {
+    display: block;
+    font-size: 0.9em;
+    color: var(--oer-muted);
+}
+
+.oer-history-added,
+.oer-history-removed {
+    display: block;
+}
+
+.oer-history-removed {
+    color: var(--oer-muted);
+}
+
+.oer-history-why summary {
+    cursor: pointer;
+    font-size: 0.9em;
+    color: var(--oer-muted);
+}
