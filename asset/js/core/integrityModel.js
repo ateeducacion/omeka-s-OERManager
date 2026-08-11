@@ -14,8 +14,8 @@ const SEVERITY_ORDER = ['error', 'warning'];
 export const INTEGRITY_OK_TEXT = 'Sin incidencias detectadas.';
 
 /**
- * @param {{status: string, issues: Array<{severity: string}>}|null|undefined} integrity
- * @returns {Array<{severity: string, issues: Array<object>}>}
+ * @param {{status: string, issues: Array<{severity: string, code: string, field: string, message: string}>}|null|undefined} integrity
+ * @returns {Array<{severity: string, issues: Array<{code: string, field: string, message: string}>}>}
  */
 export function integrityGroups(integrity) {
   const issues = (integrity && integrity.issues) || [];
@@ -29,7 +29,7 @@ export function integrityGroups(integrity) {
     if (!bySeverity.has(severity)) {
       bySeverity.set(severity, []);
     }
-    bySeverity.get(severity).push(issue);
+    bySeverity.get(severity).push({ code: issue.code, field: issue.field, message: issue.message });
   });
 
   // Una severidad que no conozcamos no se descarta: se muestra al final. Es

@@ -20,6 +20,12 @@ test('agrupa por severidad', () => {
   assert.deepEqual(groups[0].issues.map((i) => i.code), ['a', 'b']);
 });
 
+test('cada incidencia agrupada tiene solo code, field, message (sin severity redundante)', () => {
+  const groups = integrityGroups({ status: 'warning', issues: [issue('warning', 'a')] });
+  const incidencia = groups[0].issues[0];
+  assert.deepEqual(Object.keys(incidencia).sort(), ['code', 'field', 'message']);
+});
+
 test('los errores van antes que los avisos', () => {
   const groups = integrityGroups({
     status: 'error',
