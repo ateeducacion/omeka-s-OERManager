@@ -18,35 +18,35 @@ import { TERM_LABELS } from './drawerModel.js';
  * adorno.
  */
 export const HISTORY_EMPTY_NOTICE =
-  'Sin curaciones registradas. El historial recoge los cambios hechos desde el módulo, '
-  + 'no los anteriores al registro de curación.';
+    'Sin curaciones registradas. El historial recoge los cambios hechos desde el módulo, '
+    + 'no los anteriores al registro de curación.';
 
 /**
  * @param {Array<object>|null|undefined} history
  * @returns {Array<object>}
  */
 export function historyRows(history) {
-  if (!Array.isArray(history)) {
-    return [];
-  }
+    if (!Array.isArray(history)) {
+        return [];
+    }
 
-  return history.map((entry) => {
-    const changes = (entry.changes || []).map((change) => ({
-      ...change,
-      label: TERM_LABELS[change.term] || change.term
-    }));
+    return history.map((entry) => {
+        const changes = (entry.changes || []).map((change) => ({
+            ...change,
+            label: TERM_LABELS[change.term] || change.term
+        }));
 
-    const hasReasons = changes.some(
-      (change) => (change.removed || []).some((value) => Boolean(value.reason))
-    );
+        const hasReasons = changes.some(
+            (change) => (change.removed || []).some((value) => Boolean(value.reason))
+        );
 
-    return {
-      when: entry.when,
-      contributor: entry.contributor,
-      summary: entry.summary,
-      isUndo: Boolean(entry.isUndo),
-      changes,
-      hasReasons
-    };
-  });
+        return {
+            when: entry.when,
+            contributor: entry.contributor,
+            summary: entry.summary,
+            isUndo: Boolean(entry.isUndo),
+            changes,
+            hasReasons
+        };
+    });
 }

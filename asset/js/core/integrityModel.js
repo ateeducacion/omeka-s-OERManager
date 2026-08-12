@@ -18,28 +18,28 @@ export const INTEGRITY_OK_TEXT = 'Sin incidencias detectadas.';
  * @returns {Array<{severity: string, issues: Array<{code: string, field: string, message: string}>}>}
  */
 export function integrityGroups(integrity) {
-  const issues = (integrity && integrity.issues) || [];
-  if (!issues.length) {
-    return [];
-  }
-
-  const bySeverity = new Map();
-  issues.forEach((issue) => {
-    const severity = issue.severity || 'warning';
-    if (!bySeverity.has(severity)) {
-      bySeverity.set(severity, []);
+    const issues = (integrity && integrity.issues) || [];
+    if (!issues.length) {
+        return [];
     }
-    bySeverity.get(severity).push({ code: issue.code, field: issue.field, message: issue.message });
-  });
 
-  // Una severidad que no conozcamos no se descarta: se muestra al final. Es
-  // preferible enseñar algo sin ordenar a esconder una incidencia real.
-  const rank = (severity) => {
-    const index = SEVERITY_ORDER.indexOf(severity);
-    return index === -1 ? SEVERITY_ORDER.length : index;
-  };
+    const bySeverity = new Map();
+    issues.forEach((issue) => {
+        const severity = issue.severity || 'warning';
+        if (!bySeverity.has(severity)) {
+            bySeverity.set(severity, []);
+        }
+        bySeverity.get(severity).push({ code: issue.code, field: issue.field, message: issue.message });
+    });
 
-  return [...bySeverity.entries()]
-    .map(([severity, list]) => ({ severity, issues: list }))
-    .sort((a, b) => rank(a.severity) - rank(b.severity));
+    // Una severidad que no conozcamos no se descarta: se muestra al final. Es
+    // preferible enseñar algo sin ordenar a esconder una incidencia real.
+    const rank = (severity) => {
+        const index = SEVERITY_ORDER.indexOf(severity);
+        return index === -1 ? SEVERITY_ORDER.length : index;
+    };
+
+    return [...bySeverity.entries()]
+        .map(([severity, list]) => ({ severity, issues: list }))
+        .sort((a, b) => rank(a.severity) - rank(b.severity));
 }
