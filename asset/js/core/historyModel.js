@@ -3,9 +3,10 @@ import { TERM_LABELS } from './drawerModel.js';
 /**
  * Filas del historial de curación para el drawer (rebanada 3a, ADR-0015).
  *
- * El servidor ya entrega los cambios resueltos a título; aquí solo se traduce
- * el término RDF a su etiqueta y se marca qué filas traen justificación, que es
- * lo que decide si se pinta el «ver porqué» colapsado (PEND-013).
+ * El servidor ya entrega los cambios resueltos a título y `when` formateado
+ * para pintar (`whenLabel`); aquí solo se traduce el término RDF a su etiqueta
+ * y se marca qué filas traen justificación, que es lo que decide si se pinta
+ * el «ver porqué» colapsado (PEND-013).
  *
  * Núcleo puro, sin DOM.
  */
@@ -42,6 +43,9 @@ export function historyRows(history) {
 
         return {
             when: entry.when,
+            // `whenLabel` la formatea CurationHistory::rows() (PHP); si un
+            // payload viejo no la trajera, cae al crudo antes que a 'undefined'.
+            whenLabel: entry.whenLabel || entry.when,
             contributor: entry.contributor,
             summary: entry.summary,
             isUndo: Boolean(entry.isUndo),

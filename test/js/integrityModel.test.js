@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { integrityGroups, INTEGRITY_OK_TEXT } from '../../asset/js/core/integrityModel.js';
+import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../../asset/js/core/integrityModel.js';
 
 const issue = (severity, code) => ({ severity, code, field: 'dcterms:rights', message: 'msg ' + code });
 
@@ -42,4 +42,24 @@ test('una severidad desconocida no se pierde: va al final', () => {
 test('el texto de ficha sana existe y no está vacío', () => {
     assert.equal(typeof INTEGRITY_OK_TEXT, 'string');
     assert.ok(INTEGRITY_OK_TEXT.length > 0);
+});
+
+/**
+ * Hallazgo 1 de la revisión final de rama (rebanada 3a): `integrity: null`
+ * («no se pudo comprobar») y `{status:'ok', issues:[]}` («se comprobó y está
+ * sana») no pueden pintar lo mismo. `integrityChecked` es la distinción.
+ */
+test('sin integridad (id inválido o lectura fallida) no se ha podido comprobar', () => {
+    assert.equal(integrityChecked(null), false);
+    assert.equal(integrityChecked(undefined), false);
+});
+
+test('con status, sí se ha podido comprobar, aunque no haya incidencias', () => {
+    assert.equal(integrityChecked({ status: 'ok', issues: [] }), true);
+    assert.equal(integrityChecked({ status: 'warning', issues: [issue('warning', 'a')] }), true);
+});
+
+test('el texto de "no comprobado" existe y no está vacío', () => {
+    assert.equal(typeof INTEGRITY_UNKNOWN_TEXT, 'string');
+    assert.ok(INTEGRITY_UNKNOWN_TEXT.length > 0);
 });

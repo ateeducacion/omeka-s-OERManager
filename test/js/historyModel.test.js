@@ -50,6 +50,19 @@ test('conserva quién, cuándo y el resumen', () => {
     assert.equal(rows[0].summary, 'Re-catalogación · lrmi:teaches +1');
 });
 
+test('pasa la etiqueta legible que formatea el servidor', () => {
+    const rows = historyRows([row(
+        [{ term: 'lrmi:teaches', added: ['A'], removed: [], emptied: false }],
+        { whenLabel: '11/08/2026 10:00' }
+    )]);
+    assert.equal(rows[0].whenLabel, '11/08/2026 10:00');
+});
+
+test('sin whenLabel cae al when crudo, nunca a undefined', () => {
+    const rows = historyRows([row([{ term: 'lrmi:teaches', added: ['A'], removed: [], emptied: false }])]);
+    assert.equal(rows[0].whenLabel, rows[0].when);
+});
+
 test('propaga la marca de reversión', () => {
     const rows = historyRows([row([{ term: 'lrmi:teaches', added: ['A'], removed: [], emptied: false }], { isUndo: true })]);
     assert.equal(rows[0].isUndo, true);

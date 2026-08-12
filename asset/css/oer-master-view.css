@@ -567,6 +567,33 @@
     margin-left: 0;
 }
 
+/* Salida al editor nativo (TASK-027 §5.1): sin regla propia se pintaba como
+   texto normal, ni siquiera con la afordancia por defecto del navegador,
+   que el admin de Omeka resetea en sus enlaces. Es la única acción del
+   drawer, así que lleva la forma de enlace accionable de la casa. */
+.oer-drawer-edit-link {
+    display: inline-block;
+    margin: 0.5em 0;
+    color: var(--oer-accent);
+    text-decoration: underline;
+}
+
+.oer-drawer-edit-link:hover,
+.oer-drawer-edit-link:focus {
+    color: var(--oer-accent-hover);
+}
+
+.oer-drawer-media {
+    margin: 0.5em 0;
+}
+
+/* Un REA sin ningún medio no es un recurso (#40442): es un aviso, no un dato
+   más, y sin esta regla se pintaba con el mismo peso que «Medios: 3». */
+.oer-drawer-media-none {
+    color: var(--oer-warn);
+    font-style: italic;
+}
+
 /* ==========================================================================
    Re-catalogador (TASK-004)
    ========================================================================== */
@@ -904,14 +931,20 @@
     margin-bottom: 1em;
 }
 
+/* Reversión (isUndo, TASK-007). Tras el hallazgo 3 de la revisión final de
+   rama (rebanada 3a) — que quitó el resumen crudo, lo único que hoy distingue
+   una reversión de una re-catalogación normal — la marca no puede ser solo de
+   color (ADR-0014 regla 3): un filete a la izquierda, como en
+   `.oer-selection-bar`, es la señal de FORMA. */
+.oer-history-undo {
+    border-left: 3px solid var(--oer-ink);
+    padding-left: 0.6em;
+}
+
 .oer-history-header {
     color: var(--oer-muted);
     font-size: 0.9em;
     margin: 0;
-}
-
-.oer-history-summary {
-    margin: 0.15em 0;
 }
 
 .oer-history-change {

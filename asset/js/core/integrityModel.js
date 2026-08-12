@@ -14,6 +14,26 @@ const SEVERITY_ORDER = ['error', 'warning'];
 export const INTEGRITY_OK_TEXT = 'Sin incidencias detectadas.';
 
 /**
+ * El servidor manda `integrity: null` cuando el id no vale o la lectura del
+ * item falla (`drawerDetailsAction`, catch de `api()->read`). Ese estado —no
+ * se pudo comprobar— no es lo mismo que «se comprobó y está bien», y ambos no
+ * pueden compartir el mismo texto sin que la UI mienta.
+ */
+export const INTEGRITY_UNKNOWN_TEXT = 'No se ha podido comprobar la integridad.';
+
+/**
+ * ¿Llegó a calcularse la integridad? Se apoya en `status`, que
+ * `IntegrityResult` rellena siempre que sí hubo comprobación ('ok', 'warning'
+ * o 'error'): más fiable que mirar solo si `integrity` es null, porque no
+ * asume la forma exacta del payload de fallo.
+ * @param {{status: string}|null|undefined} integrity
+ * @returns {boolean}
+ */
+export function integrityChecked(integrity) {
+    return Boolean(integrity && integrity.status);
+}
+
+/**
  * @param {{status: string, issues: Array<{severity: string, code: string, field: string, message: string}>}|null|undefined} integrity
  * @returns {Array<{severity: string, issues: Array<{code: string, field: string, message: string}>}>}
  */
