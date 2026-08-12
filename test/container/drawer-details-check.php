@@ -385,14 +385,30 @@ echo "\n5. Restauración (deshacer es rehacer — ADR-0015)\n";
 $undone = $recatalog->undo($itemId, $contributor);
 check('el undo se escribe', true === ($undone['updated'] ?? false));
 
+// Comprobación de restauración, ejecutada tras la ÚLTIMA escritura del arnés
+// (undo() de arriba): dimensión a dimensión, por CONJUNTO DE IDS contra el
+// volcado inicial — no por número de valores ni por título, que podrían
+// coincidir por casualidad aunque los ids reales hubieran cambiado. Si algo
+// diverge, falla ruidosamente nombrando la dimensión y los ids exactos que
+// sobran o faltan, con la ruta del volcado para poder reparar a mano.
 $final = snapshot($api, $itemId);
-check(
-    'el alineamiento (ids y títulos) vuelve exactamente al estado inicial',
-    $final['terms'] === $initial['terms']
-);
+foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
+    $expectedIds = $initial['terms'][$term]['ids'];
+    $actualIds = $final['terms'][$term]['ids'];
+    $missingIds = array_values(array_diff($expectedIds, $actualIds));
+    $extraIds = array_values(array_diff($actualIds, $expectedIds));
+    check(
+        "el alineamiento de $term vuelve exactamente al conjunto de ids inicial",
+        [] === $missingIds && [] === $extraIds,
+        ([] !== $missingIds ? 'faltan=' . implode(',', $missingIds) . ' ' : '')
+            . ([] !== $extraIds ? 'sobran=' . implode(',', $extraIds) . ' ' : '')
+            . "— volcado inicial: $dump"
+    );
+}
 check(
     'los canarios del ValueHydrator (título/descripción/tipo) siguen intactos',
-    $final['canary'] === $initial['canary']
+    $final['canary'] === $initial['canary'],
+    'volcado inicial: ' . $dump
 );
 
 $finalHistory = $recatalog->history($itemId);
