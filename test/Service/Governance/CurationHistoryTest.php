@@ -110,6 +110,34 @@ final class CurationHistoryTest extends TestCase
         $this->assertSame('', $removed[1]['reason'], 'sin porqué se rinde cadena vacía, no null');
     }
 
+    /**
+     * Hallazgo 2 de la revisión final de rama (rebanada 3a): `when` crudo lleva
+     * microsegundos y offset porque el desempate del deshacer los necesita
+     * (TASK-007), no porque el curador deba leerlos. `whenLabel` es la versión
+     * para pintar; `when` se conserva intacto en la fila.
+     */
+    public function testWhenLabelIsHumanReadable(): void
+    {
+        $rows = CurationHistory::rows(
+            [$this->event(['lrmi:teaches' => ['before' => [], 'after' => [7]]], '2026-08-11T10:00:00.123456+00:00')],
+            [7 => 'Números enteros']
+        );
+
+        $this->assertSame('2026-08-11T10:00:00.123456+00:00', $rows[0]['when'], 'el crudo no se toca');
+        $this->assertSame('11/08/2026 10:00', $rows[0]['whenLabel']);
+    }
+
+    /** Un `when` que no se pueda parsear no revienta el historial: cae al crudo. */
+    public function testWhenLabelFallsBackToTheRawValueWhenUnparseable(): void
+    {
+        $rows = CurationHistory::rows(
+            [$this->event(['lrmi:teaches' => ['before' => [], 'after' => [7]]], 'no-es-una-fecha')],
+            [7 => 'Números enteros']
+        );
+
+        $this->assertSame('no-es-una-fecha', $rows[0]['whenLabel']);
+    }
+
     public function testAnUndoIsMarkedAsSuch(): void
     {
         $rows = CurationHistory::rows(

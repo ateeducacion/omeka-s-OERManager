@@ -29,7 +29,7 @@ final class CurationHistory
      * @param list<array{when:string,contributor:string,summary:string,payload:array}> $events
      *        Ya ordenados de más reciente a más antiguo.
      * @param array<int,string> $titles id → título resuelto
-     * @return list<array{when:string,contributor:string,summary:string,isUndo:bool,changes:list<array{
+     * @return list<array{when:string,whenLabel:string,contributor:string,summary:string,isUndo:bool,changes:list<array{
      *     term:string, added:list<string>, removed:list<array{title:string,reason:string}>, emptied:bool
      * }>}>
      */
@@ -76,6 +76,7 @@ final class CurationHistory
 
             $rows[] = [
                 'when' => (string) $event['when'],
+                'whenLabel' => self::formatWhen((string) $event['when']),
                 'contributor' => (string) $event['contributor'],
                 'summary' => (string) $event['summary'],
                 'isUndo' => 'undo' === ($payload['op'] ?? ''),
@@ -114,5 +115,24 @@ final class CurationHistory
     {
         $title = trim((string) ($titles[$id] ?? ''));
         return '' === $title ? self::UNRESOLVED_PREFIX . $id : $title;
+    }
+
+    /**
+     * `when` legible para el curador. El crudo (`Y-m-d\TH:i:s.uP`, ver
+     * `RecatalogService::apply()`) lleva microsegundos por una razón de
+     * CORRECCIÓN (desempate del deshacer, no de presentación); `when` se
+     * conserva tal cual en la fila y esta es solo su etiqueta para pintar.
+     *
+     * Un `when` que no se pudiera parsear (dato de otra fuente, versión futura
+     * del formato) cae al propio crudo en vez de reventar el historial entero.
+     */
+    private static function formatWhen(string $when): string
+    {
+        try {
+            $date = new \DateTimeImmutable($when);
+        } catch (\Exception $e) {
+            return $when;
+        }
+        return $date->format('d/m/Y H:i');
     }
 }
