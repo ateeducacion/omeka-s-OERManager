@@ -34,6 +34,28 @@ function buildContent(itemJson) {
     });
     content.appendChild(list);
 
+    // Salida al editor nativo de Omeka: hoy no hay ninguna desde el drawer
+    // (TASK-027 §5.1, imprescindible). La URL la genera el servidor y viaja en
+    // la fila: componerla en JS rompería en instalaciones bajo subdirectorio.
+    const row = document.querySelector(`tr[data-resource-id="${itemJson['o:id']}"]`);
+    const editUrl = row ? row.dataset.editUrl : '';
+    if (editUrl) {
+        const editLink = document.createElement('a');
+        editLink.className = 'oer-drawer-edit-link';
+        editLink.href = editUrl;
+        editLink.textContent = Omeka.jsTranslate('Abrir en el editor de Omeka');
+        content.appendChild(editLink);
+    }
+
+    // Medios: un REA sin ningún medio no es un recurso (afecta a #40442).
+    const media = itemJson['o:media'] || [];
+    const mediaSection = document.createElement('p');
+    mediaSection.className = media.length ? 'oer-drawer-media' : 'oer-drawer-media oer-drawer-media-none';
+    mediaSection.textContent = media.length
+        ? `${Omeka.jsTranslate('Medios')}: ${media.length}`
+        : Omeka.jsTranslate('Este REA no tiene ningún medio.');
+    content.appendChild(mediaSection);
+
     return content;
 }
 

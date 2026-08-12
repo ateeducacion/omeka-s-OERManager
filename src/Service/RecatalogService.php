@@ -2,6 +2,7 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Governance\CurationHistory;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -224,6 +225,84 @@ class RecatalogService
     }
 
     /**
+     * Historial completo de curación del item, ya resuelto a títulos y listo
+     * para pintar (rebanada 3a de TASK-028).
+     *
+     * Los títulos se cualifican con su curso ancestro porque el currículo repite
+     * el mismo nombre en varios cursos —«Matemáticas» aparece en cuatro— y un
+     * historial que liste solo títulos mostraría líneas idénticas que el curador
+     * no puede distinguir. Es el mismo motivo por el que el diff del preview lo
+     * hace desde TASK-028 rebanada 1.
+     *
+     * Coste: una lectura por id referenciado. Es por item y bajo demanda, no por
+     * fila de tabla.
+     *
+     * @return list<array<string,mixed>> Ver CurationHistory::rows()
+     */
+    public function history(int $itemId): array
+    {
+        $item = $this->api->read('items', $itemId)->getContent();
+        $events = $this->eventsOf($item);
+        if ([] === $events) {
+            return [];
+        }
+        $titles = $this->titlesFor(CurationHistory::referencedIds($events), $this->dimensionsOf($events));
+        return CurationHistory::rows($events, $titles);
+    }
+
+    /**
+     * Dimensión (término) de la que viene cada id referenciado en los eventos.
+     *
+     * `titlesFor()` necesita el término real, no una constante, porque
+     * `qualifiedTitle()` trata `UNQUALIFIED_TERM` (`dcterms:relation`, los ejes
+     * temáticos) como caso especial: no le añade sufijo de ancestro. Pasar
+     * siempre `lrmi:teaches` calificaría los ejes con el sufijo constante de su
+     * `DefinedTermSet`, justo lo que ese caso especial existe para evitar.
+     *
+     * Un id que apareciera en más de una dimensión conserva la primera que lo
+     * referencia; en la práctica no colisiona porque cada dimensión resuelve
+     * ids de su propio vocabulario.
+     *
+     * @param list<array{payload:array}> $events
+     * @return array<int,string> id → término (p.ej. 'lrmi:teaches', 'dcterms:relation')
+     */
+    private function dimensionsOf(array $events): array
+    {
+        $dimensionOf = [];
+        foreach ($events as $event) {
+            foreach ($event['payload']['terms'] ?? [] as $term => $entry) {
+                $ids = [...($entry['before'] ?? []), ...($entry['after'] ?? [])];
+                foreach ($ids as $id) {
+                    $dimensionOf[(int) $id] ??= (string) $term;
+                }
+            }
+        }
+        return $dimensionOf;
+    }
+
+    /**
+     * Títulos cualificados de los ids dados. Un destino que ya no existe se
+     * omite del mapa; `CurationHistory` lo rinde como `#<id>` en vez de romper.
+     *
+     * @param list<int> $ids
+     * @param array<int,string> $dimensionOf id → término, ver dimensionsOf()
+     * @return array<int,string>
+     */
+    private function titlesFor(array $ids, array $dimensionOf): array
+    {
+        $titles = [];
+        foreach ($ids as $id) {
+            try {
+                $target = $this->api->read('items', $id)->getContent();
+            } catch (\Exception $e) {
+                continue;
+            }
+            $titles[$id] = $this->qualifiedTitle($target, $dimensionOf[$id] ?? 'lrmi:teaches');
+        }
+        return $titles;
+    }
+
+    /**
      * Deshace la última re-catalogación del item restaurando el estado previo
      * que guardó su evento, justificaciones de la IA incluidas.
      *
@@ -285,11 +364,22 @@ class RecatalogService
     }
 
     /**
-     * @return array{when:string,contributor:string,summary:string,payload:array<string,mixed>}|null
+     * Todos los eventos de curación legibles del item, del más reciente al más
+     * antiguo.
+     *
+     * El desempate replica el de la versión anterior de `lastEventOf()`, que
+     * usaba `>=`: a igualdad de instante gana el ÚLTIMO recorrido. No es un
+     * detalle cosmético — TASK-007 tuvo aquí un defecto real (sellos a
+     * precisión de segundo y orden de colección que Omeka no garantiza) que
+     * restauraba el estado equivocado, y se cerró pasando los sellos a
+     * microsegundos. Cambiar este orden reabre aquello.
+     *
+     * @return list<array{when:string,contributor:string,summary:string,payload:array<string,mixed>}>
      */
-    private function lastEventOf(ItemRepresentation $item): ?array
+    private function eventsOf(ItemRepresentation $item): array
     {
-        $best = null;
+        $found = [];
+        $index = 0;
         foreach ($item->value('dcterms:provenance', ['all' => true, 'default' => []]) as $value) {
             $annotation = $value->valueAnnotation();
             if (null === $annotation) {
@@ -303,19 +393,33 @@ class RecatalogService
             if (null === $payload) {
                 continue;
             }
-            $candidate = [
-                'when' => $this->annotationText($annotation, 'dcterms:modified'),
-                'contributor' => $this->annotationText($annotation, 'dcterms:contributor'),
-                'summary' => trim((string) $value->value()),
-                'payload' => $payload,
+            $found[] = [
+                'index' => $index++,
+                'event' => [
+                    'when' => $this->annotationText($annotation, 'dcterms:modified'),
+                    'contributor' => $this->annotationText($annotation, 'dcterms:contributor'),
+                    'summary' => trim((string) $value->value()),
+                    'payload' => $payload,
+                ],
             ];
-            // ISO-8601 con offset fijo: el orden lexicográfico es el cronológico.
-            // A igualdad de instante gana el último escrito.
-            if (null === $best || $candidate['when'] >= $best['when']) {
-                $best = $candidate;
-            }
         }
-        return $best;
+
+        // ISO-8601 con offset fijo: el orden lexicográfico es el cronológico.
+        usort($found, static function (array $a, array $b): int {
+            return [$b['event']['when'], $b['index']] <=> [$a['event']['when'], $a['index']];
+        });
+
+        return array_column($found, 'event');
+    }
+
+    /**
+     * Último evento de curación del item, o null si no tiene ninguno legible.
+     *
+     * @return array{when:string,contributor:string,summary:string,payload:array<string,mixed>}|null
+     */
+    private function lastEventOf(ItemRepresentation $item): ?array
+    {
+        return $this->eventsOf($item)[0] ?? null;
     }
 
     private function annotationText(ValueAnnotationRepresentation $annotation, string $term): string

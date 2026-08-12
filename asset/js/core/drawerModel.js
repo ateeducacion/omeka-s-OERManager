@@ -16,6 +16,12 @@ export const DRAWER_FIELDS = [
     ['dcterms:rights', 'Licencia']
 ];
 
+/**
+ * Término RDF → etiqueta legible. Se deriva de DRAWER_FIELDS para que el
+ * historial y el drawer no puedan discrepar en cómo llaman a una dimensión.
+ */
+export const TERM_LABELS = Object.fromEntries(DRAWER_FIELDS);
+
 export function drawerTitle(itemJson) {
     if (itemJson['o:title']) {
         return itemJson['o:title'];
