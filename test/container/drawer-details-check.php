@@ -10,6 +10,15 @@
  * detectaría. El ciclo completo escribir → leer → restaurar es la red de
  * seguridad de esa pieza.
  *
+ * GUARDA DE LITERALES (obligatoria antes de cualquier pasada con --write). La
+ * dimensión víctima se elige descartando las que contengan valores NO
+ * enlazados. Motivo: apply() limpia la property entera y undo() la reescribe
+ * solo desde los ids que guardó el evento, así que un literal en la víctima se
+ * perdería para siempre y una comprobación que solo mirase ids diría OK. No es
+ * un caso teórico — IntegrityPolicy emite `literal_in_link_property` justo para
+ * esa condición. Si ninguna dimensión es vaciable sin riesgo, el arnés ABORTA
+ * con salida 2 y sin escribir nada.
+ *
  * DOS MODOS, por seguridad — este arnés es la única excepción de la rebanada
  * que escribe, y solo lo hace si se le pide explícitamente:
  *
@@ -102,9 +111,21 @@ function snapshot($api, int $itemId): array
     foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
         $ids = [];
         $titles = [];
+        $literals = [];
         foreach ($item->value($term, ['all' => true, 'default' => []]) as $value) {
             $resource = $value->valueResource();
             if (!$resource) {
+                // Un valor NO enlazado en una property de enlace. No es un caso
+                // teórico: IntegrityPolicy emite `literal_in_link_property`
+                // justo para esta condición, o sea que el módulo la da por
+                // presente en el catálogo real.
+                //
+                // Hay que registrarlo porque apply() limpia la property ENTERA
+                // (clear_property_values) y undo() la reescribe solo desde los
+                // ids del evento: un literal aquí se perdería sin dejar rastro,
+                // y una comprobación que solo mirase ids diría OK sobre un
+                // catálogo que acaba de perder un dato.
+                $literals[] = $value->type() . '|' . trim((string) $value->value());
                 continue;
             }
             $id = (int) $resource->id();
@@ -113,7 +134,8 @@ function snapshot($api, int $itemId): array
         }
         sort($ids);
         ksort($titles);
-        $state['terms'][$term] = ['ids' => $ids, 'titles' => $titles];
+        sort($literals);
+        $state['terms'][$term] = ['ids' => $ids, 'titles' => $titles, 'literals' => $literals];
     }
     // Canarios de la trampa crítica del ValueHydrator: si el partial vuelve a
     // recorrer la colección plana, esto es lo primero que desaparece.
@@ -277,17 +299,41 @@ if (!$writeMode) {
 // capturados arriba.
 
 // Dimensión de prueba: la primera de ALIGNMENT_TERMS que tenga valores en este
-// item, igual que undo-harness.php elige su víctima.
+// item, igual que undo-harness.php elige su víctima — pero descartando las que
+// tengan literales.
+//
+// La guarda de literales es PREVENCIÓN, no detección, y la diferencia importa:
+// apply() limpia la property entera y undo() la reescribe solo desde los ids
+// que guardó el evento, así que un literal en la dimensión víctima NO se puede
+// restaurar. Detectarlo después de haberlo destruido no le sirve de nada al
+// propietario; se descarta la dimensión ANTES de escribir.
 $victim = null;
+$literalBlocked = [];
 foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
-    if ($initial['terms'][$term]['ids']) {
-        $victim = $term;
-        break;
+    if (!$initial['terms'][$term]['ids']) {
+        continue;
     }
+    if ($initial['terms'][$term]['literals']) {
+        $literalBlocked[] = sprintf('%s (%d)', $term, count($initial['terms'][$term]['literals']));
+        continue;
+    }
+    $victim = $term;
+    break;
 }
 if (null === $victim) {
+    if ($literalBlocked) {
+        fwrite(STDERR, "el item $itemId no tiene ninguna dimensión vaciable SIN RIESGO.\n");
+        fwrite(STDERR, 'Descartadas por contener literales: ' . implode(', ', $literalBlocked) . "\n");
+        fwrite(STDERR, "apply() limpia la property entera y undo() solo restaura enlaces: se perderían.\n");
+        fwrite(STDERR, "Elige otro item de pruebas, o limpia esos literales antes (son incidencias de\n");
+        fwrite(STDERR, "integridad: literal_in_link_property).\n");
+        exit(2);
+    }
     fwrite(STDERR, "el item $itemId no tiene alineamiento: no hay nada que vaciar\n");
     exit(2);
+}
+if ($literalBlocked) {
+    printf("\nomitidas por contener literales (no restaurables): %s\n", implode(', ', $literalBlocked));
 }
 printf("\ndimensión de prueba: %s (%d valores)\n", $victim, count($initial['terms'][$victim]['ids']));
 
@@ -405,6 +451,26 @@ foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
             . "— volcado inicial: $dump"
     );
 }
+// Segunda red, por si la guarda de arriba dejara pasar algo: los valores NO
+// enlazados de CUALQUIER dimensión de alineamiento tienen que seguir ahí. La
+// guarda previene el caso conocido —un literal en la dimensión víctima—; esto
+// detecta cualquier otro camino por el que se hubieran perdido.
+$literalDiff = [];
+foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
+    $missing = array_values(array_diff($initial['terms'][$term]['literals'], $final['terms'][$term]['literals']));
+    $extra = array_values(array_diff($final['terms'][$term]['literals'], $initial['terms'][$term]['literals']));
+    if ($missing || $extra) {
+        $literalDiff[] = $term
+            . ([] !== $missing ? ' faltan=' . implode(' / ', $missing) : '')
+            . ([] !== $extra ? ' sobran=' . implode(' / ', $extra) : '');
+    }
+}
+check(
+    'los valores LITERALES de las dimensiones de alineamiento siguen intactos',
+    [] === $literalDiff,
+    ([] !== $literalDiff ? implode(' · ', $literalDiff) . ' ' : '') . "— volcado inicial: $dump"
+);
+
 check(
     'los canarios del ValueHydrator (título/descripción/tipo) siguen intactos',
     $final['canary'] === $initial['canary'],
@@ -433,9 +499,16 @@ printf(
     "   (dcterms:provenance, is_public=false, invisible en la ficha pública) gana\n" .
     "   %d evento(s) nuevo(s) que no existían antes de correr este arnés: el vaciado\n" .
     "   de %s y la reversión que lo deshace. Deshacer ES rehacer (ADR-0015): la\n" .
-    "   reversión también deja su propio evento, no borra el que deshace.\n",
+    "   reversión también deja su propio evento, no borra el que deshace.\n" .
+    "\n   Y hay una segunda huella, menos evidente: al restaurar, undo() llama a\n" .
+    "   apply(), que sella con la marca de tiempo NUEVA y con el contribuyente de\n" .
+    "   este arnés tanto el evento como las anotaciones POR VALOR. O sea que los\n" .
+    "   valores de %s vuelven con su porqué intacto —restoreReasons() lo recupera—\n" .
+    "   pero con el QUIÉN y el CUÁNDO de esta ejecución, no los originales. Esa\n" .
+    "   parte de la auditoría de esa dimensión no se puede devolver.\n",
     $itemId,
     $eventsGained,
+    $victim,
     $victim
 );
 
