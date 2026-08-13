@@ -1070,8 +1070,10 @@ Expected: sin errores.
 
 **Comprobación de que no queda nada colgando:**
 
-Run: `grep -rn "oer-drawer-content\|oer-drawer-close\|getElementById('oer-drawer')" asset/ view/`
+Run: `grep -rn "oer-drawer-content\|oer-drawer-close\|getElementById('oer-drawer')" asset/js/ view/`
 Expected: **sin resultados**. Si aparece alguno, ese código quedó huérfano al retirar el cajón.
+
+**Ojo: el `grep` excluye `asset/css/` a propósito.** La hoja de estilos todavía tiene reglas con esos nombres en este punto; las retira y reapunta la Task 7. Si amplías el `grep` al CSS, fallará por un motivo que no es tuyo.
 
 - [ ] **Step 4: Commit**
 
@@ -1426,7 +1428,29 @@ git commit -m "feat(panel): pinta cabecera, anclaje agrupado, medios, ficha e hi
 
 - [ ] **Step 1: Retirar el cajón**
 
-Borrar de `asset/css/oer-master-view.css` las reglas `.oer-drawer`, `.oer-drawer[hidden]`, `.oer-drawer-close` y `.oer-drawer-close:hover`. **Conservar** `.oer-drawer-content dt/dd`, `.oer-drawer-empty`, `.oer-drawer-edit-link` (con su `:link/:visited`), y todas las de integridad e historial.
+Borrar de `asset/css/oer-master-view.css` las reglas `.oer-drawer`, `.oer-drawer[hidden]`, `.oer-drawer-close` y `.oer-drawer-close:hover`.
+
+**Reapuntar, no borrar,** las dos reglas del `<dl>`: el área de ficha sigue usando `<dt>`/`<dd>`, pero ya no cuelgan de `.oer-drawer-content`, que desapareció con el cajón. Sustituir el selector:
+
+```css
+.oer-area-record dt {
+    margin-top: 1em;
+    color: var(--oer-muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.oer-area-record dd {
+    margin-left: 0;
+}
+```
+
+**Conservar tal cual** `.oer-drawer-empty`, `.oer-drawer-edit-link` (con su `:link/:visited`), y todas las de integridad e historial.
+
+Run: `grep -rn "oer-drawer-content\|oer-drawer-close" asset/`
+Expected, **ya sí**: sin resultados.
 
 - [ ] **Step 2: Añadir la rejilla**
 
