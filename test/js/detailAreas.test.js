@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { panelAreas, AREA_LABELS, PANEL_ERROR_TEXT } from '../../asset/js/core/detailAreas.js';
+import { panelAreas, AREA_LABELS, PANEL_ERROR_TEXT, MEDIA_EMPTY_TEXT, ALIGNMENT_EMPTY_TEXT } from '../../asset/js/core/detailAreas.js';
 
 const panel = (extra = {}) => ({
     identity: { id: 1, title: 'REA', isPublic: true, thumbnail: null, editUrl: '/edit/1' },
@@ -76,4 +76,14 @@ test('cada área tiene etiqueta traducible', () => {
 test('el texto de error del panel existe', () => {
     assert.equal(typeof PANEL_ERROR_TEXT, 'string');
     assert.ok(PANEL_ERROR_TEXT.length > 0);
+});
+
+test('el texto vacío de medios existe', () => {
+    assert.equal(typeof MEDIA_EMPTY_TEXT, 'string');
+    assert.ok(MEDIA_EMPTY_TEXT.length > 0);
+});
+
+test('el texto vacío de anclaje existe', () => {
+    assert.equal(typeof ALIGNMENT_EMPTY_TEXT, 'string');
+    assert.ok(ALIGNMENT_EMPTY_TEXT.length > 0);
 });
