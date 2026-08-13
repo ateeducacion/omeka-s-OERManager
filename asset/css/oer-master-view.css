@@ -571,11 +571,28 @@
    texto normal, ni siquiera con la afordancia por defecto del navegador,
    que el admin de Omeka resetea en sus enlaces. Es la única acción del
    drawer, así que lleva la forma de enlace accionable de la casa. */
+/* Tinta en reposo, acento solo en interacción (ADR-0014 regla 2): el acento
+   está reservado al estado que reclama acción del curador. En rojo, este enlace
+   era lo más saturado del panel —por encima de las incidencias de integridad,
+   que van en el ocre más apagado—, así que la navegación gritaba más que el
+   defecto. La afordancia de enlace la sostiene el subrayado, que sí está en
+   reposo. Lo encontró la sesión de navegador de la 3a.
+
+   OJO CON LA ESPECIFICIDAD, que es la trampa: la hoja del admin trae
+   `a:link,a:visited{color:#a91919}`, con especificidad (0,0,1,1). Una clase
+   sola —(0,0,1,0)— NO le gana, así que un `.oer-drawer-edit-link { color }` a
+   secas no pinta nada y el rojo del anfitrión sigue mandando. Hay que repetir
+   :link y :visited para llegar a (0,0,2,0). Cualquier enlace del módulo que
+   deba apartarse de la convención del anfitrión necesita lo mismo. */
 .oer-drawer-edit-link {
     display: inline-block;
     margin: 0.5em 0;
-    color: var(--oer-accent);
     text-decoration: underline;
+}
+
+.oer-drawer-edit-link:link,
+.oer-drawer-edit-link:visited {
+    color: var(--oer-ink);
 }
 
 .oer-drawer-edit-link:hover,
