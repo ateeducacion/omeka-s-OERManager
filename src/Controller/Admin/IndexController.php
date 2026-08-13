@@ -20,6 +20,7 @@ use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\IntegrityChecker;
+use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\RecatalogService;
@@ -57,6 +58,7 @@ class IndexController extends AbstractActionController
     private ResourceTypeVocab $resourceTypeVocab;
     private FormElementManager $formElementManager;
     private IntegrityChecker $integrityChecker;
+    private ItemPanelData $itemPanelData;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -72,7 +74,8 @@ class IndexController extends AbstractActionController
         ComputedFilter $computedFilter,
         ResourceTypeVocab $resourceTypeVocab,
         FormElementManager $formElementManager,
-        IntegrityChecker $integrityChecker
+        IntegrityChecker $integrityChecker,
+        ItemPanelData $itemPanelData
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -88,6 +91,7 @@ class IndexController extends AbstractActionController
         $this->resourceTypeVocab = $resourceTypeVocab;
         $this->formElementManager = $formElementManager;
         $this->integrityChecker = $integrityChecker;
+        $this->itemPanelData = $itemPanelData;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -453,42 +457,65 @@ class IndexController extends AbstractActionController
     }
 
     /**
-     * Detalle del drawer que el cliente NO puede calcular ni leer por su cuenta
-     * (rebanada 3a de TASK-028): incidencias de integridad e historial de
-     * curación, en una sola llamada.
+     * Panel de detalle completo (TASK-032): ficha, miniatura, medios, anclaje
+     * agrupado e integridad, en una sola llamada autenticada.
      *
-     * Va por el servidor por obligación, no por comodidad: el valor del evento
-     * se escribe con `is_public => false` (ADR-0015) y el drawer carga el item
-     * con `fetch(apiUrl)` sin autenticar, así que por el JSON-LD no llegaría
-     * nunca. Lo dejó anotado el cierre de TASK-007 como aviso para esta cara de
-     * lectura.
+     * Va por el servidor por obligación, no por comodidad: la miniatura no
+     * viaja en el JSON del item, `o:media` solo trae ids sin nombre ni tipo ni
+     * tamaño, y el drawer cargaba con `fetch(apiUrl)` SIN autenticar — el
+     * primer REA que se pusiera en privado habría dejado de abrir su panel.
+     *
+     * El historial NO viene aquí: es lo caro y nace plegado (drawer-history).
      *
      * Solo lectura: sin CSRF. La comprobación de enlaces va ENCENDIDA —al
-     * contrario que en la tabla— porque aquí es un item a la vez y el detalle
-     * es justo lo que se viene a ver.
+     * contrario que en la tabla— porque aquí es un item a la vez.
      */
     public function drawerDetailsAction()
     {
-        $id = (int) $this->params()->fromQuery('id');
-        if ($id <= 0) {
-            return new JsonModel(['integrity' => null, 'history' => []]);
-        }
-
-        try {
-            $item = $this->api()->read('items', $id)->getContent();
-        } catch (\Exception $e) {
-            return new JsonModel(['integrity' => null, 'history' => []]);
+        $item = $this->panelItem();
+        if (null === $item) {
+            return new JsonModel(['panel' => null, 'integrity' => null]);
         }
 
         $result = $this->integrityChecker->check($item, true);
 
         return new JsonModel([
+            'panel' => $this->itemPanelData->forItem($item),
             'integrity' => [
                 'status' => $result->getStatus(),
                 'issues' => $result->getIssues(),
             ],
-            'history' => $this->recatalogService->history($id),
         ]);
+    }
+
+    /**
+     * Historial de curación, servido aparte y bajo demanda (TASK-032, P-6).
+     *
+     * Es la parte cara del panel —una lectura de API por id referenciado— y
+     * nace plegado, así que no se paga al abrir la fila sino al desplegarlo.
+     */
+    public function drawerHistoryAction()
+    {
+        $item = $this->panelItem();
+        if (null === $item) {
+            return new JsonModel(['history' => []]);
+        }
+
+        return new JsonModel(['history' => $this->recatalogService->history((int) $item->id())]);
+    }
+
+    /** Item de la petición, o null si el id no vale o no se puede leer. */
+    private function panelItem()
+    {
+        $id = (int) $this->params()->fromQuery('id');
+        if ($id <= 0) {
+            return null;
+        }
+        try {
+            return $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**

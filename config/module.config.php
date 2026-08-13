@@ -39,7 +39,8 @@ return [
                     // no desde Module. El manager (y no la instancia) porque es
                     // quien invoca `init()` del formulario.
                     $container->get('FormElementManager'),
-                    $container->get(Service\IntegrityChecker::class)
+                    $container->get(Service\IntegrityChecker::class),
+                    $container->get(Service\ItemPanelData::class)
                 );
             },
         ],
