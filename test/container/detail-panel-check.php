@@ -245,10 +245,17 @@ check(
 );
 
 // --- 5. El caso real de los REA con curso sin materia -----------------------
-// El contexto de la tarea cita ~7 REA con este caso; columns-check.php mide el
-// mismo hecho por otra vía (AlignmentStatus::statusFor() === 'partial') y da
-// la cifra real del catálogo en cada momento — se reporta la que ESTE arnés
-// mide, sin fijar un número exacto, porque el catálogo puede cambiar.
+// El contexto de la tarea cita ~7 REA con este caso. columns-check.php mide,
+// por otra vía, cuántos REA quedan en AlignmentStatus 'partial'
+// (AlignmentStatusValue::fromFlags()) y hoy da el mismo número (6) con los
+// MISMOS ids — pero eso es coincidencia de los datos de hoy, no una
+// equivalencia que el código garantice: 'partial' cubre CUALQUIER anclaje
+// incompleto (falta etapa, materia, criterio o saber), con o sin curso
+// huérfano, y columns-check.php solo comprueba la implicación en un sentido
+// (huérfano ⇒ no completo), nunca la recíproca. Si mañana un REA fuera
+// 'partial' por otro motivo sin tener curso huérfano, ninguna de las dos
+// comprobaciones lo notaría. Se reporta el número que ESTE arnés mide, sin
+// fijarlo como constante, porque el catálogo puede cambiar.
 echo "\n5. Al menos un REA produce un huérfano course-without-subject (ADR-0016)\n";
 $unsupportedCourseItems = [];
 foreach ($items as $item) {
@@ -268,7 +275,7 @@ if ([] === $unsupportedCourseItems) {
 } else {
     check(
         'al menos un REA produce un huérfano course-without-subject',
-        true,
+        [] !== $unsupportedCourseItems,
         'REA con el caso: ' . implode(', ', $unsupportedCourseItems)
     );
     printf(
