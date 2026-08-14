@@ -23,6 +23,23 @@ export const HISTORY_EMPTY_NOTICE =
     + 'no los anteriores al registro de curación.';
 
 /**
+ * El servidor manda `history: null` cuando el id no vale o la lectura del item
+ * falla (`drawerHistoryAction`, catch de `api()->read`) — igual que `integrity`
+ * (I4, revisión final de rama): «no se pudo leer» y «no hay nada» no pueden
+ * compartir pantalla, y antes de este arreglo el cliente los pintaba igual.
+ */
+export const HISTORY_UNKNOWN_TEXT = 'No se ha podido leer el historial.';
+
+/**
+ * ¿Llegó a leerse el historial? Simétrico a `integrityChecked`.
+ * @param {Array<object>|null|undefined} history
+ * @returns {boolean}
+ */
+export function historyChecked(history) {
+    return Array.isArray(history);
+}
+
+/**
  * @param {Array<object>|null|undefined} history
  * @returns {Array<object>}
  */

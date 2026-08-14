@@ -496,9 +496,17 @@ class IndexController extends AbstractActionController
      */
     public function drawerHistoryAction()
     {
+        // La lectura de `panelItem()` ES la comprobación de ACL: `api()->read`
+        // deniega por sí sola a quien no pueda leer el item (visibilidad nativa,
+        // NFR-003), así que no hace falta una comprobación aparte antes.
         $item = $this->panelItem();
         if (null === $item) {
-            return new JsonModel(['history' => []]);
+            // I4 (revisión final de rama): «no se pudo leer» (id inválido, ACL,
+            // item borrado) y «se leyó y no hay curaciones» NO pueden compartir
+            // el mismo `[]` — es el mismo principio que ya respeta `integrity`
+            // devolviendo `null` en drawerDetailsAction. Con `[]` aquí, el
+            // cliente pintaba «sin curaciones registradas», que puede ser falso.
+            return new JsonModel(['history' => null]);
         }
 
         return new JsonModel(['history' => $this->recatalogService->history((int) $item->id())]);

@@ -133,6 +133,28 @@ final class CurricularGroupingTest extends TestCase
         );
     }
 
+    /**
+     * I3 (revisión final de rama): un curso declarado DOS VECES no puede
+     * desaparecer. Antes, la segunda entrada sobrescribía `$groups[$courseId]`
+     * (que ya se había formado con la primera) y ese valor no quedaba ni en
+     * `groups` ni en `orphans`.
+     */
+    public function testACourseDeclaredTwiceKeepsTheGroupAndSendsTheRepeatToOrphans(): void
+    {
+        $result = CurricularGrouping::build([
+            'lrmi:educationalLevel' => [$this->value(1, '3º ESO', 1), $this->value(1, '3º ESO', 1)],
+            'schema:about' => [$this->value(10, 'Biología', 1)],
+        ]);
+
+        $this->assertCount(1, $result['groups']);
+        $this->assertSame(1, $result['groups'][0]['courseId']);
+        $this->assertSame(['Biología'], $result['groups'][0]['subjects']);
+        $this->assertSame(
+            [['term' => 'lrmi:educationalLevel', 'title' => '3º ESO', 'reason' => 'course-not-declared']],
+            $result['orphans']
+        );
+    }
+
     public function testAxesAreNeverGrouped(): void
     {
         $result = CurricularGrouping::build([

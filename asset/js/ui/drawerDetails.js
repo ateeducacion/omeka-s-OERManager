@@ -1,8 +1,12 @@
 import { DRAWER_RENDERED } from './drawer.js';
-import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../core/integrityModel.js';
-import { historyRows, HISTORY_EMPTY_NOTICE } from '../core/historyModel.js';
+import {
+    integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT
+} from '../core/integrityModel.js';
+import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
-import { panelAreas, AREA_LABELS, PANEL_ERROR_TEXT, MEDIA_EMPTY_TEXT, ALIGNMENT_EMPTY_TEXT } from '../core/detailAreas.js';
+import {
+    panelAreas, AREA_LABELS, PANEL_ERROR_TEXT, MEDIA_EMPTY_TEXT, ALIGNMENT_EMPTY_TEXT
+} from '../core/detailAreas.js';
 
 /**
  * Secciones del drawer que el cliente no puede calcular: integridad e historial
@@ -42,7 +46,7 @@ function note(text, className) {
 function renderIntegrity(integrity) {
     const section = document.createElement('section');
     section.className = 'oer-drawer-section oer-drawer-integrity';
-    section.appendChild(heading(Omeka.jsTranslate('Integridad')));
+    section.appendChild(heading(Omeka.jsTranslate(AREA_LABELS.integrity)));
 
     // «No se pudo leer el item» y «se leyó y está impecable» no pueden
     // compartir pantalla: sin esta rama, un id inválido o un fetch que el ACL
@@ -129,6 +133,15 @@ function renderHistory(history) {
     const section = document.createElement('section');
     section.className = 'oer-drawer-section oer-drawer-history';
     section.appendChild(heading(Omeka.jsTranslate('Historial de curación')));
+
+    // «No se pudo leer» y «no hay nada» no pueden compartir pantalla (I4,
+    // revisión final de rama): antes `drawerHistoryAction` mandaba `[]` tanto
+    // si el item no se pudo leer como si de verdad no tenía curaciones, y el
+    // cliente pintaba el mismo aviso de cobertura para los dos casos.
+    if (!historyChecked(history)) {
+        section.appendChild(note(Omeka.jsTranslate(HISTORY_UNKNOWN_TEXT), 'oer-drawer-empty'));
+        return section;
+    }
 
     const rows = historyRows(history);
     if (!rows.length) {

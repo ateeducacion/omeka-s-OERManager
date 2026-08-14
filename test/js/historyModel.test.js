@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { historyRows, HISTORY_EMPTY_NOTICE } from '../../asset/js/core/historyModel.js';
+import {
+    historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT
+} from '../../asset/js/core/historyModel.js';
 
 const row = (changes, extra = {}) => ({
     when: '2026-08-11T10:00:00+00:00',
@@ -64,7 +66,9 @@ test('sin whenLabel cae al when crudo, nunca a undefined', () => {
 });
 
 test('propaga la marca de reversión', () => {
-    const rows = historyRows([row([{ term: 'lrmi:teaches', added: ['A'], removed: [], emptied: false }], { isUndo: true })]);
+    const rows = historyRows([
+        row([{ term: 'lrmi:teaches', added: ['A'], removed: [], emptied: false }], { isUndo: true })
+    ]);
     assert.equal(rows[0].isUndo, true);
 });
 
@@ -72,4 +76,24 @@ test('una fila sin cambios no revienta', () => {
     const rows = historyRows([row([])]);
     assert.deepEqual(rows[0].changes, []);
     assert.equal(rows[0].hasReasons, false);
+});
+
+/**
+ * I4 de la revisión final de rama: `history: null` (id inválido o lectura
+ * fallida) y `history: []` (leído, sin curaciones) no pueden compartir
+ * pantalla. `historyChecked` es la distinción, simétrica a `integrityChecked`.
+ */
+test('sin historial (id inválido o lectura fallida) no se ha podido leer', () => {
+    assert.equal(historyChecked(null), false);
+    assert.equal(historyChecked(undefined), false);
+});
+
+test('con un array, sí se ha podido leer, aunque esté vacío', () => {
+    assert.equal(historyChecked([]), true);
+    assert.equal(historyChecked([row([])]), true);
+});
+
+test('el texto de "no se pudo leer" existe y no está vacío', () => {
+    assert.equal(typeof HISTORY_UNKNOWN_TEXT, 'string');
+    assert.ok(HISTORY_UNKNOWN_TEXT.length > 0);
 });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Service;
 
+use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use OERManager\Service\Governance\CurricularGrouping;
 
@@ -94,17 +95,36 @@ class ItemPanelData
                 $alignment[$term][] = [
                     'id' => $id,
                     'title' => (string) $target->displayTitle(),
-                    'courseId' => CurricularGrouping::COURSE_TERM === $term
-                        ? $id
-                        : $this->courseIdOf($target),
+                    'courseId' => $this->courseIdFor($term, $id, $target),
                 ];
             }
         }
         return $alignment;
     }
 
+    /**
+     * Curso ancestro de un valor de alineamiento, según su dimensión.
+     *
+     * El propio curso ES su curso (`$id`); un eje (`dcterms:relation`) no
+     * tiene estructuralmente esa arista —es vocabulario plano, todo cuelga del
+     * mismo `DefinedTermSet` (`RecatalogService::UNQUALIFIED_TERM`)— así que
+     * resolverlo con `courseIdOf()` serían dos hidrataciones de Doctrine por
+     * eje para un valor que `CurricularGrouping::AXIS_TERM` nunca agrupa: se
+     * evita, no se calcula un `null` que nadie iba a leer.
+     */
+    private function courseIdFor(string $term, int $id, AbstractResourceEntityRepresentation $target): ?int
+    {
+        if (CurricularGrouping::COURSE_TERM === $term) {
+            return $id;
+        }
+        if (CurricularGrouping::AXIS_TERM === $term) {
+            return null;
+        }
+        return $this->courseIdOf($target);
+    }
+
     /** Id del curso del que cuelga un item-término, o null si no se resuelve. */
-    private function courseIdOf($target): ?int
+    private function courseIdOf(AbstractResourceEntityRepresentation $target): ?int
     {
         foreach (self::COURSE_EDGES as $edge) {
             $value = $target->value($edge);

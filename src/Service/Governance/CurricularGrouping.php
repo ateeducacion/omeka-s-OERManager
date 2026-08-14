@@ -34,7 +34,14 @@ final class CurricularGrouping
     /** Un curso que ninguna materia sostiene (ADR-0016: degrada a parcial). */
     public const REASON_UNSUPPORTED_COURSE = 'course-without-subject';
 
-    /** Un valor cuyo curso no está declarado en el item, o no se pudo resolver. */
+    /**
+     * Un valor cuyo curso no está declarado en el item, cuyo curso SÍ está
+     * declarado pero ninguna materia lo sostiene (por eso no llegó a formar
+     * grupo: cayó primero a REASON_UNSUPPORTED_COURSE), cuyo curso no se pudo
+     * resolver, o el mismo curso declarado una segunda vez (I3, revisión final
+     * de rama: el molde de salida es un grupo por curso, así que la repetición
+     * no tiene dónde ir más que aquí).
+     */
     public const REASON_UNDECLARED_COURSE = 'course-not-declared';
 
     /**
@@ -62,6 +69,22 @@ final class CurricularGrouping
         $groups = [];
         $orphans = [];
         foreach ($courses as $course) {
+            // El curso ya tiene grupo: es la MISMA declaración repetida (dos
+            // resource values de lrmi:educationalLevel al mismo item-término).
+            // Reescribir $groups[$course['id']] aquí vaciaría el grupo que ya se
+            // formó (o se va a formar con lo que cuelgue de él más abajo), y el
+            // valor repetido desaparecería sin dejar rastro — ni grupo, ni
+            // huérfano — rompiendo la promesa «nada se pierde» del docblock de
+            // la clase (I3, revisión final de rama). El molde de salida es un
+            // grupo por curso, así que la repetición cae a huérfanos.
+            if (isset($groups[$course['id']])) {
+                $orphans[] = [
+                    'term' => self::COURSE_TERM,
+                    'title' => $course['title'],
+                    'reason' => self::REASON_UNDECLARED_COURSE,
+                ];
+                continue;
+            }
             if (isset($supported[$course['id']])) {
                 $groups[$course['id']] = [
                     'courseId' => $course['id'],

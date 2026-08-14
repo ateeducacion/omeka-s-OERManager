@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { panelAreas, AREA_LABELS, PANEL_ERROR_TEXT, MEDIA_EMPTY_TEXT, ALIGNMENT_EMPTY_TEXT } from '../../asset/js/core/detailAreas.js';
+import {
+    panelAreas, AREA_LABELS, PANEL_ERROR_TEXT, MEDIA_EMPTY_TEXT, ALIGNMENT_EMPTY_TEXT
+} from '../../asset/js/core/detailAreas.js';
 
 const panel = (extra = {}) => ({
     identity: { id: 1, title: 'REA', isPublic: true, thumbnail: null, editUrl: '/edit/1' },
@@ -54,6 +56,24 @@ test('con medios, el área de medios queda lista y conserva su lista', () => {
     const area = areaById(areas, 'media');
     assert.equal(area.state, 'ready');
     assert.deepEqual(area.media, media);
+});
+
+/**
+ * El área `record` es la única de las cuatro cuya lógica de estado no
+ * ejercitaba ningún test (lote barato de la revisión final de rama): las
+ * demás se cubren en 'un panel vacío da áreas vacías...' (media, alignment) y
+ * en las dos de integridad, pero `record` solo se ejercitaba de forma
+ * incidental a través del `panel()` de fixture, siempre con `record: {}`.
+ */
+test('la ficha sin campos queda vacía, con campos queda lista', () => {
+    const empty = panelAreas({ panel: panel(), integrity: { status: 'ok', issues: [] } });
+    assert.equal(areaById(empty, 'record').state, 'empty');
+
+    const ready = panelAreas({
+        panel: panel({ record: { 'dcterms:rights': 'CC BY-SA' } }),
+        integrity: { status: 'ok', issues: [] }
+    });
+    assert.equal(areaById(ready, 'record').state, 'ready');
 });
 
 test('la integridad no comprobada es desconocida, no sana', () => {

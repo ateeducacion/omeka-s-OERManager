@@ -3,7 +3,7 @@ import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
-import { DRAWER_RENDERED, openDrawer } from './drawer.js';
+import { DRAWER_RENDERED, reopenDrawer } from './drawer.js';
 
 /**
  * Panel de re-catalogación (TASK-004), extraído de oer-master-view.js en
@@ -76,7 +76,10 @@ function postUndo(config, itemId, apiUrl, force) {
                 window.alert(Omeka.jsTranslate('Deshecho. Algunos términos ya no existen y no se pudieron restaurar: ')
                     + response.dropped.join(', '));
             }
-            openDrawer(apiUrl, itemId);
+            // C2 (revisión final de rama): `openDrawer` es un conmutador y la
+            // fila ya está abierta, así que llamarlo aquí la plegaría en vez de
+            // recargarla. `reopenDrawer` cierra y vuelve a abrir sin ambigüedad.
+            reopenDrawer(apiUrl, itemId);
             return;
         }
         // El REA cambió por otra vía después de esa re-catalogación: deshacer
@@ -166,6 +169,23 @@ export function initRecatalog(config) {
             return;
         }
         const { itemId, itemJson, content } = event.detail;
+        // C1 (revisión final de rama): `openDrawer` ya no cuelga DRAWER_RENDERED
+        // del JSON-LD anónimo, así que `itemJson` puede llegar `null` (REA
+        // privado: `/api` no autentica, ver drawer.js). Este panel SÍ lo
+        // necesita para prellenar los selectores con lo ya elegido —
+        // `buildDimensionSelector` lee `itemJson[term]` sin guarda—, así que se
+        // avisa con un motivo legible en vez de reventar. Unificarlo en una
+        // sola llamada autenticada es trabajo propio (no se rediseña aquí el
+        // flujo de datos del re-catalogador).
+        if (!itemJson) {
+            $(content).append(
+                $('<p>').addClass('oer-drawer-empty').text(Omeka.jsTranslate(
+                    'Re-catalogación no disponible: no se ha podido leer este REA sin autenticar '
+                    + '(puede estar en privado).'
+                ))
+            );
+            return;
+        }
         const $panel = buildRecatalogPanel(config, itemId, itemJson);
         $(content).append($panel);
         renderUndo(config, $panel, itemId);
@@ -208,7 +228,9 @@ export function initRecatalog(config) {
         pairs.push({ name: 'csrf', value: config.recatalogCsrf });
         $.post(config.recatalogApplyUrl, $.param(pairs)).done((response) => {
             if (response.updated) {
-                openDrawer(apiUrl, itemId);
+                // C2: mismo motivo que en postUndo — recargar una fila abierta
+                // con `openDrawer` la plegaría; `reopenDrawer` no.
+                reopenDrawer(apiUrl, itemId);
                 return;
             }
             // Confirmar sin cambios no escribe (habría re-sellado las

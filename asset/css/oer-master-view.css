@@ -515,7 +515,7 @@
 }
 
 /* ==========================================================================
-   Drawer de detalle
+   Ficha y enlace al editor (área «record» del panel de detalle, TASK-032)
    ========================================================================== */
 
 .oer-area-record dt {
@@ -562,17 +562,6 @@
 .oer-drawer-edit-link:hover,
 .oer-drawer-edit-link:focus {
     color: var(--oer-accent-hover);
-}
-
-.oer-drawer-media {
-    margin: 0.5em 0;
-}
-
-/* Un REA sin ningún medio no es un recurso (#40442): es un aviso, no un dato
-   más, y sin esta regla se pintaba con el mismo peso que «Medios: 3». */
-.oer-drawer-media-none {
-    color: var(--oer-warn);
-    font-style: italic;
 }
 
 /* ==========================================================================
