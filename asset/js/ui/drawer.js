@@ -81,12 +81,24 @@ export function openDrawer(apiUrl, itemId) {
             return response.json();
         })
         .then((itemJson) => {
+            // Si el curador plegó esta fila (o abrió otra) mientras el fetch
+            // estaba en vuelo, `cell` ya no está en el documento: pintar aquí
+            // sería inofensivo, pero DRAWER_RENDERED tiene consumidores que
+            // reaccionan con peticiones reales al servidor (undo, historial).
+            // Abandonar en silencio evita gastar esas peticiones para una
+            // fila que ya no existe.
+            if (!cell.isConnected) {
+                return;
+            }
             cell.textContent = '';
             document.dispatchEvent(new CustomEvent(DRAWER_RENDERED, {
                 detail: { itemId, itemJson, content: cell }
             }));
         })
         .catch(() => {
+            if (!cell.isConnected) {
+                return;
+            }
             cell.textContent = Omeka.jsTranslate('No se ha podido cargar el detalle.');
         });
 }
