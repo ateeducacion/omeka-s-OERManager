@@ -518,43 +518,7 @@
    Drawer de detalle
    ========================================================================== */
 
-.oer-drawer {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 28em;
-    max-width: 90vw;
-    background: #fff;
-    border-left: 1px solid var(--oer-rule);
-    box-shadow: -0.2em 0 1.2em rgba(20, 26, 38, 0.16);
-    overflow-y: auto;
-    padding: 1.5em;
-    color: var(--oer-ink);
-    z-index: 1000;
-}
-
-.oer-drawer[hidden] {
-    display: none;
-}
-
-.oer-drawer-close {
-    position: absolute;
-    top: 0.5em;
-    right: 0.5em;
-    font-size: 1.5em;
-    line-height: 1;
-    background: none;
-    border: none;
-    color: var(--oer-muted);
-    cursor: pointer;
-}
-
-.oer-drawer-close:hover {
-    color: var(--oer-accent-hover);
-}
-
-.oer-drawer-content dt {
+.oer-area-record dt {
     margin-top: 1em;
     color: var(--oer-muted);
     font-size: 11px;
@@ -563,7 +527,7 @@
     text-transform: uppercase;
 }
 
-.oer-drawer-content dd {
+.oer-area-record dd {
     margin-left: 0;
 }
 
@@ -987,4 +951,206 @@
     cursor: pointer;
     font-size: 0.9em;
     color: var(--oer-muted);
+}
+
+/* --- Panel de detalle integrado en la tabla (TASK-032) --- */
+
+/* Un estante que la tabla abre dentro de sí, no una tarjeta encima
+   (ADR-0014 regla 1). El riel de la fila madre continúa aquí: cortarlo
+   dejaría el canto roto justo en la fila que se está mirando (regla 4). */
+.oer-detail-row > .oer-detail-cell {
+    background: var(--oer-surface);
+    padding: 1.25em 1.5em;
+}
+
+.oer-detail-panel {
+    color: var(--oer-ink);
+}
+
+.oer-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-bottom: 1em;
+}
+
+.oer-panel-thumb {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--oer-rule);
+    background: #fff;
+    overflow: hidden;
+}
+
+.oer-panel-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Un REA sin miniatura es un dato, no un fallo de carga: hueco que se lee
+   como ausencia, no icono de imagen rota. */
+.oer-panel-thumb-none {
+    background: repeating-linear-gradient(
+        45deg, var(--oer-surface), var(--oer-surface) 6px, #fff 6px, #fff 12px
+    );
+}
+
+.oer-panel-title {
+    margin: 0;
+    flex: 1 1 auto;
+}
+
+.oer-panel-visibility {
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-detail-close {
+    background: none;
+    border: 0;
+    cursor: pointer;
+    font-size: 1.4em;
+    line-height: 1;
+    color: var(--oer-muted);
+    padding: 0 0.25em;
+}
+
+.oer-detail-close:hover,
+.oer-detail-close:focus {
+    color: var(--oer-accent);
+}
+
+/* Anclaje y medios lado a lado: son las dos mitades de la comparación que el
+   curador viene a hacer —lo que el REA DICE frente a lo que SUS ARCHIVOS
+   son— y hoy están a pantallas de distancia. */
+.oer-panel-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 2em;
+}
+
+/* Un solo filete entre columnas: el presupuesto se gasta en jerarquía, no en
+   cromo (ADR-0014 regla 1). */
+.oer-panel-side {
+    border-left: 1px solid var(--oer-rule);
+    padding-left: 2em;
+}
+
+@media (max-width: 900px) {
+    .oer-panel-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .oer-panel-side {
+        border-left: 0;
+        padding-left: 0;
+    }
+}
+
+.oer-area {
+    margin-bottom: 1.25em;
+}
+
+.oer-area > h4 {
+    margin: 0 0 0.5em;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-muted);
+}
+
+.oer-align-group {
+    margin-bottom: 0.9em;
+}
+
+.oer-align-course {
+    margin: 0 0 0.15em;
+    font-weight: bold;
+}
+
+.oer-align-line,
+.oer-align-axes {
+    margin: 0 0 0.15em 1em;
+}
+
+/* «Sin encajar» es accionable: forma propia además de color (regla 3). */
+.oer-align-orphans {
+    margin-top: 0.75em;
+    border-left: 3px solid var(--oer-warn);
+    padding-left: 0.75em;
+}
+
+.oer-align-orphans > h5 {
+    margin: 0 0 0.25em;
+    color: var(--oer-warn);
+}
+
+.oer-align-orphan {
+    margin: 0;
+}
+
+.oer-media-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-media-list > li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 0.25em 0;
+    border-bottom: 1px solid var(--oer-rule);
+}
+
+.oer-media-name {
+    flex: 1 1 auto;
+    word-break: break-word;
+}
+
+.oer-media-meta {
+    color: var(--oer-muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+/* Tinta en reposo, acento en interacción. OJO: `a:link,a:visited` del admin
+   tiene especificidad (0,0,1,1) y gana a una clase sola, así que hay que
+   repetir :link/:visited para llegar a (0,0,2,0). Ya mordió una vez. */
+.oer-media-open:link,
+.oer-media-open:visited {
+    color: var(--oer-ink);
+    text-decoration: underline;
+}
+
+.oer-media-open:hover,
+.oer-media-open:focus {
+    color: var(--oer-accent-hover);
+}
+
+/* Un REA sin ningún medio no es un recurso: aviso, no dato. */
+.oer-media-none {
+    color: var(--oer-warn);
+    font-style: italic;
+}
+
+.oer-history-box > summary {
+    cursor: pointer;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-muted);
+}
+
+/* La fila madre de un detalle abierto se marca como el estante que la
+   contiene abrió (ADR-0014 regla 1). El selector del brief usaba
+   `.oer-master-view-table`, pero la tabla real lleva `id="oer-master-view-table"`
+   (ver view/oer-manager/admin/index/index.phtml), no esa clase; el resto de
+   reglas de esta hoja que acotan a la tabla usan el mismo id, así que se seguía
+   esa convención en vez de dejar la regla sin efecto. */
+#oer-master-view-table tr.oer-row-open > td {
+    background: var(--oer-select);
 }

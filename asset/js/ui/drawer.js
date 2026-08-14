@@ -19,6 +19,10 @@ function closeDetail() {
         return;
     }
     const opener = document.querySelector(`.oer-open-drawer[data-item-id="${openRow.dataset.itemId}"]`);
+    const masterRow = document.querySelector(`tr[data-resource-id="${openRow.dataset.itemId}"]`);
+    if (masterRow) {
+        masterRow.classList.remove('oer-row-open');
+    }
     openRow.remove();
     openRow = null;
     if (opener) {
@@ -65,6 +69,7 @@ export function openDrawer(apiUrl, itemId) {
 
     const { detail, cell } = detailRowFor(row, itemId);
     openRow = detail;
+    row.classList.add('oer-row-open');
 
     const opener = document.querySelector(`.oer-open-drawer[data-item-id="${itemId}"]`);
     if (opener) {
