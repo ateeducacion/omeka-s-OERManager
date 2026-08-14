@@ -141,7 +141,7 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
                     // como enlace vacío: invisible en cualquier listado (TASK-027 §3).
                     $title = trim((string) $item->displayTitle(''));
                     ?>
-                    <a href="#" class="oer-open-drawer<?php echo '' === $title ? ' oer-title-missing' : ''; ?>" data-item-id="<?php echo $item->id(); ?>">
+                    <a href="#" class="oer-open-drawer<?php echo '' === $title ? ' oer-title-missing' : ''; ?>" data-item-id="<?php echo $item->id(); ?>" aria-expanded="false">
                         <?php echo $escape('' === $title ? $translate('(sin título)') : $title); ?>
                     </a>
                     <ul class="actions">
@@ -162,9 +162,4 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
 
 <div class="browse-controls">
     <?php echo $this->pagination(); ?>
-</div>
-
-<div id="oer-drawer" class="oer-drawer" hidden aria-hidden="true" role="dialog" aria-label="<?php echo $escape($translate('Detalle del REA')); ?>">
-    <button type="button" class="oer-drawer-close" aria-label="<?php echo $escape($translate('Cerrar')); ?>">&times;</button>
-    <div class="oer-drawer-content"></div>
 </div>
