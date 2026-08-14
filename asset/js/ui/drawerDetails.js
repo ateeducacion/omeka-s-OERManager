@@ -214,6 +214,22 @@ function renderHeader(identity) {
     return header;
 }
 
+/**
+ * Código de razón de `CurricularGrouping::build` → texto de UI. El código
+ * `course-not-declared` cubre DOS casos (Task 1): un valor cuyo curso no
+ * está declarado en el item, y un valor cuyo curso SÍ está declarado pero al
+ * que ninguna materia sostiene (el curso mismo quedó huérfano como
+ * `course-without-subject`). Una traducción literal de "no declarado" sería
+ * falsa en el segundo caso, así que el texto se redacta para ser cierto en
+ * los dos: no afirma que el curso falte, solo que aquí no hay uno que agrupe
+ * el valor. Un código que no aparezca aquí degrada a "sin razón mostrada" en
+ * vez de arriesgar una traducción inventada.
+ */
+const ORPHAN_REASON_LABELS = {
+    'course-without-subject': 'ninguna materia lo sostiene',
+    'course-not-declared': 'sin un curso que lo agrupe en este REA'
+};
+
 function renderAlignment(area) {
     const section = areaSection(area);
     if ('empty' === area.state) {
@@ -257,7 +273,10 @@ function renderAlignment(area) {
             const line = document.createElement('p');
             line.className = 'oer-align-orphan';
             const label = TERM_LABELS[orphan.term] || orphan.term;
-            line.textContent = `${label}: ${orphan.title}`;
+            const reasonText = ORPHAN_REASON_LABELS[orphan.reason];
+            line.textContent = reasonText
+                ? `${label}: ${orphan.title} (${Omeka.jsTranslate(reasonText)})`
+                : `${label}: ${orphan.title}`;
             block.appendChild(line);
         });
         section.appendChild(block);
