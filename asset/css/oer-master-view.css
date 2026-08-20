@@ -981,45 +981,107 @@
     color: var(--oer-muted);
 }
 
-/* --- Panel de detalle integrado en la tabla (TASK-032) --- */
+/* --- Panel de detalle sobre el sidebar nativo (TASK-034, ADR-0017) --- */
 
-/* Un estante que la tabla abre dentro de sí, no una tarjeta encima
-   (ADR-0014 regla 1).
+/*
+ * ⚠️ `left` y `width` están ACOPLADOS en el core: `.sidebar` abre deslizando
+ * `left` de `100%` a `75%` con `width: 25%`. Ensanchar solo `width` deja el
+ * panel descuadrado, con hueco a la derecha. Por eso el estado abierto se fija
+ * con `right: 0` y no recalculando `left`: la anchura se declara una sola vez y
+ * la transición de deslizamiento del core se conserva intacta.
+ *
+ * La excepción de medida está razonada en ADR-0017 §3: se hereda el mecanismo,
+ * el estilo, la posición y el comportamiento del anfitrión, y se aparta solo
+ * cuánto mide, porque este panel sostiene una comparación y una superficie de
+ * edición, no una lista de metadatos. Como `#sidebar` lo declara cada vista y
+ * no el layout, esto no toca ninguna otra pantalla de Omeka.
+ */
+#oer-detail-sidebar {
+    width: clamp(26rem, 40vw, 44rem);
+}
 
-   EL RIEL NO SE CORTA (regla 4, y la única apuesta de la pasada de TASK-033).
-   La fila de detalle sí recibía el `box-shadow: inset` del riel, pero el fondo
-   de esta celda lo tapaba: el canto se rompía justo en la fila que se está
-   mirando. Aquí se repinta como borde, y sigue hacia dentro hasta el canto del
-   área de anclaje —el control que arregla lo que el riel denuncia—. Un REA mal
-   catalogado tiene un canto continuo desde la tabla hasta donde se corrige.
+#oer-detail-sidebar.active {
+    left: auto;
+    right: 0;
+}
 
-   Es todo el presupuesto de la pasada: sin color nuevo (los tokens del riel ya
-   existen), sin tipografía propia y sin animación. Y para pagarlo, el filete
-   gris entre columnas se retira: dos rayas verticales compitiendo a 2em de
-   distancia era una de más. */
-.oer-detail-row > .oer-detail-cell {
-    background: var(--oer-surface);
-    padding: 1.25em 1.5em;
+/* La compensación del core (`#content` al 56,25%) está calibrada para su 25%.
+   La clase `oer-master-view` la pone drawer.js sobre el <body> al arrancar:
+   sin ella no hay forma de acotar esta regla a la vista maestra sin `:has()`. */
+body.oer-master-view.sidebar-open #content {
+    width: calc(100% - clamp(26rem, 40vw, 44rem) - 2rem);
+}
+
+/* Por debajo de 640px manda el overlay a pantalla completa del core: ni la
+   anchura propia ni la compensación tienen sentido ahí. */
+@media screen and (max-width: 640px) {
+    #oer-detail-sidebar,
+    #oer-detail-sidebar.active {
+        width: 100%;
+        right: auto;
+    }
+
+    body.oer-master-view.sidebar-open #content {
+        width: 100%;
+    }
+}
+
+/*
+ * EL RIEL ENCUENTRA SU SITIO (ADR-0014 §4). TASK-033 lo hacía continuar desde
+ * el canto de la fila hasta el canto del área de anclaje; despegado el panel de
+ * la tabla, ese recorrido ya no existe. No se sustituye por otra cosa: se muda.
+ * El sidebar del core ya trae `border-left: 1px solid #dfdfdf`; aquí se engorda
+ * y se tiñe con el estado del REA, así que el panel se anuncia por el borde
+ * antes de que se lea una sola palabra.
+ *
+ * El atributo lo sube drawer.js desde el `data-integrity` que escribe el
+ * partial. Se hace así y no con `:has()` para no colgar de una capacidad del
+ * navegador algo que son dos líneas de JS.
+ *
+ * Mismo mecanismo, misma saturación invertida, mismos tokens: sin coste nuevo.
+ * El `data-integrity` lo escribe el partial —el servidor ya lo sabe—, no el JS.
+ */
+#oer-detail-sidebar[data-integrity="ok"] {
     border-left: 3px solid var(--oer-rail-ok);
 }
 
-.oer-detail-row[data-integrity="warning"] > .oer-detail-cell {
-    border-left-color: var(--oer-rail-warn);
+#oer-detail-sidebar[data-integrity="warning"] {
+    border-left: 3px solid var(--oer-rail-warn);
 }
 
-.oer-detail-row[data-integrity="error"] > .oer-detail-cell {
-    border-left-color: var(--oer-rail-bad);
+#oer-detail-sidebar[data-integrity="error"] {
+    border-left: 3px solid var(--oer-rail-bad);
+}
+
+/* La fila cuyo panel está abierto se marca: con el detalle despegado de la
+   tabla, saber a qué REA pertenece importa MÁS que cuando era una fila. */
+#oer-master-view-table tr.oer-row-open > td {
+    background: var(--oer-select);
 }
 
 .oer-detail-panel {
     color: var(--oer-ink);
+    /* El contenedor de las consultas de abajo: lo que decide si Medios e
+       Información caben en dos columnas es el ancho del PANEL, no el de la
+       pantalla. */
+    container-type: inline-size;
 }
 
+/* El título ya no vive aquí: es un `<h3>` suelto del sidebar, con la banda de
+   cabecera que el admin le pone a `.sidebar h3`. Esto es la fila de identidad
+   que va debajo. */
 .oer-panel-header {
     display: flex;
     align-items: center;
     gap: 0.75em;
-    margin-bottom: 1em;
+    margin-bottom: 1.25em;
+}
+
+.oer-panel-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25em 0.75em;
 }
 
 .oer-panel-thumb {
@@ -1046,9 +1108,10 @@
     );
 }
 
+/* El `.sidebar h3` del admin ya trae tamaño, peso y su banda; aquí solo se
+   evita que el `flex` de antes le siga afectando. */
 .oer-panel-title {
-    margin: 0;
-    flex: 1 1 auto;
+    flex: none;
 }
 
 .oer-panel-visibility {
@@ -1136,49 +1199,37 @@
     margin: 0;
 }
 
-.oer-detail-close {
-    background: none;
-    border: 0;
-    cursor: pointer;
-    font-size: 1.4em;
-    line-height: 1;
-    color: var(--oer-muted);
-    padding: 0 0.25em;
-}
-
-.oer-detail-close:hover,
-.oer-detail-close:focus {
-    color: var(--oer-accent);
-}
-
-/* Anclaje y medios lado a lado: son las dos mitades de la comparación que el
-   curador viene a hacer —lo que el REA DICE frente a lo que SUS ARCHIVOS
-   son—. La columna ancha es la del anclaje porque es la decisión que el panel
-   habilita (ADR-0014 regla 1), y es la única que tiene acciones. */
+/*
+ * La rejilla se INVIERTE respecto a TASK-032, y no por capricho: el contenedor
+ * pasó de ancho y bajo a estrecho y alto. El anclaje es lo más ancho que hay
+ * —términos como «Autorregulación del esfuerzo», y seis selectores Chosen en
+ * modo edición—, así que se queda con todo el ancho. Medios e Información son
+ * pares etiqueta/valor cortos: caben en dos columnas y puestos así ahorran la
+ * mitad del recorrido vertical, que es lo que se paga en un panel alto.
+ */
 .oer-panel-grid {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 3em;
+    display: block;
 }
 
-/* El filete gris entre columnas se retira: con el riel bajando por el canto del
-   anclaje, dos rayas verticales a 3em de distancia competían. Separa el aire,
-   que es más barato que el cromo. */
 .oer-panel-side {
-    padding-left: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5em;
+    margin-top: 1.5em;
+    padding-top: 1.25em;
+    border-top: 1px solid var(--oer-rule);
 }
 
-@media (max-width: 900px) {
-    .oer-panel-grid {
-        grid-template-columns: 1fr;
-        gap: 1.5em;
-    }
-
-    /* Apiladas, Medios e Información caen debajo del anclaje: sin esta sangría
-       arrancarían 1em a la izquierda de él y la columna se leería descuadrada
-       justo donde deja de haber dos columnas. */
+/* Consulta de CONTENEDOR, no de viewport: lo que decide si las dos columnas
+   caben es cuánto mide el panel. El mismo sidebar puede estar ancho en un
+   monitor y estrecho en un portátil sin que cambie el ancho de pantalla. */
+/* 42rem y no 34: a 36rem las dos columnas dan ~17rem cada una y los nombres de
+   archivo se partían por la mitad de una palabra. Dos columnas solo cuando el
+   panel es de verdad ancho. */
+@container (max-width: 42rem) {
     .oer-panel-side {
-        padding-left: 1em;
+        grid-template-columns: 1fr;
+        gap: 0;
     }
 }
 
@@ -1199,20 +1250,6 @@
    (TASK-033). Antes la lectura estaba arriba y sus cinco selectores al final
    del <td>, con Integridad e Historial en medio.
    ------------------------------------------------------------------ */
-
-/* Aquí llega el riel. La lectura se mete 1em para dejarlo respirar. */
-.oer-area-alignment {
-    padding-left: 1em;
-    box-shadow: inset 3px 0 0 var(--oer-rail-ok);
-}
-
-.oer-detail-row[data-integrity="warning"] .oer-area-alignment {
-    box-shadow: inset 3px 0 0 var(--oer-rail-warn);
-}
-
-.oer-detail-row[data-integrity="error"] .oer-area-alignment {
-    box-shadow: inset 3px 0 0 var(--oer-rail-bad);
-}
 
 /* Los dos modos del área. La lectura agrupada y los selectores planos ocupan
    el mismo sitio y nunca se ven a la vez: la agrupación curso·materia la DERIVA

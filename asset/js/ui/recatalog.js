@@ -98,7 +98,7 @@ function renderUndo(config, $bar, itemId) {
     });
 }
 
-function postUndo(config, itemId, apiUrl, force) {
+function postUndo(config, itemId, force) {
     $.post(config.recatalogUndoUrl, {
         id: itemId,
         csrf: config.recatalogCsrf,
@@ -109,10 +109,9 @@ function postUndo(config, itemId, apiUrl, force) {
                 window.alert(Omeka.jsTranslate('Deshecho. Algunos términos ya no existen y no se pudieron restaurar: ')
                     + response.dropped.join(', '));
             }
-            // C2 (revisión final de rama): `openDrawer` es un conmutador y la
-            // fila ya está abierta, así que llamarlo aquí la plegaría en vez de
-            // recargarla. `reopenDrawer` cierra y vuelve a abrir sin ambigüedad.
-            reopenDrawer(apiUrl, itemId);
+            // El sidebar ya está abierto: basta con repoblarlo para que el
+            // curador vea escrito lo que acaba de confirmar (TASK-034).
+            reopenDrawer(itemId);
             return;
         }
         // El REA cambió por otra vía después de esa re-catalogación: deshacer
@@ -120,7 +119,7 @@ function postUndo(config, itemId, apiUrl, force) {
         if ('stale' === response.error && !force) {
             if (window.confirm(Omeka.jsTranslate(messageFor('stale'))
                 + '\n' + Omeka.jsTranslate('¿Deshacer de todos modos?'))) {
-                postUndo(config, itemId, apiUrl, true);
+                postUndo(config, itemId, true);
             }
             return;
         }
@@ -202,9 +201,10 @@ export function initRecatalog(config) {
             return;
         }
         const { itemId, itemJson, slot, bar } = event.detail;
-        // C1 (revisión final de rama): `openDrawer` ya no cuelga DRAWER_RENDERED
-        // del JSON-LD anónimo, así que `itemJson` puede llegar `null` (REA
-        // privado: `/api` no autentica, ver drawer.js). Este panel SÍ lo
+        // `itemJson` puede llegar `null` (REA privado: el `fetch` que lo trae va
+        // contra `/api`, que no autentica — ver drawer.js). El panel de LECTURA
+        // ya no depende de él desde TASK-034: lo sirve `drawer-details`, que sí
+        // autentica. Pero este panel SÍ lo
         // necesita para prellenar los selectores con lo ya elegido —
         // `buildDimensionSelector` lee `itemJson[term]` sin guarda—, así que se
         // avisa con un motivo legible en vez de reventar. Unificarlo en una
@@ -235,7 +235,7 @@ export function initRecatalog(config) {
     // que arrastrar un borrador invisible hasta la próxima vez que se abra.
     $(document).on('click', '.oer-recatalog-cancel', function () {
         const itemId = $(this).closest('.oer-recatalog').data('item-id');
-        reopenDrawer($(`tr[data-resource-id="${itemId}"]`).data('api-url'), itemId);
+        reopenDrawer(itemId);
     });
 
     $(document).on('click', '.oer-recatalog-undo-btn', function () {
@@ -245,8 +245,7 @@ export function initRecatalog(config) {
         // `[data-item-id]` y no `.oer-recatalog`: desde TASK-033 el deshacer
         // vive en la barra de reposo, fuera del panel de selectores.
         const itemId = $(this).closest('[data-item-id]').data('item-id');
-        const apiUrl = $(`tr[data-resource-id="${itemId}"]`).data('api-url');
-        postUndo(config, itemId, apiUrl, false);
+        postUndo(config, itemId, false);
     });
 
     $(document).on('click', '.oer-recatalog-preview', function () {
@@ -271,14 +270,11 @@ export function initRecatalog(config) {
             return;
         }
         const itemId = $panel.data('item-id');
-        const apiUrl = $(`tr[data-resource-id="${itemId}"]`).data('api-url');
         const pairs = collectAlignmentPairs($panel);
         pairs.push({ name: 'csrf', value: config.recatalogCsrf });
         $.post(config.recatalogApplyUrl, $.param(pairs)).done((response) => {
             if (response.updated) {
-                // C2: mismo motivo que en postUndo — recargar una fila abierta
-                // con `openDrawer` la plegaría; `reopenDrawer` no.
-                reopenDrawer(apiUrl, itemId);
+                reopenDrawer(itemId);
                 return;
             }
             // Confirmar sin cambios no escribe (habría re-sellado las

@@ -23,6 +23,7 @@ use OERManager\Service\IntegrityChecker;
 use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
+use OERManager\Service\PanelAreas;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -472,19 +473,42 @@ class IndexController extends AbstractActionController
      */
     public function drawerDetailsAction()
     {
+        // HTML y no JSON (ADR-0017 §1): el sidebar del core hace `$.get(url)` y
+        // `.html(data)` sobre `.sidebar-content`, así que es un mecanismo de
+        // HTML servido. `setTerminal(true)` lo saca del layout del admin, igual
+        // que hace `Omeka\Controller\Admin\ItemController::showDetailsAction`.
+        $view = new ViewModel();
+        $view->setTerminal(true);
+        $view->setTemplate('oer-manager/admin/index/drawer-details');
+
         $item = $this->panelItem();
         if (null === $item) {
-            return new JsonModel(['panel' => null, 'integrity' => null]);
+            // El core NO despacha `o:sidebar-content-loaded` si la petición
+            // falla, así que un 500 dejaría el panel mudo. Se responde 200 con
+            // el aviso dentro: el curador ve por qué, y el evento se dispara.
+            return $view->setVariables([
+                'panel' => null,
+                'integrity' => null,
+                'areas' => PanelAreas::build(null, null),
+                'rail' => 'ok',
+            ]);
         }
 
         $result = $this->integrityChecker->check($item, true);
+        $integrity = [
+            'status' => $result->getStatus(),
+            'issues' => $result->getIssues(),
+        ];
+        $panel = $this->itemPanelData->forItem($item);
 
-        return new JsonModel([
-            'panel' => $this->itemPanelData->forItem($item),
-            'integrity' => [
-                'status' => $result->getStatus(),
-                'issues' => $result->getIssues(),
-            ],
+        return $view->setVariables([
+            'panel' => $panel,
+            'integrity' => $integrity,
+            'areas' => PanelAreas::build($panel, $integrity),
+            // El riel del canto del sidebar (ADR-0014 §4). Lo escribe el
+            // servidor, que ya conoce el estado: el cliente no tiene que
+            // volver a deducirlo de la fila de la tabla.
+            'rail' => $result->getStatus(),
         ]);
     }
 

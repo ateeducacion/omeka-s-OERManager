@@ -25,7 +25,6 @@ export function readConfig() {
         aiEnabled: flag(d.aiEnabled),
         canRecatalog: flag(d.canRecatalog),
         recatalogCsrf: d.recatalogCsrf,
-        drawerDetailsUrl: d.drawerDetailsUrl,
         drawerHistoryUrl: d.drawerHistoryUrl
     });
 }
