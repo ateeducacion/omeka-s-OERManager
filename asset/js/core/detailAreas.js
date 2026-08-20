@@ -21,7 +21,12 @@ export const AREA_LABELS = {
 
 export const PANEL_ERROR_TEXT = 'No se ha podido cargar el detalle de este REA.';
 export const MEDIA_EMPTY_TEXT = 'Este REA no tiene ningún medio.';
-export const ALIGNMENT_EMPTY_TEXT = 'Este REA no tiene anclaje curricular.';
+/**
+ * El vacío es una invitación a actuar, no un parte: desde TASK-033 el botón de
+ * re-catalogar está en esta misma área, a un renglón de este texto.
+ */
+export const ALIGNMENT_EMPTY_TEXT =
+    'Sin anclaje curricular. Re-catalógalo para asignarle curso, asignatura y saberes.';
 
 const READY = 'ready';
 const EMPTY = 'empty';

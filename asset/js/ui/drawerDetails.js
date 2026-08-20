@@ -30,6 +30,30 @@ const SEVERITY_LABELS = {
     warning: 'Avisos'
 };
 
+/**
+ * Severidad → [singular, plural] para el contador de la banda. `jsTranslate` no
+ * hace plurales, así que la elección se resuelve aquí y cada forma viaja como
+ * cadena propia al catálogo.
+ */
+const SEVERITY_COUNTS = {
+    error: ['error', 'errores'],
+    warning: ['aviso', 'avisos']
+};
+
+/**
+ * Evento con el que el panel ofrece su hueco de edición del anclaje (TASK-033).
+ * El re-catalogador se engancha aquí en vez de al `<td>` entero: así los cinco
+ * selectores nacen DENTRO del área que ya cuenta el anclaje, y el curador deja
+ * de leer el currículo en un sitio y corregirlo en otro.
+ *
+ * Contrato con `ui/recatalog.js`, en las dos direcciones:
+ *  - este fichero entrega `{ itemId, itemJson, slot, bar }` y es dueño del modo
+ *    (`data-mode` sobre `.oer-area-alignment`);
+ *  - el re-catalogador puebla `slot` y `bar`, y marca su botón de entrada con
+ *    `.oer-anchor-edit`, que es lo único que este fichero escucha de él.
+ */
+export const ANCHOR_SLOT = 'oer:anchor-slot';
+
 function heading(text, tag = 'h4') {
     const element = document.createElement(tag);
     element.textContent = text;
@@ -43,24 +67,46 @@ function note(text, className) {
     return element;
 }
 
-function renderIntegrity(integrity) {
-    const section = document.createElement('section');
-    section.className = 'oer-drawer-section oer-drawer-integrity';
-    section.appendChild(heading(Omeka.jsTranslate(AREA_LABELS.integrity)));
+/**
+ * «2 avisos» / «1 error, 2 avisos». El spec §6 pedía este contador y TASK-032
+ * no llegó a pintarlo: sin él la banda dice que algo pasa, pero no cuánto, que
+ * es lo que decide si el curador para a mirarlo ahora o luego.
+ */
+function issueCount(groups) {
+    return groups.map((group) => {
+        const forms = SEVERITY_COUNTS[group.severity];
+        const total = group.issues.length;
+        if (!forms) {
+            return `${total} ${Omeka.jsTranslate(group.severity)}`;
+        }
+        return `${total} ${Omeka.jsTranslate(1 === total ? forms[0] : forms[1])}`;
+    }).join(', ');
+}
 
-    // «No se pudo leer el item» y «se leyó y está impecable» no pueden
-    // compartir pantalla: sin esta rama, un id inválido o un fetch que el ACL
-    // deniega acababan pintando lo mismo que un REA sano.
-    if (!integrityChecked(integrity)) {
-        section.appendChild(note(Omeka.jsTranslate(INTEGRITY_UNKNOWN_TEXT), 'oer-drawer-empty'));
-        return section;
-    }
-
-    const groups = integrityGroups(integrity);
+/**
+ * Banda de veredicto (TASK-033). Devuelve `null` cuando NO hay nada que mirar:
+ * un REA sano deja de gastar una sección entera del cuerpo en decir que está
+ * sano, y su veredicto se va a la cabecera (`verdictMark`).
+ *
+ * Los glifos siguen viniendo del `list-style-type` de
+ * `.oer-integrity-issues-{error,warning}`, que ya distingue ⛔ de ⚠ por forma y
+ * no solo por color (ADR-0014 regla 3); el encabezado por severidad sigue
+ * siendo su texto alternativo para un lector de pantalla.
+ */
+function renderAlert(integrity) {
+    const groups = integrityChecked(integrity) ? integrityGroups(integrity) : [];
     if (!groups.length) {
-        section.appendChild(note(Omeka.jsTranslate(INTEGRITY_OK_TEXT), 'oer-drawer-empty'));
-        return section;
+        return null;
     }
+
+    const section = document.createElement('section');
+    // `integrityGroups` ordena por severidad, así que el primer grupo es el
+    // peor: la banda se tiñe de lo más grave que contiene, no de lo primero
+    // que llegó.
+    section.className = `oer-panel-alert oer-panel-alert-${groups[0].severity}`;
+    section.appendChild(heading(
+        `${Omeka.jsTranslate(AREA_LABELS.integrity)} · ${issueCount(groups)}`
+    ));
 
     groups.forEach((group) => {
         const groupLabel = SEVERITY_LABELS[group.severity] || group.severity;
@@ -78,6 +124,28 @@ function renderIntegrity(integrity) {
     });
 
     return section;
+}
+
+/**
+ * Marca de integridad de la cabecera (TASK-033). Solo se pinta cuando NO hay
+ * banda, y distingue los dos estados que la rebanada 3a pagó caro: «no se pudo
+ * comprobar» y «se comprobó y está limpio». Cada uno lleva su glifo propio
+ * (✓ frente a ⚠, puestos por CSS) además de su texto: fundirlos en una sola
+ * marca sería volver al fallo que aquella rebanada arregló.
+ */
+function verdictMark(integrity) {
+    if (integrityChecked(integrity) && integrityGroups(integrity).length) {
+        return null;
+    }
+    const mark = document.createElement('span');
+    if (!integrityChecked(integrity)) {
+        mark.className = 'oer-panel-verdict oer-panel-verdict-unknown';
+        mark.textContent = Omeka.jsTranslate(INTEGRITY_UNKNOWN_TEXT);
+        return mark;
+    }
+    mark.className = 'oer-panel-verdict oer-panel-verdict-ok';
+    mark.textContent = Omeka.jsTranslate(INTEGRITY_OK_TEXT);
+    return mark;
 }
 
 /**
@@ -130,9 +198,10 @@ function renderChange(change, hasReasons) {
 }
 
 function renderHistory(history) {
+    // Sin encabezado propio: el <summary> del <details> que envuelve esto ya
+    // dice «Historial de curación», y pintarlo dos veces era ruido (TASK-033).
     const section = document.createElement('section');
     section.className = 'oer-drawer-section oer-drawer-history';
-    section.appendChild(heading(Omeka.jsTranslate('Historial de curación')));
 
     // «No se pudo leer» y «no hay nada» no pueden compartir pantalla (I4,
     // revisión final de rama): antes `drawerHistoryAction` mandaba `[]` tanto
@@ -177,7 +246,7 @@ function areaSection(area) {
     return section;
 }
 
-function renderHeader(identity) {
+function renderHeader(identity, integrity) {
     const header = document.createElement('div');
     header.className = 'oer-panel-header';
 
@@ -208,6 +277,13 @@ function renderHeader(identity) {
         ? Omeka.jsTranslate('Público')
         : Omeka.jsTranslate('Privado');
     header.appendChild(visibility);
+
+    // El veredicto sube aquí cuando no hay banda que pintar: es lo primero que
+    // se mira al abrir una fila, y antes obligaba a bajar hasta media pantalla.
+    const verdict = verdictMark(integrity);
+    if (verdict) {
+        header.appendChild(verdict);
+    }
 
     if (identity.editUrl) {
         const link = document.createElement('a');
@@ -243,11 +319,43 @@ const ORPHAN_REASON_LABELS = {
     'course-not-declared': 'sin un curso que lo agrupe en este REA'
 };
 
+/**
+ * Anclaje curricular: la lectura agrupada y el hueco donde vive su editor
+ * (TASK-033). Es la única zona con acciones del panel, porque es la decisión
+ * que el panel habilita (ADR-0014 regla 1).
+ *
+ * La lectura va agrupada por curso·materia y la edición es plana, y no es un
+ * descuido: `CurricularGrouping::build()` DERIVA los grupos recorriendo el
+ * grafo del currículo, pero en RDF el item solo tiene cinco listas planas, que
+ * es lo que el re-catalogador escribe. Por eso los selectores sustituyen a la
+ * lectura en vez de pintarse dentro de cada grupo: un selector por grupo
+ * prometería una escritura por grupo que no existe.
+ */
 function renderAlignment(area) {
     const section = areaSection(area);
+    // El modo lo lleva la sección, no el editor: quien manda sobre la
+    // composición del área es este fichero, y el re-catalogador solo pone su
+    // botón de entrada. Empieza siempre en lectura, también al reabrirse tras
+    // confirmar (`reopenDrawer` reconstruye la fila entera).
+    section.dataset.mode = 'read';
+
+    const read = document.createElement('div');
+    read.className = 'oer-anchor-read';
+    section.appendChild(read);
+
+    // Hueco y barra van SIEMPRE, con o sin permiso de curación: los puebla el
+    // re-catalogador si procede, y si no se quedan vacíos y el CSS los colapsa
+    // con `:empty`. Decidirlo aquí obligaría a este fichero a conocer el ACL.
+    const slot = document.createElement('div');
+    slot.className = 'oer-anchor-slot';
+    const bar = document.createElement('div');
+    bar.className = 'oer-anchor-bar';
+
     if ('empty' === area.state) {
-        section.appendChild(note(Omeka.jsTranslate(ALIGNMENT_EMPTY_TEXT), 'oer-drawer-empty'));
-        return section;
+        read.appendChild(note(Omeka.jsTranslate(ALIGNMENT_EMPTY_TEXT), 'oer-drawer-empty'));
+        section.appendChild(slot);
+        section.appendChild(bar);
+        return { section, slot, bar };
     }
 
     area.alignment.groups.forEach((group) => {
@@ -261,21 +369,27 @@ function renderAlignment(area) {
             : group.courseTitle;
         block.appendChild(title);
 
-        [['Saberes', group.teaches], ['Criterios', group.assesses]].forEach(([label, values]) => {
+        // Las etiquetas salen de TERM_LABELS y no de literales propios: antes
+        // esta línea decía «Saberes» y «Criterios» mientras la integridad y el
+        // historial decían «Saberes básicos» y «Criterios de evaluación», así
+        // que la misma dimensión tenía dos nombres según dónde se pintara.
+        [['lrmi:teaches', group.teaches], ['lrmi:assesses', group.assesses]].forEach(([term, values]) => {
             const line = document.createElement('p');
             line.className = 'oer-align-line';
-            line.textContent = `${Omeka.jsTranslate(label)}: ${values.length ? values.join(' · ') : '—'}`;
+            const label = Omeka.jsTranslate(TERM_LABELS[term] || term);
+            line.textContent = `${label}: ${values.length ? values.join(' · ') : '—'}`;
             block.appendChild(line);
         });
 
-        section.appendChild(block);
+        read.appendChild(block);
     });
 
     if (area.alignment.axes.length) {
         const axes = document.createElement('p');
         axes.className = 'oer-align-axes';
-        axes.textContent = `${Omeka.jsTranslate('Ejes')}: ${area.alignment.axes.join(' · ')}`;
-        section.appendChild(axes);
+        const axisLabel = Omeka.jsTranslate(TERM_LABELS['dcterms:relation']);
+        axes.textContent = `${axisLabel}: ${area.alignment.axes.join(' · ')}`;
+        read.appendChild(axes);
     }
 
     if (area.alignment.orphans.length) {
@@ -292,10 +406,12 @@ function renderAlignment(area) {
                 : `${label}: ${orphan.title}`;
             block.appendChild(line);
         });
-        section.appendChild(block);
+        read.appendChild(block);
     }
 
-    return section;
+    section.appendChild(slot);
+    section.appendChild(bar);
+    return { section, slot, bar };
 }
 
 function renderMedia(area) {
@@ -404,9 +520,71 @@ function renderHistoryArea(itemId, historyUrl) {
     return section;
 }
 
+/**
+ * Ofrece el hueco de edición del anclaje. `slot` y `bar` cambian según el
+ * camino: en el normal cuelgan del área de anclaje; en el degradado, del panel
+ * entero.
+ *
+ * La guarda de `isConnected` repite la de `drawer.js`: quien escucha este
+ * evento pide al servidor la última curación del REA (`recatalog-last-event`),
+ * y esa petición no se gasta en una fila que el curador ya plegó.
+ */
+function offerAnchorSlot(panel, itemId, itemJson, slot, bar) {
+    if (!panel.isConnected) {
+        return;
+    }
+    document.dispatchEvent(new CustomEvent(ANCHOR_SLOT, {
+        detail: { itemId, itemJson, slot, bar }
+    }));
+}
+
+/**
+ * Camino degradado: `drawer-details` no contestó (403 del ACL, 500, red), así
+ * que no hay área de anclaje donde colgar el editor. Se ofrece un hueco al
+ * nivel del panel para que el re-catalogador se monte igual.
+ *
+ * Importa que exista: antes de TASK-033 el editor colgaba del `<td>` y
+ * sobrevivía a este fallo por accidente. Al moverlo dentro del área, un
+ * `drawer-details` caído dejaría al curador sin poder re-catalogar.
+ */
+function degradeToPanelSlot(panel, itemId, itemJson) {
+    const slot = document.createElement('div');
+    slot.className = 'oer-anchor-slot';
+    const bar = document.createElement('div');
+    bar.className = 'oer-anchor-bar';
+    // Sin lectura que sustituir no hay dos modos: el editor se ve entero.
+    panel.dataset.mode = 'edit';
+    panel.appendChild(slot);
+    panel.appendChild(bar);
+    offerAnchorSlot(panel, itemId, itemJson, slot, bar);
+}
+
 export function initDrawerDetails(config) {
+    // Entrar en edición es un cambio de composición, así que lo lleva este
+    // fichero; el botón lo pone el re-catalogador, que es quien sabe si el
+    // curador puede tocar el REA. El camino de vuelta NO está aquí: «Cancelar»
+    // reconstruye la fila con `reopenDrawer` desde el re-catalogador, para que
+    // salir de la edición descarte de verdad lo que no se confirmó.
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.oer-anchor-edit');
+        if (!button) {
+            return;
+        }
+        const section = button.closest('.oer-area-alignment');
+        if (!section) {
+            return;
+        }
+        section.dataset.mode = 'edit';
+        // El foco sigue a la composición: quien llegó al botón con el teclado
+        // se quedaría mirando un botón que acaba de desaparecer.
+        const first = section.querySelector('.oer-term-search');
+        if (first) {
+            first.focus();
+        }
+    });
+
     document.addEventListener(DRAWER_RENDERED, (event) => {
-        const { itemId, content } = event.detail;
+        const { itemId, itemJson, content } = event.detail;
         const url = config.drawerDetailsUrl;
         if (!url) {
             return;
@@ -431,10 +609,20 @@ export function initDrawerDetails(config) {
                 panel.textContent = '';
                 if (!details.panel) {
                     panel.appendChild(note(Omeka.jsTranslate(PANEL_ERROR_TEXT), 'oer-drawer-empty'));
+                    degradeToPanelSlot(panel, itemId, itemJson);
                     return;
                 }
 
-                panel.appendChild(renderHeader(details.panel.identity));
+                const integrity = details.integrity;
+                panel.appendChild(renderHeader(details.panel.identity, integrity));
+
+                // La banda solo existe si hay algo que mirar; si no, el
+                // veredicto ya está en la cabecera y el cuerpo se ahorra una
+                // sección entera.
+                const alert = renderAlert(integrity);
+                if (alert) {
+                    panel.appendChild(alert);
+                }
 
                 const grid = document.createElement('div');
                 grid.className = 'oer-panel-grid';
@@ -442,7 +630,8 @@ export function initDrawerDetails(config) {
                 panelAreas(details).forEach((area) => {
                     byId[area.id] = area;
                 });
-                grid.appendChild(renderAlignment(byId.alignment));
+                const anchor = renderAlignment(byId.alignment);
+                grid.appendChild(anchor.section);
 
                 const side = document.createElement('div');
                 side.className = 'oer-panel-side';
@@ -451,11 +640,12 @@ export function initDrawerDetails(config) {
                 grid.appendChild(side);
 
                 panel.appendChild(grid);
-                panel.appendChild(renderIntegrity(byId.integrity.integrity));
                 panel.appendChild(renderHistoryArea(itemId, config.drawerHistoryUrl));
+                offerAnchorSlot(panel, itemId, itemJson, anchor.slot, anchor.bar);
             })
             .catch(() => {
                 panel.textContent = Omeka.jsTranslate(PANEL_ERROR_TEXT);
+                degradeToPanelSlot(panel, itemId, itemJson);
             });
     });
 }

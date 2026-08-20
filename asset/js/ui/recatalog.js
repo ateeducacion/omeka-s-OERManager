@@ -3,58 +3,91 @@ import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
-import { DRAWER_RENDERED, reopenDrawer } from './drawer.js';
+import { reopenDrawer } from './drawer.js';
+import { ANCHOR_SLOT } from './drawerDetails.js';
 
 /**
  * Panel de re-catalogación (TASK-004), extraído de oer-master-view.js en
  * TASK-028. Patrón obligatorio (skill recatalogador): preview + confirmación +
  * auditoría. Solo se envían las dimensiones que el curador modifica
  * (data-dirty), así que confirmar nunca toca properties no editadas.
+ *
+ * Desde TASK-033 se monta DENTRO del área de anclaje curricular, no al final
+ * del `<td>`: el curador leía el currículo en un sitio y lo corregía en otro,
+ * con dos secciones en medio. Deja de tener encabezado propio —el área ya se
+ * llama «Anclaje curricular», y dos nombres para la misma cosa era justo lo
+ * que sobraba—, y se engancha a `oer:anchor-slot` en vez de a
+ * `oer:drawer-rendered`.
  */
 
 function buildRecatalogPanel(config, itemId, itemJson) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
-    $panel.append($('<h4>').text(Omeka.jsTranslate('Re-catalogar')));
 
+    const $dims = $('<div>').addClass('oer-recatalog-dims');
     // Etapa: ayuda de navegación de la cascada (ADR-0009). No se escribe en
-    // el REA; solo acota Curso → Asignatura → Saberes/Criterios.
-    $panel.append(
-        buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa (ayuda, no se guarda)'), {}, true, valueText)
-    );
+    // el REA; solo acota Curso → Asignatura → Saberes/Criterios. La advertencia
+    // va en su propia línea: una etiqueta etiqueta, y antes hacía dos trabajos.
+    const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), {}, true, valueText);
+    $etapa.append($('<p>').addClass('oer-dim-hint')
+        .text(Omeka.jsTranslate('Solo acota la búsqueda. No se guarda en el REA.')));
+    $dims.append($etapa);
     RECATALOG_DIMENSIONS.forEach(([term, label]) => {
-        $panel.append(buildDimensionSelector(term, label, itemJson, false, valueText));
+        $dims.append(buildDimensionSelector(term, label, itemJson, false, valueText));
     });
+    $panel.append($dims);
 
     const $actions = $('<div>').addClass('oer-recatalog-actions');
     // Pre-relleno IA (TASK-010): propone, el curador revisa y confirma.
     if (config.aiEnabled) {
         $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai')
             .text(Omeka.jsTranslate('Proponer con IA')));
-        // Cancelar el propose asíncrono en marcha (TASK-020).
+        // Cancelar el propose asíncrono en marcha (TASK-020). Se llamaba
+        // «Cancelar», que desde TASK-033 chocaría con el «Cancelar» que sale
+        // de la edición: dos botones vecinos, mismo nombre, distinto efecto.
         $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai-cancel')
-            .text(Omeka.jsTranslate('Cancelar')));
+            .text(Omeka.jsTranslate('Detener la propuesta')));
     }
     $actions
         .append($('<button>').attr('type', 'button').addClass('oer-recatalog-preview')
             .text(Omeka.jsTranslate('Previsualizar cambios')))
         .append($('<button>').attr('type', 'button').addClass('oer-recatalog-apply')
             .prop('disabled', true)
-            .text(Omeka.jsTranslate('Confirmar')));
+            .text(Omeka.jsTranslate('Confirmar')))
+        .append($('<button>').attr('type', 'button').addClass('oer-recatalog-cancel')
+            .text(Omeka.jsTranslate('Cancelar')));
     $panel.append($actions);
     $panel.append($('<div>').addClass('oer-recatalog-diff'));
-    // Deshacer (TASK-007). Se pinta solo si el REA tiene un evento que revertir,
-    // así que la fila queda vacía hasta que el servidor conteste.
-    $panel.append($('<div>').addClass('oer-recatalog-undo'));
     return $panel;
+}
+
+/**
+ * Barra en reposo del área de anclaje: la entrada a la edición y, si el REA
+ * tiene algo que revertir, el deshacer.
+ *
+ * `.oer-anchor-edit` es el contrato con `ui/drawerDetails.js`, que es quien
+ * cambia el modo del área. Aquí solo se decide SI el botón existe, que es lo
+ * que este fichero sabe y aquel no: sin permiso de curación o sin `itemJson`
+ * no se pinta, y la barra vacía la colapsa el CSS.
+ */
+function fillAnchorBar($bar, itemId) {
+    $bar.attr('data-item-id', itemId)
+        .append($('<button>').attr('type', 'button').addClass('oer-anchor-edit')
+            .text(Omeka.jsTranslate('Re-catalogar')))
+        // Deshacer (TASK-007). Se pinta solo si el REA tiene un evento que
+        // revertir, así que el hueco queda vacío hasta que el servidor conteste.
+        .append($('<div>').addClass('oer-recatalog-undo'));
 }
 
 /**
  * Pinta el botón de deshacer si hay última re-catalogación (TASK-007). El evento
  * lo resuelve el servidor: el payload que hace posible la reversión vive en una
  * anotación de un valor privado, y no se le pide al cliente que lo interprete.
+ *
+ * Vive en la barra de reposo y no dentro del editor (TASK-033): deshacer una
+ * curación ya escrita no exige abrir los selectores.
  */
-function renderUndo(config, $panel, itemId) {
-    const $slot = $panel.find('.oer-recatalog-undo').empty();
+function renderUndo(config, $bar, itemId) {
+    const $slot = $bar.find('.oer-recatalog-undo').empty();
     $.post(config.recatalogLastEventUrl, { id: itemId }).done((response) => {
         const label = undoLabel(response.event);
         if (!label) {
@@ -164,11 +197,11 @@ function renderDiff($panel, diff) {
 }
 
 export function initRecatalog(config) {
-    document.addEventListener(DRAWER_RENDERED, (event) => {
+    document.addEventListener(ANCHOR_SLOT, (event) => {
         if (!config.canRecatalog) {
             return;
         }
-        const { itemId, itemJson, content } = event.detail;
+        const { itemId, itemJson, slot, bar } = event.detail;
         // C1 (revisión final de rama): `openDrawer` ya no cuelga DRAWER_RENDERED
         // del JSON-LD anónimo, así que `itemJson` puede llegar `null` (REA
         // privado: `/api` no autentica, ver drawer.js). Este panel SÍ lo
@@ -178,7 +211,10 @@ export function initRecatalog(config) {
         // sola llamada autenticada es trabajo propio (no se rediseña aquí el
         // flujo de datos del re-catalogador).
         if (!itemJson) {
-            $(content).append(
+            // El motivo va dentro del área de anclaje, bajo la lectura: es ahí
+            // donde el curador busca por qué no puede corregir lo que ve. Y no
+            // se pinta el botón de entrada, que no llevaría a ninguna parte.
+            $(slot).append(
                 $('<p>').addClass('oer-drawer-empty').text(Omeka.jsTranslate(
                     'Re-catalogación no disponible: no se ha podido leer este REA sin autenticar '
                     + '(puede estar en privado).'
@@ -186,17 +222,29 @@ export function initRecatalog(config) {
             );
             return;
         }
-        const $panel = buildRecatalogPanel(config, itemId, itemJson);
-        $(content).append($panel);
-        renderUndo(config, $panel, itemId);
+        $(slot).append(buildRecatalogPanel(config, itemId, itemJson));
+        const $bar = $(bar);
+        fillAnchorBar($bar, itemId);
+        renderUndo(config, $bar, itemId);
+    });
+
+    // Salir de la edición reconstruye la fila entera en vez de solo esconder
+    // los selectores: así los chips puestos y no confirmados se van de verdad.
+    // Es el mismo camino que ya se recorre tras confirmar o deshacer, y en la
+    // superficie de escritura de alto riesgo del módulo vale más reconstruir
+    // que arrastrar un borrador invisible hasta la próxima vez que se abra.
+    $(document).on('click', '.oer-recatalog-cancel', function () {
+        const itemId = $(this).closest('.oer-recatalog').data('item-id');
+        reopenDrawer($(`tr[data-resource-id="${itemId}"]`).data('api-url'), itemId);
     });
 
     $(document).on('click', '.oer-recatalog-undo-btn', function () {
-        const $panel = $(this).closest('.oer-recatalog');
         if (!window.confirm(Omeka.jsTranslate('¿Deshacer la última re-catalogación de este REA?'))) {
             return;
         }
-        const itemId = $panel.data('item-id');
+        // `[data-item-id]` y no `.oer-recatalog`: desde TASK-033 el deshacer
+        // vive en la barra de reposo, fuera del panel de selectores.
+        const itemId = $(this).closest('[data-item-id]').data('item-id');
         const apiUrl = $(`tr[data-resource-id="${itemId}"]`).data('api-url');
         postUndo(config, itemId, apiUrl, false);
     });

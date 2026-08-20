@@ -518,13 +518,14 @@
    Ficha y enlace al editor (área «record» del panel de detalle, TASK-032)
    ========================================================================== */
 
+/* Las etiquetas de campo iban en versalitas 700, es decir, más marcadas que el
+   «Información» que las agrupa: dentro de la columna, el rótulo del área perdía
+   contra sus propias filas. Aquí bajan a texto de apoyo y el dato de debajo se
+   queda con el peso, que es lo que se viene a leer. */
 .oer-area-record dt {
-    margin-top: 1em;
+    margin-top: 0.75em;
     color: var(--oer-muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    font-size: 0.9em;
 }
 
 .oer-area-record dd {
@@ -568,24 +569,40 @@
    Re-catalogador (TASK-004)
    ========================================================================== */
 
+/* Sin filete ni aire propios desde TASK-033: ya no es un bloque al final del
+   <td> que haya que separar del panel, sino el modo de edición del área de
+   anclaje, que pone su propio marco. */
 .oer-recatalog {
-    margin-top: 1.5em;
-    padding-top: 1em;
-    border-top: 1px solid var(--oer-rule);
+    margin: 0;
+}
+
+/* La advertencia de la Etapa, que antes iba metida en su propia etiqueta
+   («Etapa (ayuda, no se guarda)»). Una etiqueta etiqueta; esto explica. */
+.oer-dim-hint {
+    margin: 0 0 0.5em;
+    color: var(--oer-muted);
+    font-size: 0.85em;
 }
 
 .oer-recatalog-dim {
     margin-bottom: 1em;
 }
 
+/* Las etiquetas de dimensión iban en versalitas 700, más marcadas que el
+   «Anclaje curricular» que ahora las encabeza: dentro del área, seis rótulos de
+   campo ganaban al nombre del área. Bajan a texto de apoyo y las versalitas se
+   quedan como lo que son, la marca de un área. */
 .oer-recatalog-dim > label {
     display: block;
     margin-bottom: 0.3em;
     color: var(--oer-muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    font-size: 0.9em;
+}
+
+/* Los selectores no se estiran a la anchura de la columna: seis campos de 60em
+   para términos de tres palabras separan la etiqueta de su contenido. */
+.oer-recatalog-dims {
+    max-width: 34em;
 }
 
 /* El selector reutiliza el widget Chosen del admin de Omeka (chosen-container).
@@ -599,10 +616,31 @@
     z-index: 1100;
 }
 
+/* El orden del flujo, no el de construcción: primero la ayuda (IA), luego los
+   dos pasos obligatorios —previsualizar y confirmar—, y «Cancelar» empujado al
+   otro extremo, porque salir no es el siguiente paso de nada. */
 .oer-recatalog-actions {
-    margin-top: 1em;
+    margin-top: 1.25em;
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5em;
+    max-width: 34em;
+}
+
+/* Los cinco botones se envuelven contra el ancho de los campos en vez de
+   estirarse por la columna: quedan dos renglones que leen como dos grupos —la
+   ayuda arriba, el paso obligatorio abajo—. Empujar «Cancelar» al extremo con
+   `margin-left: auto` lo dejaba solo al otro lado de un hueco de 20em en cuanto
+   la fila se partía, que era peor que tenerlo al lado. */
+
+/* «Confirmar» es lo que el curador viene a pulsar, así que es el único botón
+   del panel con peso. No lleva el acento del anfitrión: ADR-0014 regla 2 lo
+   reserva al estado que reclama acción, y una escritura RDF que el curador ya
+   ha previsualizado no es una alarma. */
+.oer-recatalog-apply:enabled {
+    font-weight: 700;
+    border-color: var(--oer-ink);
 }
 
 .oer-recatalog-diff {
@@ -610,18 +648,19 @@
 }
 
 /* Deshacer (TASK-007) es una salida de emergencia, no una acción del flujo
-   normal: se separa de la banda de acciones y se pinta en secundario para que
-   no compita con «Confirmar», que es lo que el curador viene a pulsar. */
+   normal: se pinta en secundario para que no compita con «Confirmar», que es lo
+   que el curador viene a pulsar. Desde TASK-033 vive en la barra de reposo del
+   área de anclaje —revertir no exige abrir los selectores—, así que ya no
+   necesita filete propio: lo separa el ancho de la barra. */
 .oer-recatalog-undo {
-    margin-top: 1.25em;
-    border-top: 1px solid var(--oer-rule);
-    padding-top: 0.75em;
+    display: inline-block;
 }
 
+/* Sin evento que revertir el hueco existe pero no ocupa: si no, el `gap` de la
+   barra dejaría un vacío detrás de «Re-catalogar» que se lee como un botón que
+   no cargó. */
 .oer-recatalog-undo:empty {
-    border-top: 0;
-    padding-top: 0;
-    margin-top: 0;
+    display: none;
 }
 
 .oer-recatalog-undo-btn {
@@ -945,11 +984,31 @@
 /* --- Panel de detalle integrado en la tabla (TASK-032) --- */
 
 /* Un estante que la tabla abre dentro de sí, no una tarjeta encima
-   (ADR-0014 regla 1). El riel de la fila madre continúa aquí: cortarlo
-   dejaría el canto roto justo en la fila que se está mirando (regla 4). */
+   (ADR-0014 regla 1).
+
+   EL RIEL NO SE CORTA (regla 4, y la única apuesta de la pasada de TASK-033).
+   La fila de detalle sí recibía el `box-shadow: inset` del riel, pero el fondo
+   de esta celda lo tapaba: el canto se rompía justo en la fila que se está
+   mirando. Aquí se repinta como borde, y sigue hacia dentro hasta el canto del
+   área de anclaje —el control que arregla lo que el riel denuncia—. Un REA mal
+   catalogado tiene un canto continuo desde la tabla hasta donde se corrige.
+
+   Es todo el presupuesto de la pasada: sin color nuevo (los tokens del riel ya
+   existen), sin tipografía propia y sin animación. Y para pagarlo, el filete
+   gris entre columnas se retira: dos rayas verticales compitiendo a 2em de
+   distancia era una de más. */
 .oer-detail-row > .oer-detail-cell {
     background: var(--oer-surface);
     padding: 1.25em 1.5em;
+    border-left: 3px solid var(--oer-rail-ok);
+}
+
+.oer-detail-row[data-integrity="warning"] > .oer-detail-cell {
+    border-left-color: var(--oer-rail-warn);
+}
+
+.oer-detail-row[data-integrity="error"] > .oer-detail-cell {
+    border-left-color: var(--oer-rail-bad);
 }
 
 .oer-detail-panel {
@@ -997,6 +1056,86 @@
     font-size: 0.9em;
 }
 
+/* Veredicto de integridad (TASK-033). Solo aparece cuando NO hay banda, así que
+   un REA sano deja de gastar una sección del cuerpo en decir que está sano.
+
+   Los dos estados llevan glifo propio y no solo color (ADR-0014 regla 3): la
+   distinción entre «no se pudo comprobar» y «se comprobó y está limpio» es
+   accionable —el primero pide reintentar, el segundo no pide nada— y es
+   exactamente la que la rebanada 3a de TASK-028 pagó caro fundir. El texto ya
+   dice cuál es; el glifo va por ::before, que el lector de pantalla ignora. */
+.oer-panel-verdict {
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.oer-panel-verdict-ok {
+    color: var(--oer-ok);
+}
+
+.oer-panel-verdict-ok::before {
+    content: "\2713";
+    margin-right: 0.3em;
+}
+
+.oer-panel-verdict-unknown {
+    color: var(--oer-warn);
+}
+
+.oer-panel-verdict-unknown::before {
+    content: "\26A0";
+    margin-right: 0.3em;
+}
+
+/* Banda de integridad: el veredicto sube a donde se mira primero, en vez de
+   esperar a media pantalla como una cuarta sección del mismo peso que Medios.
+   Su presencia ya es la forma; el canto y los glifos ⛔/⚠ de las incidencias
+   hacen el resto sin depender del color. */
+.oer-panel-alert {
+    margin-bottom: 1.25em;
+    padding: 0.6em 0.9em;
+    background: #fff;
+    border-left: 3px solid var(--oer-warn);
+}
+
+.oer-panel-alert-error {
+    border-left-color: var(--oer-bad);
+}
+
+.oer-panel-alert > h4 {
+    margin: 0 0 0.35em;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-warn);
+}
+
+.oer-panel-alert-error > h4 {
+    color: var(--oer-bad);
+}
+
+/* Los encabezados por severidad se quedan SOLO para el lector de pantalla. El
+   contador de la banda ya dice «1 error, 2 avisos» y cada incidencia lleva su
+   glifo ⛔/⚠, así que pintarlos sumaba dos renglones y un tercer nivel de
+   encabezado para tres líneas de contenido. Ocultarlos y no borrarlos es lo que
+   pide ADR-0014 regla 3: la severidad gradúa y puede ir por color, siempre que
+   el nombre accesible la enuncie. */
+.oer-panel-alert > h5 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.oer-panel-alert .oer-integrity-issues {
+    margin: 0;
+}
+
 .oer-detail-close {
     background: none;
     border: 0;
@@ -1014,28 +1153,32 @@
 
 /* Anclaje y medios lado a lado: son las dos mitades de la comparación que el
    curador viene a hacer —lo que el REA DICE frente a lo que SUS ARCHIVOS
-   son— y hoy están a pantallas de distancia. */
+   son—. La columna ancha es la del anclaje porque es la decisión que el panel
+   habilita (ADR-0014 regla 1), y es la única que tiene acciones. */
 .oer-panel-grid {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 2em;
+    gap: 3em;
 }
 
-/* Un solo filete entre columnas: el presupuesto se gasta en jerarquía, no en
-   cromo (ADR-0014 regla 1). */
+/* El filete gris entre columnas se retira: con el riel bajando por el canto del
+   anclaje, dos rayas verticales a 3em de distancia competían. Separa el aire,
+   que es más barato que el cromo. */
 .oer-panel-side {
-    border-left: 1px solid var(--oer-rule);
-    padding-left: 2em;
+    padding-left: 0;
 }
 
 @media (max-width: 900px) {
     .oer-panel-grid {
         grid-template-columns: 1fr;
+        gap: 1.5em;
     }
 
+    /* Apiladas, Medios e Información caen debajo del anclaje: sin esta sangría
+       arrancarían 1em a la izquierda de él y la columna se leería descuadrada
+       justo donde deja de haber dos columnas. */
     .oer-panel-side {
-        border-left: 0;
-        padding-left: 0;
+        padding-left: 1em;
     }
 }
 
@@ -1051,6 +1194,65 @@
     color: var(--oer-muted);
 }
 
+/* ------------------------------------------------------------------
+   Anclaje curricular: una sola zona para leer el currículo y corregirlo
+   (TASK-033). Antes la lectura estaba arriba y sus cinco selectores al final
+   del <td>, con Integridad e Historial en medio.
+   ------------------------------------------------------------------ */
+
+/* Aquí llega el riel. La lectura se mete 1em para dejarlo respirar. */
+.oer-area-alignment {
+    padding-left: 1em;
+    box-shadow: inset 3px 0 0 var(--oer-rail-ok);
+}
+
+.oer-detail-row[data-integrity="warning"] .oer-area-alignment {
+    box-shadow: inset 3px 0 0 var(--oer-rail-warn);
+}
+
+.oer-detail-row[data-integrity="error"] .oer-area-alignment {
+    box-shadow: inset 3px 0 0 var(--oer-rail-bad);
+}
+
+/* Los dos modos del área. La lectura agrupada y los selectores planos ocupan
+   el mismo sitio y nunca se ven a la vez: la agrupación curso·materia la DERIVA
+   `CurricularGrouping`, pero en RDF el item solo tiene cinco listas planas, así
+   que pintar un selector dentro de cada grupo prometería una escritura por
+   grupo que no existe.
+
+   El modo lo lleva `.oer-area-alignment`; `.oer-detail-panel[data-mode]` es el
+   camino degradado, cuando `drawer-details` no contestó y no hay lectura que
+   sustituir. */
+.oer-area-alignment[data-mode="read"] .oer-recatalog-dims,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-actions,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-diff,
+.oer-area-alignment[data-mode="edit"] .oer-anchor-read,
+.oer-area-alignment[data-mode="edit"] .oer-anchor-bar,
+.oer-detail-panel[data-mode="edit"] .oer-anchor-bar {
+    display: none;
+}
+
+/* Barra de reposo. `:empty` la colapsa: sin permiso de curación —o sin poder
+   leer el REA sin autenticar— no se puebla, y no debe dejar un hueco con aire
+   que se lea como algo que falta. */
+.oer-anchor-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 1em;
+}
+
+.oer-anchor-bar:empty {
+    display: none;
+}
+
+/* «Re-catalogar» es la única acción del panel, así que es el único botón que
+   se pinta como tal. Se deja al botón del admin de Omeka: heredar el chrome es
+   la regla 1, no una renuncia. */
+.oer-anchor-edit {
+    margin: 0;
+}
+
 .oer-align-group {
     margin-bottom: 0.9em;
 }
@@ -1060,16 +1262,22 @@
     font-weight: bold;
 }
 
-.oer-align-line,
-.oer-align-axes {
+.oer-align-line {
     margin: 0 0 0.15em 1em;
 }
 
-/* «Sin encajar» es accionable: forma propia además de color (regla 3). */
+/* Sin sangrar: el eje temático es del REA entero, y con la sangría de las
+   líneas de grupo parecía colgar del último curso de la lista. */
+.oer-align-axes {
+    margin: 0.9em 0 0;
+}
+
+/* «Sin encajar» es accionable, y su forma es el rótulo, no un canto (regla 3):
+   el canto ámbar que llevaba antes rimaba con el riel del área a dos
+   centímetros de distancia, y dos verticales del mismo color en la misma
+   columna se leen como el mismo aviso contado dos veces. */
 .oer-align-orphans {
-    margin-top: 0.75em;
-    border-left: 3px solid var(--oer-warn);
-    padding-left: 0.75em;
+    margin-top: 0.9em;
 }
 
 .oer-align-orphans > h5 {

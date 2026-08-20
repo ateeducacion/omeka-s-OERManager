@@ -11,7 +11,13 @@
 /** Severidades conocidas, en el orden en que se presentan. */
 const SEVERITY_ORDER = ['error', 'warning'];
 
-export const INTEGRITY_OK_TEXT = 'Sin incidencias detectadas.';
+/**
+ * Desde TASK-033 estos dos textos ya no encabezan una sección del cuerpo: son
+ * la marca de veredicto de la cabecera, junto a Público/Privado. Se acortan al
+ * registro que les toca —una marca rotula, no narra—, pero siguen viviendo
+ * aquí, que es la única fuente de cómo se llama cada estado de integridad.
+ */
+export const INTEGRITY_OK_TEXT = 'Sin incidencias';
 
 /**
  * El servidor manda `integrity: null` cuando el id no vale o la lectura del
@@ -19,7 +25,7 @@ export const INTEGRITY_OK_TEXT = 'Sin incidencias detectadas.';
  * se pudo comprobar— no es lo mismo que «se comprobó y está bien», y ambos no
  * pueden compartir el mismo texto sin que la UI mienta.
  */
-export const INTEGRITY_UNKNOWN_TEXT = 'No se ha podido comprobar la integridad.';
+export const INTEGRITY_UNKNOWN_TEXT = 'Integridad no verificada';
 
 /**
  * ¿Llegó a calcularse la integridad? Se apoya en `status`, que
