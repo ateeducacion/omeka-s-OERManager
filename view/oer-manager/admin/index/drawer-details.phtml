@@ -1,0 +1,272 @@
+<?php
+/**
+ * Panel de detalle del REA, servido al sidebar nativo del admin (TASK-034,
+ * ADR-0017 §1). Antes lo pintaba entero `asset/js/ui/drawerDetails.js` desde
+ * JSON; el sidebar del core hace `$.get` + `.html()`, así que el markup vive
+ * aquí. De paso su copy entra por primera vez en `make generate-pot`, que solo
+ * escanea `*.php` y `*.phtml` (NFR-005).
+ *
+ * Deja dos huecos que rellena el cliente y que NO pueden servirse desde aquí:
+ * `.oer-anchor-slot`, donde se monta el re-catalogador —necesita el `itemJson`
+ * de una llamada aparte—, y el cuerpo del historial, que es perezoso.
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var array|null $panel
+ * @var array|null $integrity
+ * @var array $areas
+ * @var string $rail
+ */
+
+use OERManager\Service\PanelAreas;
+
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+
+/** Área por id, para no depender del orden al pintar. */
+$area = function (string $id) use ($areas): array {
+    foreach ($areas as $one) {
+        if ($id === $one['id']) {
+            return $one;
+        }
+    }
+    return ['id' => $id, 'state' => PanelAreas::STATE_UNKNOWN];
+};
+
+$termLabels = [
+    'dcterms:description' => $translate('Descripción'),
+    'lrmi:educationalLevel' => $translate('Etapa'),
+    'schema:about' => $translate('Materia'),
+    'lrmi:assesses' => $translate('Criterios de evaluación'),
+    'lrmi:teaches' => $translate('Saberes básicos'),
+    'dcterms:relation' => $translate('Eje temático'),
+    'schema:isPartOf' => $translate('Proyecto'),
+    'lrmi:learningResourceType' => $translate('Tipo de recurso'),
+    'dcterms:rights' => $translate('Licencia'),
+];
+
+// El código de razón de `CurricularGrouping::build` cubre DOS casos: un valor
+// cuyo curso no está declarado, y uno cuyo curso sí lo está pero al que ninguna
+// materia sostiene. Los textos se redactan para ser ciertos en ambos.
+$orphanReasons = [
+    'course-without-subject' => $translate('ninguna materia lo sostiene'),
+    'course-not-declared' => $translate('sin un curso que lo agrupe en este REA'),
+];
+
+$severityLabels = [
+    'error' => $translate('Errores'),
+    'warning' => $translate('Avisos'),
+];
+
+// `jsTranslate` no hacía plurales y aquí tampoco los hace `translate`: la
+// elección se resuelve en el sitio y cada forma viaja al catálogo por su cuenta.
+$severityCounts = [
+    'error' => [$translate('error'), $translate('errores')],
+    'warning' => [$translate('aviso'), $translate('avisos')],
+];
+
+$issueGroups = [];
+if (null !== $integrity) {
+    foreach ($integrity['issues'] ?? [] as $issue) {
+        $issueGroups[$issue['severity'] ?? 'warning'][] = $issue;
+    }
+    // Errores antes que avisos; una severidad desconocida no se descarta, va al
+    // final: mejor enseñar algo sin ordenar que esconder una incidencia real.
+    uksort($issueGroups, function ($a, $b) {
+        $order = ['error' => 0, 'warning' => 1];
+        return ($order[$a] ?? 9) <=> ($order[$b] ?? 9);
+    });
+}
+$checked = null !== $integrity && !empty($integrity['status']);
+?>
+<div class="oer-detail-panel" data-integrity="<?php echo $escape($rail); ?>">
+<?php if (null === $panel): ?>
+    <p class="oer-drawer-empty"><?php echo $escape($translate(PanelAreas::PANEL_ERROR_TEXT)); ?></p>
+    <div class="oer-anchor-slot"></div>
+    <div class="oer-anchor-bar"></div>
+<?php else: ?>
+    <?php $identity = $panel['identity']; ?>
+    <?php
+    // El título va SOLO y primero, como `<h3>` directo del sidebar: el admin le
+    // da a `.sidebar h3` una banda de cabecera propia (un `::after` gris a
+    // sangre), que es como se presenta cualquier panel lateral de Omeka.
+    // Aprovecharla es heredar el chrome (ADR-0014 §1); meterlo en una fila flex
+    // con la miniatura hacía que esa banda cayera torcida. El core ya le
+    // reserva el hueco del aspa con su `padding-right`.
+    ?>
+    <h3 class="oer-panel-title">
+        <?php echo $escape('' === $identity['title'] ? $translate('(sin título)') : $identity['title']); ?>
+    </h3>
+    <div class="oer-panel-header">
+        <?php // Un REA sin miniatura es un dato, no un fallo de carga: hueco, no icono roto. ?>
+        <span class="oer-panel-thumb<?php echo $identity['thumbnail'] ? '' : ' oer-panel-thumb-none'; ?>">
+            <?php if ($identity['thumbnail']): ?>
+            <img src="<?php echo $escape($identity['thumbnail']); ?>" alt="">
+            <?php endif; ?>
+        </span>
+        <div class="oer-panel-meta">
+            <span class="oer-panel-visibility">
+                <?php echo $escape($identity['isPublic'] ? $translate('Público') : $translate('Privado')); ?>
+            </span>
+            <?php
+            // Veredicto: solo cuando NO hay banda. Dos estados con glifo propio
+            // además de color (ADR-0014 §3), porque «no se pudo comprobar» y «se
+            // comprobó y está limpio» no pueden acabar pintando lo mismo.
+            ?>
+            <?php if (!$issueGroups): ?>
+            <span class="oer-panel-verdict oer-panel-verdict-<?php echo $checked ? 'ok' : 'unknown'; ?>">
+                <?php echo $escape($checked
+                    ? $translate('Sin incidencias')
+                    : $translate('Integridad no verificada')); ?>
+            </span>
+            <?php endif; ?>
+            <?php if ($identity['editUrl']): ?>
+            <a class="oer-drawer-edit-link" href="<?php echo $escape($identity['editUrl']); ?>">
+                <?php echo $escape($translate('Abrir en el editor de Omeka')); ?>
+            </a>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if ($issueGroups): ?>
+    <?php $worst = array_key_first($issueGroups); ?>
+    <section class="oer-panel-alert oer-panel-alert-<?php echo $escape($worst); ?>">
+        <h4>
+            <?php
+            $counts = [];
+            foreach ($issueGroups as $severity => $issues) {
+                $forms = $severityCounts[$severity] ?? null;
+                $total = count($issues);
+                $counts[] = $forms
+                    ? sprintf('%d %s', $total, 1 === $total ? $forms[0] : $forms[1])
+                    : sprintf('%d %s', $total, $severity);
+            }
+            echo $escape(sprintf('%s · %s', $translate(PanelAreas::LABELS['integrity']), implode(', ', $counts)));
+            ?>
+        </h4>
+        <?php foreach ($issueGroups as $severity => $issues): ?>
+        <?php // El <h5> no se ve (lo oculta el CSS): es el nombre accesible del glifo. ?>
+        <h5><?php echo $escape($severityLabels[$severity] ?? $severity); ?></h5>
+        <ul class="oer-integrity-issues oer-integrity-issues-<?php echo $escape($severity); ?>">
+            <?php foreach ($issues as $issue): ?>
+            <li><?php echo $escape(sprintf(
+                '%s: %s',
+                $termLabels[$issue['field']] ?? $issue['field'],
+                $issue['message']
+            )); ?></li>
+            <?php endforeach; ?>
+        </ul>
+        <?php endforeach; ?>
+    </section>
+    <?php endif; ?>
+
+    <div class="oer-panel-grid">
+        <?php $anchor = $area('alignment'); ?>
+        <?php
+        // El modo lo lleva la sección. Empieza siempre en lectura, también al
+        // recargarse tras confirmar: el re-catalogador repuebla el sidebar entero.
+        ?>
+        <section class="oer-area oer-area-alignment" data-mode="read">
+            <h4><?php echo $escape($translate(PanelAreas::LABELS['alignment'])); ?></h4>
+            <div class="oer-anchor-read">
+                <?php if (PanelAreas::STATE_EMPTY === $anchor['state']): ?>
+                <p class="oer-drawer-empty">
+                    <?php echo $escape($translate(PanelAreas::ALIGNMENT_EMPTY_TEXT)); ?>
+                </p>
+                <?php else: ?>
+                <?php foreach ($anchor['alignment']['groups'] as $group): ?>
+                <div class="oer-align-group">
+                    <p class="oer-align-course"><?php echo $escape($group['subjects']
+                        ? sprintf('%s · %s', $group['courseTitle'], implode(', ', $group['subjects']))
+                        : $group['courseTitle']); ?></p>
+                    <?php foreach (['lrmi:teaches' => 'teaches', 'lrmi:assesses' => 'assesses'] as $term => $key): ?>
+                    <p class="oer-align-line"><?php echo $escape(sprintf(
+                        '%s: %s',
+                        $termLabels[$term],
+                        $group[$key] ? implode(' · ', $group[$key]) : '—'
+                    )); ?></p>
+                    <?php endforeach; ?>
+                </div>
+                <?php endforeach; ?>
+                <?php if ($anchor['alignment']['axes']): ?>
+                <p class="oer-align-axes"><?php echo $escape(sprintf(
+                    '%s: %s',
+                    $termLabels['dcterms:relation'],
+                    implode(' · ', $anchor['alignment']['axes'])
+                )); ?></p>
+                <?php endif; ?>
+                <?php if ($anchor['alignment']['orphans']): ?>
+                <div class="oer-align-orphans">
+                    <h5><?php echo $escape($translate('Sin encajar')); ?></h5>
+                    <?php foreach ($anchor['alignment']['orphans'] as $orphan): ?>
+                    <p class="oer-align-orphan"><?php
+                        $label = $termLabels[$orphan['term']] ?? $orphan['term'];
+                        $reason = $orphanReasons[$orphan['reason']] ?? null;
+                        echo $escape($reason
+                            ? sprintf('%s: %s (%s)', $label, $orphan['title'], $reason)
+                            : sprintf('%s: %s', $label, $orphan['title']));
+                    ?></p>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
+                <?php endif; ?>
+            </div>
+            <div class="oer-anchor-slot"></div>
+            <div class="oer-anchor-bar"></div>
+        </section>
+
+        <div class="oer-panel-side">
+            <?php $media = $area('media'); ?>
+            <section class="oer-area oer-area-media">
+                <h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4>
+                <?php if (PanelAreas::STATE_EMPTY === $media['state']): ?>
+                <?php // Un REA sin ningún medio no es un recurso: aviso, no dato. ?>
+                <p class="oer-media-none"><?php echo $escape($translate(PanelAreas::MEDIA_EMPTY_TEXT)); ?></p>
+                <?php else: ?>
+                <ul class="oer-media-list">
+                    <?php foreach ($media['media'] as $one): ?>
+                    <li>
+                        <span class="oer-media-name"><?php echo $escape($one['title']); ?></span>
+                        <span class="oer-media-meta"><?php echo $escape(sprintf(
+                            '%s · %d KB',
+                            $one['type'],
+                            (int) round($one['size'] / 1024)
+                        )); ?></span>
+                        <?php if ($one['url']): ?>
+                        <a class="oer-media-open" href="<?php echo $escape($one['url']); ?>"
+                           target="_blank" rel="noopener"><?php echo $escape($translate('Abrir')); ?></a>
+                        <?php endif; ?>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </section>
+
+            <?php $record = $area('record'); ?>
+            <section class="oer-area oer-area-record">
+                <h4><?php echo $escape($translate(PanelAreas::LABELS['record'])); ?></h4>
+                <?php if (PanelAreas::STATE_EMPTY === $record['state']): ?>
+                <p class="oer-drawer-empty"><?php echo $escape($translate('Sin ficha descriptiva.')); ?></p>
+                <?php else: ?>
+                <dl>
+                    <?php foreach ($record['record'] as $term => $text): ?>
+                    <dt><?php echo $escape($termLabels[$term] ?? $term); ?></dt>
+                    <dd><?php echo $escape($text); ?></dd>
+                    <?php endforeach; ?>
+                </dl>
+                <?php endif; ?>
+            </section>
+        </div>
+    </div>
+
+    <?php // Nace plegado y su petición NO se lanza hasta que se despliega (P-6). ?>
+    <section class="oer-area oer-area-history">
+        <details class="oer-history-box" data-item-id="<?php echo (int) $identity['id']; ?>">
+            <summary><?php echo $escape($translate('Historial de curación')); ?></summary>
+            <div class="oer-history-body"></div>
+        </details>
+    </section>
+
+    <?php // La costura que ofrece el core para que otro módulo amplíe el panel. ?>
+    <?php $this->trigger('view.details', ['entity' => $panel]); ?>
+<?php endif; ?>
+</div>

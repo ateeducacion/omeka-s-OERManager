@@ -20,8 +20,10 @@ use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\IntegrityChecker;
+use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
+use OERManager\Service\PanelAreas;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -57,6 +59,7 @@ class IndexController extends AbstractActionController
     private ResourceTypeVocab $resourceTypeVocab;
     private FormElementManager $formElementManager;
     private IntegrityChecker $integrityChecker;
+    private ItemPanelData $itemPanelData;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -72,7 +75,8 @@ class IndexController extends AbstractActionController
         ComputedFilter $computedFilter,
         ResourceTypeVocab $resourceTypeVocab,
         FormElementManager $formElementManager,
-        IntegrityChecker $integrityChecker
+        IntegrityChecker $integrityChecker,
+        ItemPanelData $itemPanelData
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -88,6 +92,7 @@ class IndexController extends AbstractActionController
         $this->resourceTypeVocab = $resourceTypeVocab;
         $this->formElementManager = $formElementManager;
         $this->integrityChecker = $integrityChecker;
+        $this->itemPanelData = $itemPanelData;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -453,42 +458,96 @@ class IndexController extends AbstractActionController
     }
 
     /**
-     * Detalle del drawer que el cliente NO puede calcular ni leer por su cuenta
-     * (rebanada 3a de TASK-028): incidencias de integridad e historial de
-     * curación, en una sola llamada.
+     * Panel de detalle completo (TASK-032): ficha, miniatura, medios, anclaje
+     * agrupado e integridad, en una sola llamada autenticada.
      *
-     * Va por el servidor por obligación, no por comodidad: el valor del evento
-     * se escribe con `is_public => false` (ADR-0015) y el drawer carga el item
-     * con `fetch(apiUrl)` sin autenticar, así que por el JSON-LD no llegaría
-     * nunca. Lo dejó anotado el cierre de TASK-007 como aviso para esta cara de
-     * lectura.
+     * Va por el servidor por obligación, no por comodidad: la miniatura no
+     * viaja en el JSON del item, `o:media` solo trae ids sin nombre ni tipo ni
+     * tamaño, y el drawer cargaba con `fetch(apiUrl)` SIN autenticar — el
+     * primer REA que se pusiera en privado habría dejado de abrir su panel.
+     *
+     * El historial NO viene aquí: es lo caro y nace plegado (drawer-history).
      *
      * Solo lectura: sin CSRF. La comprobación de enlaces va ENCENDIDA —al
-     * contrario que en la tabla— porque aquí es un item a la vez y el detalle
-     * es justo lo que se viene a ver.
+     * contrario que en la tabla— porque aquí es un item a la vez.
      */
     public function drawerDetailsAction()
     {
-        $id = (int) $this->params()->fromQuery('id');
-        if ($id <= 0) {
-            return new JsonModel(['integrity' => null, 'history' => []]);
-        }
+        // HTML y no JSON (ADR-0017 §1): el sidebar del core hace `$.get(url)` y
+        // `.html(data)` sobre `.sidebar-content`, así que es un mecanismo de
+        // HTML servido. `setTerminal(true)` lo saca del layout del admin, igual
+        // que hace `Omeka\Controller\Admin\ItemController::showDetailsAction`.
+        $view = new ViewModel();
+        $view->setTerminal(true);
+        $view->setTemplate('oer-manager/admin/index/drawer-details');
 
-        try {
-            $item = $this->api()->read('items', $id)->getContent();
-        } catch (\Exception $e) {
-            return new JsonModel(['integrity' => null, 'history' => []]);
+        $item = $this->panelItem();
+        if (null === $item) {
+            // El core NO despacha `o:sidebar-content-loaded` si la petición
+            // falla, así que un 500 dejaría el panel mudo. Se responde 200 con
+            // el aviso dentro: el curador ve por qué, y el evento se dispara.
+            return $view->setVariables([
+                'panel' => null,
+                'integrity' => null,
+                'areas' => PanelAreas::build(null, null),
+                'rail' => 'ok',
+            ]);
         }
 
         $result = $this->integrityChecker->check($item, true);
+        $integrity = [
+            'status' => $result->getStatus(),
+            'issues' => $result->getIssues(),
+        ];
+        $panel = $this->itemPanelData->forItem($item);
 
-        return new JsonModel([
-            'integrity' => [
-                'status' => $result->getStatus(),
-                'issues' => $result->getIssues(),
-            ],
-            'history' => $this->recatalogService->history($id),
+        return $view->setVariables([
+            'panel' => $panel,
+            'integrity' => $integrity,
+            'areas' => PanelAreas::build($panel, $integrity),
+            // El riel del canto del sidebar (ADR-0014 §4). Lo escribe el
+            // servidor, que ya conoce el estado: el cliente no tiene que
+            // volver a deducirlo de la fila de la tabla.
+            'rail' => $result->getStatus(),
         ]);
+    }
+
+    /**
+     * Historial de curación, servido aparte y bajo demanda (TASK-032, P-6).
+     *
+     * Es la parte cara del panel —una lectura de API por id referenciado— y
+     * nace plegado, así que no se paga al abrir la fila sino al desplegarlo.
+     */
+    public function drawerHistoryAction()
+    {
+        // La lectura de `panelItem()` ES la comprobación de ACL: `api()->read`
+        // deniega por sí sola a quien no pueda leer el item (visibilidad nativa,
+        // NFR-003), así que no hace falta una comprobación aparte antes.
+        $item = $this->panelItem();
+        if (null === $item) {
+            // I4 (revisión final de rama): «no se pudo leer» (id inválido, ACL,
+            // item borrado) y «se leyó y no hay curaciones» NO pueden compartir
+            // el mismo `[]` — es el mismo principio que ya respeta `integrity`
+            // devolviendo `null` en drawerDetailsAction. Con `[]` aquí, el
+            // cliente pintaba «sin curaciones registradas», que puede ser falso.
+            return new JsonModel(['history' => null]);
+        }
+
+        return new JsonModel(['history' => $this->recatalogService->history((int) $item->id())]);
+    }
+
+    /** Item de la petición, o null si el id no vale o no se puede leer. */
+    private function panelItem()
+    {
+        $id = (int) $this->params()->fromQuery('id');
+        if ($id <= 0) {
+            return null;
+        }
+        try {
+            return $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**

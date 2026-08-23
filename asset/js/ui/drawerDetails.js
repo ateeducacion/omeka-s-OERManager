@@ -1,78 +1,38 @@
 import { DRAWER_RENDERED } from './drawer.js';
-import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../core/integrityModel.js';
-import { historyRows, HISTORY_EMPTY_NOTICE } from '../core/historyModel.js';
+import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
 
 /**
- * Secciones del drawer que el cliente no puede calcular: integridad e historial
- * (rebanada 3a de TASK-028).
+ * Lo que queda del panel en cliente después de TASK-034 (ADR-0017 §1).
  *
- * Se engancha a `oer:drawer-rendered` en vez de estar cableado dentro de
- * drawer.js, igual que el panel del re-catalogador: así el drawer no depende de
- * estas secciones y se pueden mover sin romperlo.
+ * El pintado se fue a `view/oer-manager/admin/index/drawer-details.phtml`: el
+ * sidebar del core inyecta HTML servido, así que el markup vive en PHP y su
+ * copy entra por fin en `make generate-pot`. Aquí sobrevive solo lo que no se
+ * puede servir con el panel:
  *
- * Todo el texto se escribe con textContent: los títulos y los mensajes vienen
- * del catálogo, nunca del código.
+ * 1. **El historial**, que es la parte cara —una lectura de API por id
+ *    referenciado— y nace plegado: su petición no se lanza hasta desplegarlo.
+ * 2. **El hueco de edición del anclaje**, que el partial deja vacío y rellena
+ *    el re-catalogador. Este módulo es dueño del modo (`data-mode`) y le pasa
+ *    el hueco; aquel decide si hay algo que montar.
  */
 
 /**
- * Severidad → encabezado del grupo. El glifo de ADR-0014 regla 3 lo pone el
- * `list-style-type` en CSS, que un lector de pantalla no anuncia; este
- * encabezado es el texto alternativo que le falta.
+ * Evento con el que el panel ofrece su hueco de edición del anclaje. El
+ * re-catalogador se engancha aquí, y no al contenido entero del sidebar, para
+ * que los selectores nazcan DENTRO del área que ya cuenta el anclaje.
+ *
+ * Contrato con `ui/recatalog.js`: este fichero entrega `{ itemId, itemJson,
+ * slot, bar }` y lleva el modo; aquel puebla `slot` y `bar`, y marca su botón
+ * de entrada con `.oer-anchor-edit`, lo único que este fichero le escucha.
  */
-const SEVERITY_LABELS = {
-    error: 'Errores',
-    warning: 'Avisos'
-};
-
-function heading(text, tag = 'h4') {
-    const element = document.createElement(tag);
-    element.textContent = text;
-    return element;
-}
+export const ANCHOR_SLOT = 'oer:anchor-slot';
 
 function note(text, className) {
     const element = document.createElement('p');
     element.className = className;
     element.textContent = text;
     return element;
-}
-
-function renderIntegrity(integrity) {
-    const section = document.createElement('section');
-    section.className = 'oer-drawer-section oer-drawer-integrity';
-    section.appendChild(heading(Omeka.jsTranslate('Integridad')));
-
-    // «No se pudo leer el item» y «se leyó y está impecable» no pueden
-    // compartir pantalla: sin esta rama, un id inválido o un fetch que el ACL
-    // deniega acababan pintando lo mismo que un REA sano.
-    if (!integrityChecked(integrity)) {
-        section.appendChild(note(Omeka.jsTranslate(INTEGRITY_UNKNOWN_TEXT), 'oer-drawer-empty'));
-        return section;
-    }
-
-    const groups = integrityGroups(integrity);
-    if (!groups.length) {
-        section.appendChild(note(Omeka.jsTranslate(INTEGRITY_OK_TEXT), 'oer-drawer-empty'));
-        return section;
-    }
-
-    groups.forEach((group) => {
-        const groupLabel = SEVERITY_LABELS[group.severity] || group.severity;
-        section.appendChild(heading(Omeka.jsTranslate(groupLabel), 'h5'));
-
-        const list = document.createElement('ul');
-        list.className = `oer-integrity-issues oer-integrity-issues-${group.severity}`;
-        group.issues.forEach((issue) => {
-            const item = document.createElement('li');
-            const fieldLabel = TERM_LABELS[issue.field] || issue.field;
-            item.textContent = `${fieldLabel}: ${issue.message}`;
-            list.appendChild(item);
-        });
-        section.appendChild(list);
-    });
-
-    return section;
 }
 
 /**
@@ -125,9 +85,18 @@ function renderChange(change, hasReasons) {
 }
 
 function renderHistory(history) {
+    // Sin encabezado propio: el <summary> del <details> que envuelve esto ya
+    // dice «Historial de curación», y pintarlo dos veces era ruido.
     const section = document.createElement('section');
     section.className = 'oer-drawer-section oer-drawer-history';
-    section.appendChild(heading(Omeka.jsTranslate('Historial de curación')));
+
+    // «No se pudo leer» y «no hay nada» no pueden compartir pantalla: antes
+    // `drawerHistoryAction` mandaba `[]` en los dos casos y el cliente pintaba
+    // el mismo aviso de cobertura para ambos.
+    if (!historyChecked(history)) {
+        section.appendChild(note(Omeka.jsTranslate(HISTORY_UNKNOWN_TEXT), 'oer-drawer-empty'));
+        return section;
+    }
 
     const rows = historyRows(history);
     if (!rows.length) {
@@ -145,10 +114,7 @@ function renderHistory(history) {
         entry.appendChild(header);
 
         // `row.summary` (jerga RDF: «lrmi:teaches +1 −2 (vaciada)») se omite a
-        // propósito: el diff de abajo ya dice lo mismo con etiquetas humanas, y
-        // pintar los dos duplicaba la información. El resumen se queda donde
-        // tiene sentido, en el propio valor RDF (`dcterms:provenance`); sigue
-        // en el contrato del modelo, solo deja de pintarse aquí.
+        // propósito: el diff de abajo ya dice lo mismo con etiquetas humanas.
         row.changes.forEach((change) => entry.appendChild(renderChange(change, row.hasReasons)));
         section.appendChild(entry);
     });
@@ -156,37 +122,83 @@ function renderHistory(history) {
     return section;
 }
 
-export function initDrawerDetails(config) {
-    document.addEventListener(DRAWER_RENDERED, (event) => {
-        const { itemId, content } = event.detail;
-        const url = config.drawerDetailsUrl;
-        if (!url) {
+/**
+ * Engancha el `<details>` que el partial deja plegado y vacío. La petición no
+ * sale hasta el primer despliegue (P-6).
+ */
+function wireHistory(content, historyUrl) {
+    const box = content.querySelector('.oer-history-box');
+    const body = box && box.querySelector('.oer-history-body');
+    if (!box || !body || !historyUrl) {
+        return;
+    }
+
+    const itemId = box.dataset.itemId;
+    let loaded = false;
+    box.addEventListener('toggle', () => {
+        if (!box.open || loaded) {
             return;
         }
-
-        const placeholder = document.createElement('div');
-        placeholder.className = 'oer-drawer-details';
-        placeholder.textContent = Omeka.jsTranslate('Cargando detalle…');
-        content.appendChild(placeholder);
-
-        fetch(`${url}?id=${encodeURIComponent(itemId)}`, { headers: { Accept: 'application/json' } })
+        loaded = true;
+        body.textContent = Omeka.jsTranslate('Cargando historial…');
+        fetch(`${historyUrl}?id=${encodeURIComponent(itemId)}`, { headers: { Accept: 'application/json' } })
             .then((response) => {
-                // Omeka devuelve JSON también en sus errores de API (403 del ACL,
-                // 500...): sin este chequeo, ese cuerpo -sin integrity ni
-                // history- se parseaba igual y acababa en la misma pantalla que
-                // un REA sano. Solo con un cuerpo no-JSON caía al .catch.
                 if (!response.ok) {
-                    throw new Error(`drawer-details respondió ${response.status}`);
+                    throw new Error(`drawer-history respondió ${response.status}`);
                 }
                 return response.json();
             })
-            .then((details) => {
-                placeholder.textContent = '';
-                placeholder.appendChild(renderIntegrity(details.integrity));
-                placeholder.appendChild(renderHistory(details.history));
+            .then((data) => {
+                body.textContent = '';
+                body.appendChild(renderHistory(data.history));
             })
             .catch(() => {
-                placeholder.textContent = Omeka.jsTranslate('No se ha podido cargar el detalle ampliado.');
+                body.textContent = Omeka.jsTranslate('No se ha podido cargar el historial.');
+                loaded = false;
             });
+    });
+}
+
+export function initDrawerDetails(config) {
+    // Entrar en edición es un cambio de composición, así que lo lleva este
+    // fichero; el botón lo pone el re-catalogador, que es quien sabe si el
+    // curador puede tocar el REA. El camino de vuelta NO está aquí: «Cancelar»
+    // repuebla el sidebar desde el re-catalogador, para que salir de la edición
+    // descarte de verdad lo que no se confirmó.
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('.oer-anchor-edit');
+        if (!button) {
+            return;
+        }
+        const section = button.closest('.oer-area-alignment');
+        if (!section) {
+            return;
+        }
+        section.dataset.mode = 'edit';
+        // El foco sigue a la composición: quien llegó al botón con el teclado
+        // se quedaría mirando un botón que acaba de desaparecer.
+        const first = section.querySelector('.oer-term-search');
+        if (first) {
+            first.focus();
+        }
+    });
+
+    document.addEventListener(DRAWER_RENDERED, (event) => {
+        const { itemId, itemJson, content } = event.detail;
+
+        wireHistory(content, config.drawerHistoryUrl);
+
+        // Huecos que deja el partial. Si `drawer-details` no pudo leer el REA,
+        // el partial los pinta igual junto al aviso, así que el re-catalogador
+        // se sigue montando en vez de desaparecer con la lectura.
+        const slot = content.querySelector('.oer-anchor-slot');
+        const bar = content.querySelector('.oer-anchor-bar');
+        if (!slot || !bar) {
+            return;
+        }
+
+        document.dispatchEvent(new CustomEvent(ANCHOR_SLOT, {
+            detail: { itemId, itemJson, slot, bar }
+        }));
     });
 }

@@ -14,6 +14,12 @@ $escape = $this->plugin('escapeHtml');
 /** @var bool $isTruncated */
 /** @var string $csrfToken */
 
+// URL del partial que sirve el panel al sidebar (TASK-034). Se calcula una vez
+// y no por fila: `url()` no es gratis y aquí se repite por cada REA listado.
+$drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details']);
+// Ya no viaja como `data-*` de la tabla: desde TASK-034 la lleva cada
+// disparador con su id, que es lo que el sidebar del core pide y descarga.
+
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
 // TASK-028: única entrada, módulos ES (asset/js/main.js).
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
@@ -119,7 +125,7 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     data-ai-enabled="<?php echo !empty($aiEnabled) ? '1' : '0'; ?>"
     data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>"
     data-recatalog-csrf="<?php echo $escape($recatalogCsrf ?? ''); ?>"
-    data-drawer-details-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'drawer-details'])); ?>">
+    data-drawer-history-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'drawer-history'])); ?>">
     <thead>
         <tr>
             <th class="oer-column-select"><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
@@ -140,7 +146,18 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
                     // como enlace vacío: invisible en cualquier listado (TASK-027 §3).
                     $title = trim((string) $item->displayTitle(''));
                     ?>
-                    <a href="#" class="oer-open-drawer<?php echo '' === $title ? ' oer-title-missing' : ''; ?>" data-item-id="<?php echo $item->id(); ?>">
+                    <?php
+                    // Disparador nativo del sidebar (ADR-0017 §1): el core
+                    // delega en `#content` sobre `a.sidebar-content`, pide la
+                    // URL y la inyecta. El módulo no reimplementa apertura,
+                    // cierre ni estado de carga. Se conserva `oer-open-drawer`
+                    // porque hay CSS y JS colgando de ella. Sin `aria-expanded`:
+                    // esto ya no es un desplegable.
+                    ?>
+                    <a href="#" class="oer-open-drawer sidebar-content<?php echo '' === $title ? ' oer-title-missing' : ''; ?>"
+                       data-item-id="<?php echo $item->id(); ?>"
+                       data-sidebar-selector="#oer-detail-sidebar"
+                       data-sidebar-content-url="<?php echo $escape($drawerDetailsUrl . '?id=' . $item->id()); ?>">
                         <?php echo $escape('' === $title ? $translate('(sin título)') : $title); ?>
                     </a>
                     <ul class="actions">
@@ -163,7 +180,17 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     <?php echo $this->pagination(); ?>
 </div>
 
-<div id="oer-drawer" class="oer-drawer" hidden aria-hidden="true" role="dialog" aria-label="<?php echo $escape($translate('Detalle del REA')); ?>">
-    <button type="button" class="oer-drawer-close" aria-label="<?php echo $escape($translate('Cerrar')); ?>">&times;</button>
-    <div class="oer-drawer-content"></div>
+<?php
+// El `#sidebar` lo declara cada vista en Omeka, no `layout-admin.phtml` (cfr.
+// `omeka/admin/item/browse.phtml`). Por eso el módulo puede darle su propia
+// anchura sin tocar el core ni afectar a ninguna otra pantalla — es lo que
+// sostiene la excepción de ADR-0017 §3. Id propio, no `#sidebar`: así la regla
+// de anchura se acota sin recurrir a `:has()`, y no choca con ningún otro.
+?>
+<div id="oer-detail-sidebar" class="sidebar">
+    <?php echo $this->hyperlink('', '#', [
+        'class' => 'sidebar-close o-icon-close',
+        'title' => $translate('Cerrar el detalle'),
+    ]); ?>
+    <div class="sidebar-content"></div>
 </div>

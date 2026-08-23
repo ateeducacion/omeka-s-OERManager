@@ -515,55 +515,20 @@
 }
 
 /* ==========================================================================
-   Drawer de detalle
+   Ficha y enlace al editor (área «record» del panel de detalle, TASK-032)
    ========================================================================== */
 
-.oer-drawer {
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 28em;
-    max-width: 90vw;
-    background: #fff;
-    border-left: 1px solid var(--oer-rule);
-    box-shadow: -0.2em 0 1.2em rgba(20, 26, 38, 0.16);
-    overflow-y: auto;
-    padding: 1.5em;
-    color: var(--oer-ink);
-    z-index: 1000;
-}
-
-.oer-drawer[hidden] {
-    display: none;
-}
-
-.oer-drawer-close {
-    position: absolute;
-    top: 0.5em;
-    right: 0.5em;
-    font-size: 1.5em;
-    line-height: 1;
-    background: none;
-    border: none;
+/* Las etiquetas de campo iban en versalitas 700, es decir, más marcadas que el
+   «Información» que las agrupa: dentro de la columna, el rótulo del área perdía
+   contra sus propias filas. Aquí bajan a texto de apoyo y el dato de debajo se
+   queda con el peso, que es lo que se viene a leer. */
+.oer-area-record dt {
+    margin-top: 0.75em;
     color: var(--oer-muted);
-    cursor: pointer;
+    font-size: 0.9em;
 }
 
-.oer-drawer-close:hover {
-    color: var(--oer-accent-hover);
-}
-
-.oer-drawer-content dt {
-    margin-top: 1em;
-    color: var(--oer-muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-}
-
-.oer-drawer-content dd {
+.oer-area-record dd {
     margin-left: 0;
 }
 
@@ -600,39 +565,44 @@
     color: var(--oer-accent-hover);
 }
 
-.oer-drawer-media {
-    margin: 0.5em 0;
-}
-
-/* Un REA sin ningún medio no es un recurso (#40442): es un aviso, no un dato
-   más, y sin esta regla se pintaba con el mismo peso que «Medios: 3». */
-.oer-drawer-media-none {
-    color: var(--oer-warn);
-    font-style: italic;
-}
-
 /* ==========================================================================
    Re-catalogador (TASK-004)
    ========================================================================== */
 
+/* Sin filete ni aire propios desde TASK-033: ya no es un bloque al final del
+   <td> que haya que separar del panel, sino el modo de edición del área de
+   anclaje, que pone su propio marco. */
 .oer-recatalog {
-    margin-top: 1.5em;
-    padding-top: 1em;
-    border-top: 1px solid var(--oer-rule);
+    margin: 0;
+}
+
+/* La advertencia de la Etapa, que antes iba metida en su propia etiqueta
+   («Etapa (ayuda, no se guarda)»). Una etiqueta etiqueta; esto explica. */
+.oer-dim-hint {
+    margin: 0 0 0.5em;
+    color: var(--oer-muted);
+    font-size: 0.85em;
 }
 
 .oer-recatalog-dim {
     margin-bottom: 1em;
 }
 
+/* Las etiquetas de dimensión iban en versalitas 700, más marcadas que el
+   «Anclaje curricular» que ahora las encabeza: dentro del área, seis rótulos de
+   campo ganaban al nombre del área. Bajan a texto de apoyo y las versalitas se
+   quedan como lo que son, la marca de un área. */
 .oer-recatalog-dim > label {
     display: block;
     margin-bottom: 0.3em;
     color: var(--oer-muted);
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
+    font-size: 0.9em;
+}
+
+/* Los selectores no se estiran a la anchura de la columna: seis campos de 60em
+   para términos de tres palabras separan la etiqueta de su contenido. */
+.oer-recatalog-dims {
+    max-width: 34em;
 }
 
 /* El selector reutiliza el widget Chosen del admin de Omeka (chosen-container).
@@ -646,10 +616,31 @@
     z-index: 1100;
 }
 
+/* El orden del flujo, no el de construcción: primero la ayuda (IA), luego los
+   dos pasos obligatorios —previsualizar y confirmar—, y «Cancelar» empujado al
+   otro extremo, porque salir no es el siguiente paso de nada. */
 .oer-recatalog-actions {
-    margin-top: 1em;
+    margin-top: 1.25em;
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     gap: 0.5em;
+    max-width: 34em;
+}
+
+/* Los cinco botones se envuelven contra el ancho de los campos en vez de
+   estirarse por la columna: quedan dos renglones que leen como dos grupos —la
+   ayuda arriba, el paso obligatorio abajo—. Empujar «Cancelar» al extremo con
+   `margin-left: auto` lo dejaba solo al otro lado de un hueco de 20em en cuanto
+   la fila se partía, que era peor que tenerlo al lado. */
+
+/* «Confirmar» es lo que el curador viene a pulsar, así que es el único botón
+   del panel con peso. No lleva el acento del anfitrión: ADR-0014 regla 2 lo
+   reserva al estado que reclama acción, y una escritura RDF que el curador ya
+   ha previsualizado no es una alarma. */
+.oer-recatalog-apply:enabled {
+    font-weight: 700;
+    border-color: var(--oer-ink);
 }
 
 .oer-recatalog-diff {
@@ -657,18 +648,19 @@
 }
 
 /* Deshacer (TASK-007) es una salida de emergencia, no una acción del flujo
-   normal: se separa de la banda de acciones y se pinta en secundario para que
-   no compita con «Confirmar», que es lo que el curador viene a pulsar. */
+   normal: se pinta en secundario para que no compita con «Confirmar», que es lo
+   que el curador viene a pulsar. Desde TASK-033 vive en la barra de reposo del
+   área de anclaje —revertir no exige abrir los selectores—, así que ya no
+   necesita filete propio: lo separa el ancho de la barra. */
 .oer-recatalog-undo {
-    margin-top: 1.25em;
-    border-top: 1px solid var(--oer-rule);
-    padding-top: 0.75em;
+    display: inline-block;
 }
 
+/* Sin evento que revertir el hueco existe pero no ocupa: si no, el `gap` de la
+   barra dejaría un vacío detrás de «Re-catalogar» que se lee como un botón que
+   no cargó. */
 .oer-recatalog-undo:empty {
-    border-top: 0;
-    padding-top: 0;
-    margin-top: 0;
+    display: none;
 }
 
 .oer-recatalog-undo-btn {
@@ -987,4 +979,436 @@
     cursor: pointer;
     font-size: 0.9em;
     color: var(--oer-muted);
+}
+
+/* --- Panel de detalle sobre el sidebar nativo (TASK-034, ADR-0017) --- */
+
+/*
+ * ⚠️ `left` y `width` están ACOPLADOS en el core: `.sidebar` abre deslizando
+ * `left` de `100%` a `75%` con `width: 25%`. Ensanchar solo `width` deja el
+ * panel descuadrado, con hueco a la derecha. Por eso el estado abierto se fija
+ * con `right: 0` y no recalculando `left`: la anchura se declara una sola vez y
+ * la transición de deslizamiento del core se conserva intacta.
+ *
+ * La excepción de medida está razonada en ADR-0017 §3: se hereda el mecanismo,
+ * el estilo, la posición y el comportamiento del anfitrión, y se aparta solo
+ * cuánto mide, porque este panel sostiene una comparación y una superficie de
+ * edición, no una lista de metadatos. Como `#sidebar` lo declara cada vista y
+ * no el layout, esto no toca ninguna otra pantalla de Omeka.
+ */
+#oer-detail-sidebar {
+    width: clamp(26rem, 40vw, 44rem);
+}
+
+/* Superponerse obliga a lo que antes hacía el hueco de la compensación: separar
+   el panel de lo que ahora queda debajo. La sombra cae a la izquierda, del lado
+   del riel de estado. */
+#oer-detail-sidebar.active {
+    left: auto;
+    right: 0;
+    box-shadow: -12px 0 28px rgba(43, 50, 64, 0.16);
+}
+
+/*
+ * EL PANEL FLOTA, LA TABLA NO SE ENCOGE. El core compensa la apertura
+ * estrechando `#content` de 81,25% a 56,25%, que es su 25% de sidebar. Con la
+ * anchura de este panel esa resta dejaba la tabla maestra demasiado angosta
+ * para leerse: columnas partidas y celdas de una palabra por línea. Aquí el
+ * panel se superpone y `#content` conserva EXACTAMENTE la anchura que tiene con
+ * el panel cerrado, así que abrir no reflota la tabla ni mueve una sola columna.
+ *
+ * El 81,25% no es un número nuevo: es el que el core da a `div[role=main]`
+ * cuando el sidebar está cerrado (el 18,75% restante es el `header` de
+ * navegación). Se repite porque anular una regla del core exige declarar un
+ * valor, y este es el suyo; `auto` no sirve, `#content` es ítem de un flex y
+ * quedaría dimensionado por su contenido.
+ *
+ * La clase `oer-master-view` la pone drawer.js sobre el <body> al arrancar:
+ * sin ella no hay forma de acotar esta regla a la vista maestra sin `:has()`.
+ */
+body.oer-master-view.sidebar-open #content {
+    width: 81.25%;
+}
+
+/* Misma razón para el pie: el core lo desplaza 25% a la izquierda al abrir
+   (`.sidebar-open footer`). Si el contenido no se mueve, el pie tampoco. */
+body.oer-master-view.sidebar-open footer {
+    margin-right: 0;
+}
+
+/* Por debajo de 640px manda el overlay a pantalla completa del core: ni la
+   anchura propia ni la del contenido tienen sentido ahí. */
+@media screen and (max-width: 640px) {
+    #oer-detail-sidebar,
+    #oer-detail-sidebar.active {
+        width: 100%;
+        right: auto;
+    }
+
+    body.oer-master-view.sidebar-open #content {
+        width: 100%;
+    }
+}
+
+/*
+ * EL RIEL ENCUENTRA SU SITIO (ADR-0014 §4). TASK-033 lo hacía continuar desde
+ * el canto de la fila hasta el canto del área de anclaje; despegado el panel de
+ * la tabla, ese recorrido ya no existe. No se sustituye por otra cosa: se muda.
+ * El sidebar del core ya trae `border-left: 1px solid #dfdfdf`; aquí se engorda
+ * y se tiñe con el estado del REA, así que el panel se anuncia por el borde
+ * antes de que se lea una sola palabra.
+ *
+ * El atributo lo sube drawer.js desde el `data-integrity` que escribe el
+ * partial. Se hace así y no con `:has()` para no colgar de una capacidad del
+ * navegador algo que son dos líneas de JS.
+ *
+ * Mismo mecanismo, misma saturación invertida, mismos tokens: sin coste nuevo.
+ * El `data-integrity` lo escribe el partial —el servidor ya lo sabe—, no el JS.
+ */
+#oer-detail-sidebar[data-integrity="ok"] {
+    border-left: 3px solid var(--oer-rail-ok);
+}
+
+#oer-detail-sidebar[data-integrity="warning"] {
+    border-left: 3px solid var(--oer-rail-warn);
+}
+
+#oer-detail-sidebar[data-integrity="error"] {
+    border-left: 3px solid var(--oer-rail-bad);
+}
+
+/* La fila cuyo panel está abierto se marca: con el detalle despegado de la
+   tabla, saber a qué REA pertenece importa MÁS que cuando era una fila. */
+#oer-master-view-table tr.oer-row-open > td {
+    background: var(--oer-select);
+}
+
+.oer-detail-panel {
+    color: var(--oer-ink);
+    /* El contenedor de las consultas de abajo: lo que decide si Medios e
+       Información caben en dos columnas es el ancho del PANEL, no el de la
+       pantalla. */
+    container-type: inline-size;
+}
+
+/* El título ya no vive aquí: es un `<h3>` suelto del sidebar, con la banda de
+   cabecera que el admin le pone a `.sidebar h3`. Esto es la fila de identidad
+   que va debajo. */
+.oer-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-bottom: 1.25em;
+}
+
+.oer-panel-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25em 0.75em;
+}
+
+.oer-panel-thumb {
+    flex: 0 0 auto;
+    width: 64px;
+    height: 64px;
+    border: 1px solid var(--oer-rule);
+    background: #fff;
+    overflow: hidden;
+}
+
+.oer-panel-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Un REA sin miniatura es un dato, no un fallo de carga: hueco que se lee
+   como ausencia, no icono de imagen rota. */
+.oer-panel-thumb-none {
+    background: repeating-linear-gradient(
+        45deg, var(--oer-surface), var(--oer-surface) 6px, #fff 6px, #fff 12px
+    );
+}
+
+/* El `.sidebar h3` del admin ya trae tamaño, peso y su banda; aquí solo se
+   evita que el `flex` de antes le siga afectando. */
+.oer-panel-title {
+    flex: none;
+}
+
+.oer-panel-visibility {
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+/* Veredicto de integridad (TASK-033). Solo aparece cuando NO hay banda, así que
+   un REA sano deja de gastar una sección del cuerpo en decir que está sano.
+
+   Los dos estados llevan glifo propio y no solo color (ADR-0014 regla 3): la
+   distinción entre «no se pudo comprobar» y «se comprobó y está limpio» es
+   accionable —el primero pide reintentar, el segundo no pide nada— y es
+   exactamente la que la rebanada 3a de TASK-028 pagó caro fundir. El texto ya
+   dice cuál es; el glifo va por ::before, que el lector de pantalla ignora. */
+.oer-panel-verdict {
+    font-size: 0.9em;
+    white-space: nowrap;
+}
+
+.oer-panel-verdict-ok {
+    color: var(--oer-ok);
+}
+
+.oer-panel-verdict-ok::before {
+    content: "\2713";
+    margin-right: 0.3em;
+}
+
+.oer-panel-verdict-unknown {
+    color: var(--oer-warn);
+}
+
+.oer-panel-verdict-unknown::before {
+    content: "\26A0";
+    margin-right: 0.3em;
+}
+
+/* Banda de integridad: el veredicto sube a donde se mira primero, en vez de
+   esperar a media pantalla como una cuarta sección del mismo peso que Medios.
+   Su presencia ya es la forma; el canto y los glifos ⛔/⚠ de las incidencias
+   hacen el resto sin depender del color. */
+.oer-panel-alert {
+    margin-bottom: 1.25em;
+    padding: 0.6em 0.9em;
+    background: #fff;
+    border-left: 3px solid var(--oer-warn);
+}
+
+.oer-panel-alert-error {
+    border-left-color: var(--oer-bad);
+}
+
+.oer-panel-alert > h4 {
+    margin: 0 0 0.35em;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-warn);
+}
+
+.oer-panel-alert-error > h4 {
+    color: var(--oer-bad);
+}
+
+/* Los encabezados por severidad se quedan SOLO para el lector de pantalla. El
+   contador de la banda ya dice «1 error, 2 avisos» y cada incidencia lleva su
+   glifo ⛔/⚠, así que pintarlos sumaba dos renglones y un tercer nivel de
+   encabezado para tres líneas de contenido. Ocultarlos y no borrarlos es lo que
+   pide ADR-0014 regla 3: la severidad gradúa y puede ir por color, siempre que
+   el nombre accesible la enuncie. */
+.oer-panel-alert > h5 {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.oer-panel-alert .oer-integrity-issues {
+    margin: 0;
+}
+
+/*
+ * La rejilla se INVIERTE respecto a TASK-032, y no por capricho: el contenedor
+ * pasó de ancho y bajo a estrecho y alto. El anclaje es lo más ancho que hay
+ * —términos como «Autorregulación del esfuerzo», y seis selectores Chosen en
+ * modo edición—, así que se queda con todo el ancho. Medios e Información son
+ * pares etiqueta/valor cortos: caben en dos columnas y puestos así ahorran la
+ * mitad del recorrido vertical, que es lo que se paga en un panel alto.
+ */
+.oer-panel-grid {
+    display: block;
+}
+
+.oer-panel-side {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5em;
+    margin-top: 1.5em;
+    padding-top: 1.25em;
+    border-top: 1px solid var(--oer-rule);
+}
+
+/* Consulta de CONTENEDOR, no de viewport: lo que decide si las dos columnas
+   caben es cuánto mide el panel. El mismo sidebar puede estar ancho en un
+   monitor y estrecho en un portátil sin que cambie el ancho de pantalla. */
+/* 42rem y no 34: a 36rem las dos columnas dan ~17rem cada una y los nombres de
+   archivo se partían por la mitad de una palabra. Dos columnas solo cuando el
+   panel es de verdad ancho. */
+@container (max-width: 42rem) {
+    .oer-panel-side {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+}
+
+.oer-area {
+    margin-bottom: 1.25em;
+}
+
+.oer-area > h4 {
+    margin: 0 0 0.5em;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-muted);
+}
+
+/* ------------------------------------------------------------------
+   Anclaje curricular: una sola zona para leer el currículo y corregirlo
+   (TASK-033). Antes la lectura estaba arriba y sus cinco selectores al final
+   del <td>, con Integridad e Historial en medio.
+   ------------------------------------------------------------------ */
+
+/* Los dos modos del área. La lectura agrupada y los selectores planos ocupan
+   el mismo sitio y nunca se ven a la vez: la agrupación curso·materia la DERIVA
+   `CurricularGrouping`, pero en RDF el item solo tiene cinco listas planas, así
+   que pintar un selector dentro de cada grupo prometería una escritura por
+   grupo que no existe.
+
+   El modo lo lleva `.oer-area-alignment`; `.oer-detail-panel[data-mode]` es el
+   camino degradado, cuando `drawer-details` no contestó y no hay lectura que
+   sustituir. */
+.oer-area-alignment[data-mode="read"] .oer-recatalog-dims,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-actions,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-diff,
+.oer-area-alignment[data-mode="edit"] .oer-anchor-read,
+.oer-area-alignment[data-mode="edit"] .oer-anchor-bar,
+.oer-detail-panel[data-mode="edit"] .oer-anchor-bar {
+    display: none;
+}
+
+/* Barra de reposo. `:empty` la colapsa: sin permiso de curación —o sin poder
+   leer el REA sin autenticar— no se puebla, y no debe dejar un hueco con aire
+   que se lea como algo que falta. */
+.oer-anchor-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    margin-top: 1em;
+}
+
+.oer-anchor-bar:empty {
+    display: none;
+}
+
+/* «Re-catalogar» es la única acción del panel, así que es el único botón que
+   se pinta como tal. Se deja al botón del admin de Omeka: heredar el chrome es
+   la regla 1, no una renuncia. */
+.oer-anchor-edit {
+    margin: 0;
+}
+
+.oer-align-group {
+    margin-bottom: 0.9em;
+}
+
+.oer-align-course {
+    margin: 0 0 0.15em;
+    font-weight: bold;
+}
+
+.oer-align-line {
+    margin: 0 0 0.15em 1em;
+}
+
+/* Sin sangrar: el eje temático es del REA entero, y con la sangría de las
+   líneas de grupo parecía colgar del último curso de la lista. */
+.oer-align-axes {
+    margin: 0.9em 0 0;
+}
+
+/* «Sin encajar» es accionable, y su forma es el rótulo, no un canto (regla 3):
+   el canto ámbar que llevaba antes rimaba con el riel del área a dos
+   centímetros de distancia, y dos verticales del mismo color en la misma
+   columna se leen como el mismo aviso contado dos veces. */
+.oer-align-orphans {
+    margin-top: 0.9em;
+}
+
+.oer-align-orphans > h5 {
+    margin: 0 0 0.25em;
+    color: var(--oer-warn);
+}
+
+.oer-align-orphan {
+    margin: 0;
+}
+
+.oer-media-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-media-list > li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 0.25em 0;
+    border-bottom: 1px solid var(--oer-rule);
+}
+
+.oer-media-name {
+    flex: 1 1 auto;
+    word-break: break-word;
+}
+
+.oer-media-meta {
+    color: var(--oer-muted);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
+/* Tinta en reposo, acento en interacción. OJO: `a:link,a:visited` del admin
+   tiene especificidad (0,0,1,1) y gana a una clase sola, así que hay que
+   repetir :link/:visited para llegar a (0,0,2,0). Ya mordió una vez. */
+.oer-media-open:link,
+.oer-media-open:visited {
+    color: var(--oer-ink);
+    text-decoration: underline;
+}
+
+.oer-media-open:hover,
+.oer-media-open:focus {
+    color: var(--oer-accent-hover);
+}
+
+/* Un REA sin ningún medio no es un recurso: aviso, no dato. */
+.oer-media-none {
+    color: var(--oer-warn);
+    font-style: italic;
+}
+
+.oer-history-box > summary {
+    cursor: pointer;
+    font-size: 0.8em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--oer-muted);
+}
+
+/* La fila madre de un detalle abierto se marca como el estante que la
+   contiene abrió (ADR-0014 regla 1). El selector del brief usaba
+   `.oer-master-view-table`, pero la tabla real lleva `id="oer-master-view-table"`
+   (ver view/oer-manager/admin/index/index.phtml), no esa clase; el resto de
+   reglas de esta hoja que acotan a la tabla usan el mismo id, así que se seguía
+   esa convención en vez de dejar la regla sin efecto. */
+#oer-master-view-table tr.oer-row-open > td {
+    background: var(--oer-select);
 }

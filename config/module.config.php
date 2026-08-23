@@ -39,7 +39,8 @@ return [
                     // no desde Module. El manager (y no la instancia) porque es
                     // quien invoca `init()` del formulario.
                     $container->get('FormElementManager'),
-                    $container->get(Service\IntegrityChecker::class)
+                    $container->get(Service\IntegrityChecker::class),
+                    $container->get(Service\ItemPanelData::class)
                 );
             },
         ],
@@ -47,6 +48,7 @@ return [
     'service_manager' => [
         'invokables' => [
             Service\IntegrityChecker::class => Service\IntegrityChecker::class,
+            Service\ItemPanelData::class => Service\ItemPanelData::class,
             // Patrón de filtros computados (ADR-0013, D4).
             Service\ComputedFilter::class => Service\ComputedFilter::class,
             // Catalogación IA (TASK-010): núcleo puro sin dependencias.
