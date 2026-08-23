@@ -1000,20 +1000,44 @@
     width: clamp(26rem, 40vw, 44rem);
 }
 
+/* Superponerse obliga a lo que antes hacía el hueco de la compensación: separar
+   el panel de lo que ahora queda debajo. La sombra cae a la izquierda, del lado
+   del riel de estado. */
 #oer-detail-sidebar.active {
     left: auto;
     right: 0;
+    box-shadow: -12px 0 28px rgba(43, 50, 64, 0.16);
 }
 
-/* La compensación del core (`#content` al 56,25%) está calibrada para su 25%.
-   La clase `oer-master-view` la pone drawer.js sobre el <body> al arrancar:
-   sin ella no hay forma de acotar esta regla a la vista maestra sin `:has()`. */
+/*
+ * EL PANEL FLOTA, LA TABLA NO SE ENCOGE. El core compensa la apertura
+ * estrechando `#content` de 81,25% a 56,25%, que es su 25% de sidebar. Con la
+ * anchura de este panel esa resta dejaba la tabla maestra demasiado angosta
+ * para leerse: columnas partidas y celdas de una palabra por línea. Aquí el
+ * panel se superpone y `#content` conserva EXACTAMENTE la anchura que tiene con
+ * el panel cerrado, así que abrir no reflota la tabla ni mueve una sola columna.
+ *
+ * El 81,25% no es un número nuevo: es el que el core da a `div[role=main]`
+ * cuando el sidebar está cerrado (el 18,75% restante es el `header` de
+ * navegación). Se repite porque anular una regla del core exige declarar un
+ * valor, y este es el suyo; `auto` no sirve, `#content` es ítem de un flex y
+ * quedaría dimensionado por su contenido.
+ *
+ * La clase `oer-master-view` la pone drawer.js sobre el <body> al arrancar:
+ * sin ella no hay forma de acotar esta regla a la vista maestra sin `:has()`.
+ */
 body.oer-master-view.sidebar-open #content {
-    width: calc(100% - clamp(26rem, 40vw, 44rem) - 2rem);
+    width: 81.25%;
+}
+
+/* Misma razón para el pie: el core lo desplaza 25% a la izquierda al abrir
+   (`.sidebar-open footer`). Si el contenido no se mueve, el pie tampoco. */
+body.oer-master-view.sidebar-open footer {
+    margin-right: 0;
 }
 
 /* Por debajo de 640px manda el overlay a pantalla completa del core: ni la
-   anchura propia ni la compensación tienen sentido ahí. */
+   anchura propia ni la del contenido tienen sentido ahí. */
 @media screen and (max-width: 640px) {
     #oer-detail-sidebar,
     #oer-detail-sidebar.active {
