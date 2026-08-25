@@ -82,21 +82,25 @@ export function buildDimensionSelector(term, label, itemJson, isHelper, valueTex
     return $dim;
 }
 
-/** Primer término elegido en una dimensión del panel (id), o 0. */
-export function firstChipId($panel, term) {
-    const $chip = $panel.find(`.oer-recatalog-dim[data-term="${term}"] .chosen-choices .search-choice`).first();
-    return $chip.length ? $chip.data('id') : 0;
-}
-
 /**
  * Contexto de ancestros para acotar la búsqueda de una dimensión hija
  * (ADR-0009): etapa (ayuda), curso (educationalLevel) y asignatura (about).
+ *
+ * Los CUATRO términos curriculares tienen cardinalidad múltiple (regla de
+ * negocio fijada en PEND-007): un REA con 1º de Primaria y 2º de Bachillerato
+ * a la vez es un caso real, no un error de captura. Enviar solo el PRIMER
+ * chip de cada dimensión —lo que hacía esta función hasta ahora— dejaba la
+ * búsqueda de Materia acotada al primer curso y ciega a los demás: con esos
+ * dos cursos, «mat» solo ofrecía Matemáticas de Primaria, nunca Matemáticas
+ * II de Bachillerato. El servidor (`CurriculumSearch::searchDimension`)
+ * combina los resultados de todos los ids que lleguen aquí.
  */
 export function getContext($panel) {
+    const ids = chipIdsByTerm($panel);
     return {
-        etapa: firstChipId($panel, 'etapa'),
-        level: firstChipId($panel, 'lrmi:educationalLevel'),
-        about: firstChipId($panel, 'schema:about')
+        etapa: ids['etapa'] || [],
+        level: ids['lrmi:educationalLevel'] || [],
+        about: ids['schema:about'] || []
     };
 }
 
