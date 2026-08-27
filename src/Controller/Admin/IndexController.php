@@ -315,6 +315,9 @@ class IndexController extends AbstractActionController
     {
         $dimension = (string) $this->params()->fromQuery('dimension', '');
         $text = (string) $this->params()->fromQuery('q', '');
+        // Cardinalidad múltiple (PEND-007): cada ancestro puede llegar como
+        // escalar o como lista (`etapa[]=1&etapa[]=2`); CurriculumSearch la
+        // normaliza, aquí se pasa tal cual.
         $context = [
             'etapa' => $this->params()->fromQuery('etapa'),
             'level' => $this->params()->fromQuery('level'),

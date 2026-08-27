@@ -99,7 +99,7 @@ class CurriculumSearch
      * Términos de una dimensión curricular, acotados por su dcterms:type y por
      * el ancestro ya elegido (contexto), si lo hay (RF-014, NFR-004).
      *
-     * @param array<string,int|string> $context ids de ancestros: etapa, level (curso), about (asignatura)
+     * @param array<string,mixed> $context ids de ancestros (escalar o lista): etapa, level (curso), about (asignatura)
      * @return array<int,array{id:int,title:string,description:string,block:string,parentId:int,parentTitle:string}>
      */
     public function searchDimension(
@@ -132,19 +132,44 @@ class CurriculumSearch
             'page' => 1,
             'per_page' => $limit,
         ];
-        $contextFilter = $this->contextFilter($dimension, $context);
-        if (null !== $contextFilter) {
-            $query['property'][] = [
-                'property' => $contextFilter[0],
-                'type' => 'res',
-                'text' => (string) $contextFilter[1],
-            ];
-        }
         $this->addTitleFilter($query, $text);
-        return $this->mapResults(
-            $this->api->search('items', $query)->getContent(),
-            self::PARENT_TERMS[$dimension] ?? null
+
+        $contextFilter = $this->contextFilter($dimension, $context);
+        if (null === $contextFilter) {
+            return $this->mapResults(
+                $this->api->search('items', $query)->getContent(),
+                self::PARENT_TERMS[$dimension] ?? null
+            );
+        }
+
+        // Cardinalidad múltiple es regla de negocio (PEND-007): un REA puede
+        // llevar más de un Curso, y entonces Materia debe acotar por TODOS,
+        // no por el primero. `res` solo compara igualdad contra UN id, y
+        // encadenar varias filas 'res' con joiner 'or' no sirve:
+        // `buildPropertyQuery` concatena el WHERE como texto plano sin
+        // paréntesis entre filas, así que "tipo AND ctx1 OR ctx2" se lee
+        // "(tipo AND ctx1) OR ctx2" y no "tipo AND (ctx1 OR ctx2)" — perdería
+        // el filtro de tipo para el segundo ancestro en adelante. Se lanza una
+        // consulta por ancestro (acotada igual que antes) y se combinan aquí.
+        [$propertyTerm, $ancestorIds] = $contextFilter;
+        $merged = [];
+        foreach ($ancestorIds as $ancestorId) {
+            $scoped = $query;
+            $scoped['property'][] = [
+                'property' => $propertyTerm,
+                'type' => 'res',
+                'text' => (string) $ancestorId,
+            ];
+            foreach ($this->api->search('items', $scoped)->getContent() as $item) {
+                $merged[(int) $item->id()] = $item;
+            }
+        }
+        usort(
+            $merged,
+            static fn ($a, $b): int => strnatcasecmp((string) $a->displayTitle(), (string) $b->displayTitle())
         );
+
+        return $this->mapResults(array_slice($merged, 0, $limit), self::PARENT_TERMS[$dimension] ?? null);
     }
 
     /**
@@ -273,39 +298,62 @@ class CurriculumSearch
     }
 
     /**
-     * Filtro de pertenencia al ancestro elegido (ADR-0009 §3-5). Devuelve
-     * [property_term, ancestorId] o null si no hay contexto aplicable.
+     * Ids de ancestro positivos y sin duplicados a partir de un valor de
+     * contexto crudo, que puede llegar escalar (una sola selección) o lista
+     * (varias): la query HTTP los entrega tal cual el cliente los mandó, sin
+     * normalizar. Pura y sin dependencias del core: se prueba en el host.
      *
-     * @param array<string,int|string> $context
-     * @return array{0:string,1:int}|null
+     * @param mixed $value
+     * @return list<int>
+     */
+    public static function normalizeContextIds($value): array
+    {
+        $ids = [];
+        foreach ((array) $value as $raw) {
+            $id = (int) $raw;
+            if ($id > 0 && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+        return $ids;
+    }
+
+    /**
+     * Filtro de pertenencia a los ancestros elegidos (ADR-0009 §3-5). Devuelve
+     * [property_term, list<int> $ancestorIds] o null si no hay contexto
+     * aplicable. Cardinalidad múltiple (PEND-007): puede haber más de un id
+     * por dimensión de ancestro.
+     *
+     * @param array<string,mixed> $context
+     * @return array{0:string,1:list<int>}|null
      */
     private function contextFilter(string $dimension, array $context): ?array
     {
-        $etapa = (int) ($context['etapa'] ?? 0);
-        $curso = (int) ($context['level'] ?? 0);
-        $asignatura = (int) ($context['about'] ?? 0);
+        $etapaIds = self::normalizeContextIds($context['etapa'] ?? null);
+        $cursoIds = self::normalizeContextIds($context['level'] ?? null);
+        $asignaturaIds = self::normalizeContextIds($context['about'] ?? null);
 
         switch ($dimension) {
             case 'lrmi:educationalLevel': // Curso → por Etapa
-                if ($etapa > 0) {
-                    return [self::IN_TERMSET_TERM, $etapa];
+                if ($etapaIds) {
+                    return [self::IN_TERMSET_TERM, $etapaIds];
                 }
                 break;
             case 'schema:about': // Asignatura → por Curso
-                if ($curso > 0) {
-                    return ['lrmi:educationalLevel', $curso];
+                if ($cursoIds) {
+                    return ['lrmi:educationalLevel', $cursoIds];
                 }
                 break;
             case 'lrmi:teaches': // Saber → por Asignatura, fallback Curso/Etapa
             case 'lrmi:assesses': // Criterio → ídem
-                if ($asignatura > 0) {
-                    return [self::IN_TERMSET_TERM, $asignatura];
+                if ($asignaturaIds) {
+                    return [self::IN_TERMSET_TERM, $asignaturaIds];
                 }
-                if ($curso > 0) {
-                    return ['lrmi:educationalAlignment', $curso];
+                if ($cursoIds) {
+                    return ['lrmi:educationalAlignment', $cursoIds];
                 }
-                if ($etapa > 0) {
-                    return ['dcterms:isPartOf', $etapa];
+                if ($etapaIds) {
+                    return ['dcterms:isPartOf', $etapaIds];
                 }
                 break;
         }
