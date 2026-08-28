@@ -1,0 +1,88 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var list<string> $dimensions
+ * @var array<string, list<array{label:string,count:int}>> $counts
+ * @var array{ok:int,warning:int,error:int,total:int,okPercent:float} $completeness
+ * @var bool $truncated
+ * @var array $statsData
+ */
+
+$this->htmlElement('body')->appendAttribute('class', 'oer-stats');
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-stats.css', 'OERManager'));
+$this->headScript()->appendFile($this->assetUrl('js/statsMain.js', 'OERManager'), 'module');
+
+$dimensionLabels = [
+    'etapa' => $this->translate('Etapa'),
+    'materia' => $this->translate('Materia'),
+    'eje' => $this->translate('Eje temático'),
+    'proyecto' => $this->translate('Proyecto'),
+    'licencia' => $this->translate('Licencia'),
+];
+?>
+
+<?php echo $this->pageTitle($this->translate('Estadísticas')); ?>
+
+<?php if ($truncated): ?>
+<div class="messages">
+    <ul class="warning">
+        <li><?php echo $this->translate('El catálogo supera el tope de agregación: las estadísticas se calculan sobre los primeros REA hasta el tope.'); ?></li>
+    </ul>
+</div>
+<?php endif; ?>
+
+<script id="oer-stats-data" type="application/json"><?php echo json_encode($statsData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?></script>
+
+<section class="oer-stats-section">
+    <h2><?php echo $this->translate('Conteo por dimensión'); ?></h2>
+    <div class="oer-stats-grid">
+        <?php foreach ($dimensions as $dimension): ?>
+        <div class="oer-stats-card">
+            <h3><?php echo $dimensionLabels[$dimension]; ?></h3>
+            <div data-oer-stats-chart="<?php echo $this->escapeHtmlAttr($dimension); ?>"></div>
+            <a href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export'], ['query' => ['dimension' => $dimension]]); ?>">
+                <?php echo $this->translate('Exportar CSV'); ?>
+            </a>
+        </div>
+        <?php endforeach; ?>
+    </div>
+</section>
+
+<section class="oer-stats-section">
+    <h2><?php echo $this->translate('Cruce de 2 dimensiones'); ?></h2>
+    <label for="oer-stats-cross-a"><?php echo $this->translate('Dimensión A'); ?></label>
+    <select id="oer-stats-cross-a">
+        <?php foreach ($dimensions as $dimension): ?>
+        <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'materia' === $dimension ? 'selected' : ''; ?>>
+            <?php echo $dimensionLabels[$dimension]; ?>
+        </option>
+        <?php endforeach; ?>
+    </select>
+    <label for="oer-stats-cross-b"><?php echo $this->translate('Dimensión B'); ?></label>
+    <select id="oer-stats-cross-b">
+        <?php foreach ($dimensions as $dimension): ?>
+        <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'etapa' === $dimension ? 'selected' : ''; ?>>
+            <?php echo $dimensionLabels[$dimension]; ?>
+        </option>
+        <?php endforeach; ?>
+    </select>
+    <a id="oer-stats-cross-export" href="#"><?php echo $this->translate('Exportar CSV'); ?></a>
+    <div data-oer-stats-chart="cross"></div>
+</section>
+
+<section class="oer-stats-section">
+    <h2><?php echo $this->translate('Completitud'); ?></h2>
+    <p>
+        <?php echo sprintf(
+            $this->translate('%s%% de los REA sin incidencias de integridad (%d de %d).'),
+            $completeness['okPercent'],
+            $completeness['ok'],
+            $completeness['total']
+        ); ?>
+    </p>
+    <div data-oer-stats-chart="completeness"></div>
+    <a href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export'], ['query' => ['type' => 'completeness']]); ?>">
+        <?php echo $this->translate('Exportar CSV'); ?>
+    </a>
+</section>
