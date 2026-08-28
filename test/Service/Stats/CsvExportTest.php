@@ -34,4 +34,39 @@ final class CsvExportTest extends TestCase
         $this->assertStringContainsString('"uno, dos"', $csv);
         $this->assertStringContainsString('"con ""comillas"""', $csv);
     }
+
+    public function testSanitizaFormulaInyeccionConIgual(): void
+    {
+        $csv = (new CsvExport())->toCsv(['titulo'], [['=cmd|\'test\'']]);
+        $this->assertStringContainsString("'=cmd|", $csv);
+    }
+
+    public function testSanitizaFormulaInyeccionConMas(): void
+    {
+        $csv = (new CsvExport())->toCsv(['formula'], [['+1+1']]);
+        $this->assertStringContainsString("'+1+1", $csv);
+    }
+
+    public function testSanitizaFormulaInyeccionConArroba(): void
+    {
+        $csv = (new CsvExport())->toCsv(['referencia'], [['@SUM(A1:A10)']]);
+        $this->assertStringContainsString("'@SUM", $csv);
+    }
+
+    public function testNormalValoresNoSanitizados(): void
+    {
+        $csv = (new CsvExport())->toCsv(['materia', 'conteo'], [
+            ['Matemáticas', 3],
+            ['Lengua', 1],
+        ]);
+        $this->assertStringContainsString('Matemáticas', $csv);
+        $this->assertStringNotContainsString("'Matemáticas", $csv);
+    }
+
+    public function testNumerosSinSanitizacion(): void
+    {
+        $csv = (new CsvExport())->toCsv(['numero'], [[42]]);
+        $lines = preg_split('/\r\n|\n/', trim($csv));
+        $this->assertSame('42', $lines[1]);
+    }
 }
