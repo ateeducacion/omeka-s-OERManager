@@ -93,6 +93,80 @@ class StatsController extends AbstractActionController
         return $view;
     }
 
+    public function exportAction()
+    {
+        $type = (string) $this->params()->fromQuery('type', '');
+        $snapshot = $this->catalogSnapshot->fetch();
+        $facts = $this->dimensionFacts->extract($snapshot['items']);
+
+        if ('completeness' === $type) {
+            $statuses = [];
+            foreach ($snapshot['items'] as $item) {
+                $statuses[] = $this->integrityChecker->check($item, false)->getStatus();
+            }
+            $result = $this->completenessAggregator->aggregate($statuses);
+            $csv = $this->csvExport->toCsv(['estado', 'conteo'], [
+                ['ok', $result['ok']],
+                ['warning', $result['warning']],
+                ['error', $result['error']],
+            ]);
+            return $this->csvResponse($csv, 'oer-completitud.csv');
+        }
+
+        $dimension1 = (string) $this->params()->fromQuery('dimension1', '');
+        $dimension2 = (string) $this->params()->fromQuery('dimension2', '');
+
+        if ('' !== $dimension1 && '' !== $dimension2) {
+            if (!in_array($dimension1, self::DIMENSIONS, true) || !in_array($dimension2, self::DIMENSIONS, true)) {
+                return $this->unknownDimensionResponse();
+            }
+            $titles = $this->resolveTitles($facts);
+            $table = $this->relabelCrossTable(
+                $this->dimensionCrosser->cross($facts, $dimension1, $dimension2),
+                $dimension1,
+                $dimension2,
+                $titles
+            );
+            $rows = [];
+            foreach ($table as $labelA => $bCounts) {
+                foreach ($bCounts as $labelB => $count) {
+                    $rows[] = [$labelA, $labelB, $count];
+                }
+            }
+            $csv = $this->csvExport->toCsv([$dimension1, $dimension2, 'conteo'], $rows);
+            return $this->csvResponse($csv, "oer-cruce-{$dimension1}-{$dimension2}.csv");
+        }
+
+        $dimension = (string) $this->params()->fromQuery('dimension', '');
+        if (!in_array($dimension, self::DIMENSIONS, true)) {
+            return $this->unknownDimensionResponse();
+        }
+        $titles = $this->resolveTitles($facts);
+        $counts = $this->relabelCounts($this->dimensionCounter->count($facts, $dimension), $dimension, $titles);
+        $rows = [];
+        foreach ($counts as $row) {
+            $rows[] = [$row['label'], $row['count']];
+        }
+        $csv = $this->csvExport->toCsv([$dimension, 'conteo'], $rows);
+        return $this->csvResponse($csv, "oer-{$dimension}.csv");
+    }
+
+    private function csvResponse(string $csv, string $filename): \Laminas\Http\Response
+    {
+        $response = $this->getResponse();
+        $response->setContent($csv);
+        $headers = $response->getHeaders();
+        $headers->addHeaderLine('Content-Type', 'text/csv; charset=utf-8');
+        $headers->addHeaderLine('Content-Disposition', 'attachment; filename="' . $filename . '"');
+        return $response;
+    }
+
+    private function unknownDimensionResponse(): \Laminas\View\Model\JsonModel
+    {
+        $this->getResponse()->setStatusCode(404);
+        return new \Laminas\View\Model\JsonModel(['error' => 'unknown_dimension']);
+    }
+
     /** @return list<array{0:string,1:string}> Los 10 pares únicos entre las 5 dimensiones. */
     private function dimensionPairs(): array
     {
