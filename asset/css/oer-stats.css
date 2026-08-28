@@ -1,0 +1,50 @@
+/* asset/css/oer-stats.css — reusa los tokens de :root definidos en oer-master-view.css */
+
+.oer-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+}
+
+.oer-stats-card {
+    border: 1px solid var(--oer-rule);
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+.oer-stats-section {
+    margin-bottom: 2rem;
+}
+
+.oer-stats-label,
+.oer-stats-count {
+    font-size: 0.8rem;
+    fill: var(--oer-ink);
+}
+
+.oer-stats-bar {
+    fill: var(--oer-accent);
+}
+
+.oer-stats-ok {
+    fill: var(--oer-ok);
+}
+
+.oer-stats-warning {
+    fill: var(--oer-warn);
+}
+
+.oer-stats-error {
+    fill: var(--oer-bad);
+}
+
+.oer-stats-cross {
+    border-collapse: collapse;
+}
+
+.oer-stats-cross th,
+.oer-stats-cross td {
+    border: 1px solid var(--oer-rule);
+    padding: 0.25rem 0.5rem;
+    text-align: center;
+}
