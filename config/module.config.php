@@ -55,10 +55,20 @@ return [
             Service\Ai\PromptBuilder::class => Service\Ai\PromptBuilder::class,
             Service\Ai\ResponseParser::class => Service\Ai\ResponseParser::class,
             Service\Ai\EvaluationScorer::class => Service\Ai\EvaluationScorer::class,
+            // Estadísticas (TASK-006): agregadores puros sin dependencias.
+            Service\Stats\DimensionFacts::class => Service\Stats\DimensionFacts::class,
+            Service\Stats\DimensionCounter::class => Service\Stats\DimensionCounter::class,
+            Service\Stats\DimensionCrosser::class => Service\Stats\DimensionCrosser::class,
+            Service\Stats\CompletenessAggregator::class => Service\Stats\CompletenessAggregator::class,
+            Service\Stats\CsvExport::class => Service\Stats\CsvExport::class,
         ],
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // Estadísticas (TASK-006): catálogo completo vía ApiManager.
+            Service\Stats\CatalogSnapshot::class => function ($container) {
+                return new Service\Stats\CatalogSnapshot($container->get('Omeka\ApiManager'));
             },
             // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
             // CustomVocab: no se declara en module.ini; si no está, degrada.
