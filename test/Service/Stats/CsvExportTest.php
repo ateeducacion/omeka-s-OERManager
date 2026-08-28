@@ -53,6 +53,24 @@ final class CsvExportTest extends TestCase
         $this->assertStringContainsString("'@SUM", $csv);
     }
 
+    public function testSanitizaFormulaInyeccionConGuion(): void
+    {
+        $csv = (new CsvExport())->toCsv(['formula'], [['-1+1']]);
+        $this->assertStringContainsString("'-1+1", $csv);
+    }
+
+    public function testSanitizaFormulaInyeccionConTabuladorInicial(): void
+    {
+        $csv = (new CsvExport())->toCsv(['titulo'], [["\tSUM(A1)"]]);
+        $this->assertStringContainsString("'\tSUM(A1)", $csv);
+    }
+
+    public function testSanitizaFormulaInyeccionConRetornoDeCarroInicial(): void
+    {
+        $csv = (new CsvExport())->toCsv(['titulo'], [["\rSUM(A1)"]]);
+        $this->assertStringContainsString("'\rSUM(A1)", $csv);
+    }
+
     public function testNormalValoresNoSanitizados(): void
     {
         $csv = (new CsvExport())->toCsv(['materia', 'conteo'], [

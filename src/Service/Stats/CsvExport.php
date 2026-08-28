@@ -23,10 +23,10 @@ final class CsvExport
     {
         $handle = fopen('php://temp', 'r+');
         $sanitizedHeaders = array_map([$this, 'sanitizeCell'], $headers);
-        fputcsv($handle, $sanitizedHeaders, ',', '"', '\\');
+        fputcsv($handle, $sanitizedHeaders, ',', '"', '');
         foreach ($rows as $row) {
             $sanitizedRow = array_map([$this, 'sanitizeCell'], $row);
-            fputcsv($handle, $sanitizedRow, ',', '"', '\\');
+            fputcsv($handle, $sanitizedRow, ',', '"', '');
         }
         rewind($handle);
         $csv = (string) stream_get_contents($handle);
