@@ -2,7 +2,6 @@
 /**
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var list<string> $dimensions
- * @var array<string, list<array{label:string,count:int}>> $counts
  * @var array{ok:int,warning:int,error:int,total:int,okPercent:float} $completeness
  * @var bool $truncated
  * @var array $statsData
@@ -67,7 +66,7 @@ $dimensionLabels = [
         </option>
         <?php endforeach; ?>
     </select>
-    <a id="oer-stats-cross-export" href="#"><?php echo $this->translate('Exportar CSV'); ?></a>
+    <a id="oer-stats-cross-export" href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export']); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
     <div data-oer-stats-chart="cross"></div>
 </section>
 

@@ -6,6 +6,7 @@ namespace OERManager\Controller\Admin;
 
 use Laminas\Mvc\Controller\AbstractActionController;
 use Laminas\View\Model\ViewModel;
+use OERManager\Service\ComputedFilter;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\Stats\CatalogSnapshot;
 use OERManager\Service\Stats\CompletenessAggregator;
@@ -24,6 +25,15 @@ class StatsController extends AbstractActionController
 {
     /** Las 5 dimensiones de ADR-0004, en el orden en que se pintan. */
     private const DIMENSIONS = ['etapa', 'materia', 'eje', 'proyecto', 'licencia'];
+
+    /** Etiquetas humanas por dimensión, mismas cadenas que usa la vista (index.phtml). */
+    private const DIMENSION_LABELS = [
+        'etapa' => 'Etapa', // @translate
+        'materia' => 'Materia', // @translate
+        'eje' => 'Eje temático', // @translate
+        'proyecto' => 'Proyecto', // @translate
+        'licencia' => 'Licencia', // @translate
+    ];
 
     private CatalogSnapshot $catalogSnapshot;
     private DimensionFacts $dimensionFacts;
@@ -77,16 +87,11 @@ class StatsController extends AbstractActionController
             $cross["$dimB/$dimA"] = $this->transpose($labeled);
         }
 
-        $statuses = [];
-        foreach ($snapshot['items'] as $item) {
-            $statuses[] = $this->integrityChecker->check($item, false)->getStatus();
-        }
-        $completeness = $this->completenessAggregator->aggregate($statuses);
+        $completeness = $this->completenessAggregator->aggregate($this->statusesFor($snapshot['items']));
 
         $view = new ViewModel();
         $view->setTemplate('oer-manager/admin/stats/index');
         $view->setVariable('dimensions', self::DIMENSIONS);
-        $view->setVariable('counts', $counts);
         $view->setVariable('completeness', $completeness);
         $view->setVariable('truncated', $snapshot['truncated']);
         $view->setVariable('statsData', ['counts' => $counts, 'cross' => $cross, 'completeness' => $completeness]);
@@ -97,27 +102,33 @@ class StatsController extends AbstractActionController
     {
         $type = (string) $this->params()->fromQuery('type', '');
         $snapshot = $this->catalogSnapshot->fetch();
-        $facts = $this->dimensionFacts->extract($snapshot['items']);
 
         if ('completeness' === $type) {
-            $statuses = [];
-            foreach ($snapshot['items'] as $item) {
-                $statuses[] = $this->integrityChecker->check($item, false)->getStatus();
-            }
-            $result = $this->completenessAggregator->aggregate($statuses);
-            $csv = $this->csvExport->toCsv(['estado', 'conteo'], [
+            $result = $this->completenessAggregator->aggregate($this->statusesFor($snapshot['items']));
+            $rows = [
                 ['ok', $result['ok']],
                 ['warning', $result['warning']],
                 ['error', $result['error']],
-            ]);
+            ];
+            if ($snapshot['truncated']) {
+                $rows[] = $this->truncationNoteRow();
+            }
+            $csv = $this->csvExport->toCsv(['estado', 'conteo'], $rows);
             return $this->csvResponse($csv, 'oer-completitud.csv');
         }
+
+        // El resto de ramas (cruce y simple) sí necesitan los hechos por dimensión.
+        $facts = $this->dimensionFacts->extract($snapshot['items']);
 
         $dimension1 = (string) $this->params()->fromQuery('dimension1', '');
         $dimension2 = (string) $this->params()->fromQuery('dimension2', '');
 
         if ('' !== $dimension1 && '' !== $dimension2) {
-            if (!in_array($dimension1, self::DIMENSIONS, true) || !in_array($dimension2, self::DIMENSIONS, true)) {
+            if (
+                !in_array($dimension1, self::DIMENSIONS, true)
+                || !in_array($dimension2, self::DIMENSIONS, true)
+                || $dimension1 === $dimension2
+            ) {
                 return $this->unknownDimensionResponse();
             }
             $titles = $this->resolveTitles($facts);
@@ -133,7 +144,13 @@ class StatsController extends AbstractActionController
                     $rows[] = [$labelA, $labelB, $count];
                 }
             }
-            $csv = $this->csvExport->toCsv([$dimension1, $dimension2, 'conteo'], $rows);
+            if ($snapshot['truncated']) {
+                $rows[] = $this->truncationNoteRow();
+            }
+            $csv = $this->csvExport->toCsv(
+                [self::DIMENSION_LABELS[$dimension1], self::DIMENSION_LABELS[$dimension2], 'conteo'],
+                $rows
+            );
             return $this->csvResponse($csv, "oer-cruce-{$dimension1}-{$dimension2}.csv");
         }
 
@@ -147,8 +164,36 @@ class StatsController extends AbstractActionController
         foreach ($counts as $row) {
             $rows[] = [$row['label'], $row['count']];
         }
-        $csv = $this->csvExport->toCsv([$dimension, 'conteo'], $rows);
+        if ($snapshot['truncated']) {
+            $rows[] = $this->truncationNoteRow();
+        }
+        $csv = $this->csvExport->toCsv([self::DIMENSION_LABELS[$dimension], 'conteo'], $rows);
         return $this->csvResponse($csv, "oer-{$dimension}.csv");
+    }
+
+    /**
+     * @param \Omeka\Api\Representation\ItemRepresentation[] $items
+     * @return list<string> El status (ok/warning/error) de cada item (RF-006).
+     */
+    private function statusesFor(array $items): array
+    {
+        $statuses = [];
+        foreach ($items as $item) {
+            $statuses[] = $this->integrityChecker->check($item, false)->getStatus();
+        }
+        return $statuses;
+    }
+
+    /**
+     * Fila extra que avisa de la acotación del catálogo (ADR-0013: nunca
+     * mentir en silencio sobre un total) cuando el CSV exportado se calculó
+     * sobre un catálogo truncado por ComputedFilter::HARD_CAP.
+     *
+     * @return list<string>
+     */
+    private function truncationNoteRow(): array
+    {
+        return ['# NOTA', 'Resultado acotado a los primeros ' . ComputedFilter::HARD_CAP . ' REA del catálogo'];
     }
 
     private function csvResponse(string $csv, string $filename): \Laminas\Http\Response

@@ -16,6 +16,7 @@
 
 require '/var/www/html/bootstrap.php';
 
+use OERManager\Controller\Admin\StatsController;
 use OERManager\Service\Stats\CatalogSnapshot;
 use OERManager\Service\Stats\CompletenessAggregator;
 use OERManager\Service\Stats\DimensionCounter;
@@ -76,6 +77,28 @@ echo "  INFO completitud: {$result['okPercent']}% ok ({$result['ok']}/{$result['
 
 $distinctIds = $facts->distinctResourceIds($extracted);
 check('distinctResourceIds() no repite ids', count($distinctIds) === count(array_unique($distinctIds)));
+
+// StatsController (finding #4 de la revisión final de TASK-006): hasta ahora
+// nada resolvía el controlador real, así que la factory de 8 argumentos en
+// module.config.php, resolveTitles(), relabelCounts()/relabelCrossTable()/
+// transpose() y el cableado de ruta/ACL no tenían verificación automatizada.
+$controller = $services->get('ControllerManager')->get(StatsController::class);
+$view = $controller->indexAction();
+$statsData = $view->getVariable('statsData');
+check('indexAction() resuelve y devuelve statsData', null !== $statsData);
+check(
+    'statsData trae los 20 pares de cruce (10 combinaciones × 2 órdenes)',
+    20 === count($statsData['cross'] ?? [])
+);
+check(
+    'statsData trae completitud con los 4 campos',
+    isset(
+        $statsData['completeness']['ok'],
+        $statsData['completeness']['warning'],
+        $statsData['completeness']['error'],
+        $statsData['completeness']['total']
+    )
+);
 
 echo "\n$passed OK, $failed FAIL\n";
 exit($failed > 0 ? 1 : 0);

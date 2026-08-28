@@ -2,7 +2,14 @@ import { renderBarChart, renderCrossTable, renderCompletenessBar } from './stats
 
 function readStatsData() {
     const el = document.getElementById('oer-stats-data');
-    return el ? JSON.parse(el.textContent) : null;
+    if (!el) {
+        return null;
+    }
+    try {
+        return JSON.parse(el.textContent);
+    } catch (error) {
+        return null;
+    }
 }
 
 function paintCounts(data) {
@@ -30,7 +37,19 @@ function wireCross(data) {
         return;
     }
 
+    function syncDisabledOptions(source, other) {
+        for (const option of other.options) {
+            option.disabled = option.value === source.value;
+        }
+    }
+
+    function syncBothDisabledOptions() {
+        syncDisabledOptions(selectA, selectB);
+        syncDisabledOptions(selectB, selectA);
+    }
+
     function paint() {
+        syncBothDisabledOptions();
         const key = `${selectA.value}/${selectB.value}`;
         const table = data.cross[key];
         if (table) {

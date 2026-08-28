@@ -30,8 +30,16 @@ final class CatalogSnapshot
     /** @return array{items: \Omeka\Api\Representation\ItemRepresentation[], truncated: bool} */
     public function fetch(): array
     {
+        $classId = $this->resolveLearningResourceClassId();
+        if (null === $classId) {
+            // Sin esta guarda, el adaptador de Omeka trata un filtro null como
+            // "sin filtro" y devolvería TODO el catálogo sin acotar a
+            // lrmi:LearningResource — silenciosamente incorrecto.
+            return ['items' => [], 'truncated' => false];
+        }
+
         $response = $this->api->search('items', [
-            'resource_class_id' => $this->resolveLearningResourceClassId(),
+            'resource_class_id' => $classId,
             'page' => 1,
             'per_page' => ComputedFilter::HARD_CAP,
         ]);
