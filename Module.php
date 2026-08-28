@@ -106,6 +106,14 @@ class Module extends AbstractModule implements InitProviderInterface
             [Controller\Admin\IndexController::class],
             ['config']
         );
+
+        // Estadísticas: mismo nivel que la curación (spec TASK-006 §2.1). Datos
+        // agregados de solo lectura, no gobernanza sensible como `config`.
+        $acl->allow(
+            ['editor', 'site_admin'],
+            [Controller\Admin\StatsController::class],
+            ['index', 'export']
+        );
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)

@@ -43,6 +43,18 @@ return [
                     $container->get(Service\ItemPanelData::class)
                 );
             },
+            Controller\Admin\StatsController::class => function ($container) {
+                return new Controller\Admin\StatsController(
+                    $container->get(Service\Stats\CatalogSnapshot::class),
+                    $container->get(Service\Stats\DimensionFacts::class),
+                    $container->get(Service\Stats\DimensionCounter::class),
+                    $container->get(Service\Stats\DimensionCrosser::class),
+                    $container->get(Service\Stats\CompletenessAggregator::class),
+                    $container->get(Service\Stats\CsvExport::class),
+                    $container->get(Service\IntegrityChecker::class),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
         ],
     ],
     'service_manager' => [
@@ -284,6 +296,21 @@ return [
                         ],
                         'may_terminate' => true,
                     ],
+                    'oer-manager-stats' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/stats[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\StatsController::class,
+                                'action' => 'index',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
                 ],
             ],
         ],
@@ -306,6 +333,12 @@ return [
                         'action' => 'config',
                         'resource' => Controller\Admin\IndexController::class,
                         'privilege' => 'config',
+                    ],
+                    [
+                        'label' => 'Estadísticas', // @translate
+                        'route' => 'admin/oer-manager-stats',
+                        'resource' => Controller\Admin\StatsController::class,
+                        'privilege' => 'index',
                     ],
                 ],
             ],
