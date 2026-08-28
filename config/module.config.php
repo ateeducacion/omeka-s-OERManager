@@ -43,6 +43,18 @@ return [
                     $container->get(Service\ItemPanelData::class)
                 );
             },
+            Controller\Admin\StatsController::class => function ($container) {
+                return new Controller\Admin\StatsController(
+                    $container->get(Service\Stats\CatalogSnapshot::class),
+                    $container->get(Service\Stats\DimensionFacts::class),
+                    $container->get(Service\Stats\DimensionCounter::class),
+                    $container->get(Service\Stats\DimensionCrosser::class),
+                    $container->get(Service\Stats\CompletenessAggregator::class),
+                    $container->get(Service\Stats\CsvExport::class),
+                    $container->get(Service\IntegrityChecker::class),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
         ],
     ],
     'service_manager' => [
@@ -55,10 +67,20 @@ return [
             Service\Ai\PromptBuilder::class => Service\Ai\PromptBuilder::class,
             Service\Ai\ResponseParser::class => Service\Ai\ResponseParser::class,
             Service\Ai\EvaluationScorer::class => Service\Ai\EvaluationScorer::class,
+            // Estadísticas (TASK-006): agregadores puros sin dependencias.
+            Service\Stats\DimensionFacts::class => Service\Stats\DimensionFacts::class,
+            Service\Stats\DimensionCounter::class => Service\Stats\DimensionCounter::class,
+            Service\Stats\DimensionCrosser::class => Service\Stats\DimensionCrosser::class,
+            Service\Stats\CompletenessAggregator::class => Service\Stats\CompletenessAggregator::class,
+            Service\Stats\CsvExport::class => Service\Stats\CsvExport::class,
         ],
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // Estadísticas (TASK-006): catálogo completo vía ApiManager.
+            Service\Stats\CatalogSnapshot::class => function ($container) {
+                return new Service\Stats\CatalogSnapshot($container->get('Omeka\ApiManager'));
             },
             // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
             // CustomVocab: no se declara en module.ini; si no está, degrada.
@@ -274,6 +296,21 @@ return [
                         ],
                         'may_terminate' => true,
                     ],
+                    'oer-manager-stats' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/stats[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\StatsController::class,
+                                'action' => 'index',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
                 ],
             ],
         ],
@@ -296,6 +333,12 @@ return [
                         'action' => 'config',
                         'resource' => Controller\Admin\IndexController::class,
                         'privilege' => 'config',
+                    ],
+                    [
+                        'label' => 'Estadísticas', // @translate
+                        'route' => 'admin/oer-manager-stats',
+                        'resource' => Controller\Admin\StatsController::class,
+                        'privilege' => 'index',
                     ],
                 ],
             ],
