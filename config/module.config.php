@@ -109,6 +109,9 @@ return [
                     $container->get('Omeka\Settings')
                 );
             },
+            Service\Workflow\WorkflowService::class => function ($container) {
+                return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
+            },
 
             // --- Catalogación IA-assistida (TASK-010, 4b) ---
             // Transporte HTTP del LLM (envuelve Laminas\Http\Client; sin SSRF).
