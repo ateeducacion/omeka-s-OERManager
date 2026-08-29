@@ -211,13 +211,17 @@ final class WorkflowService
         return '' === $status ? null : $status;
     }
 
-    /** @return array{updated:bool, status?:string, error?:string} */
+    /**
+     * @return array{updated:bool, status?:string, error?:string}
+     */
     public function propose(ItemRepresentation $item): array
     {
         if (!WorkflowStatus::canPropose($this->statusOf($item))) {
             return ['updated' => false, 'error' => 'invalid_transition'];
         }
-        return $this->writeStatus((int) $item->id(), WorkflowStatus::PROPOSED, null);
+        // '' (no null): SIEMPRE limpia curation:note, para que el motivo de
+        // un rechazo previo no sobreviva a una nueva propuesta (spec §4).
+        return $this->writeStatus((int) $item->id(), WorkflowStatus::PROPOSED, '');
     }
 
     /** @return array{updated:bool, status?:string, error?:string} */
@@ -322,21 +326,7 @@ final class WorkflowService
 }
 ```
 
-Nota para quien implemente: `propose()` llama a `writeStatus($id, PROPOSED, null)` — el `null` de `$note` significa "no tocar `curation:note`". Esto es correcto para el primer `propose()` (nunca hubo nota), pero cuando el autor **reproponene tras un rechazo**, la nota vieja debe desaparecer (spec §4: *"borra `curation:note` si venía de un rechazo previo"*). Antes de dar este Task por bueno, cambia la llamada dentro de `propose()` a `writeStatus((int) $item->id(), WorkflowStatus::PROPOSED, '')` (cadena vacía, no `null`) para que SIEMPRE limpie la nota al proponer — deja `null` como el valor que solo usaría un caso que no existe en este diseño. Verifica que `writeStatus('')` limpia (`$data[NOTE_TERM] = []`) tal como está escrito arriba.
-
-- [ ] **Step 2: Aplicar la corrección de `propose()` señalada arriba**
-
-```php
-    public function propose(ItemRepresentation $item): array
-    {
-        if (!WorkflowStatus::canPropose($this->statusOf($item))) {
-            return ['updated' => false, 'error' => 'invalid_transition'];
-        }
-        return $this->writeStatus((int) $item->id(), WorkflowStatus::PROPOSED, '');
-    }
-```
-
-- [ ] **Step 3: Registrar el servicio en `config/module.config.php`**
+- [ ] **Step 2: Registrar el servicio en `config/module.config.php`**
 
 Dentro de `'service_manager' => ['factories' => [` (junto a `Service\RecatalogService::class`):
 
@@ -346,12 +336,12 @@ Service\Workflow\WorkflowService::class => function ($container) {
 },
 ```
 
-- [ ] **Step 4: `make lint`**
+- [ ] **Step 3: `make lint`**
 
 Run: `make lint`
 Expected: sin violaciones PSR-12
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/Service/Workflow/WorkflowService.php config/module.config.php
