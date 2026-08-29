@@ -75,8 +75,11 @@ class Module extends AbstractModule implements InitProviderInterface
         $acl = $this->getServiceLocator()->get('Omeka\Acl');
 
         // Curación: vista maestra, re-catalogador, propuesta IA y visibilidad.
+        // RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto a los roles
+        // que ya curaban — es el rol nativo que hace de curador de REA en el
+        // flujo autor→curador. No sustituye a editor/site_admin.
         $acl->allow(
-            ['editor', 'site_admin'],
+            ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\IndexController::class],
             [
                 'index',
@@ -93,7 +96,20 @@ class Module extends AbstractModule implements InitProviderInterface
                 'ai-propose-status',
                 'ai-propose-cancel',
                 'ai-evaluate',
+                'reject-proposal',
+                'publish-proposal',
             ]
+        );
+
+        // Proponer (RF-016): abierto también a `author`, a diferencia del
+        // resto de acciones de curación. El controlador solo es la puerta de
+        // entrada — quién puede tocar CADA item lo decide el permiso nativo
+        // de edición dentro de WorkflowService::propose() (OwnsEntityAssertion
+        // para author, view-all para el resto), no este ACL.
+        $acl->allow(
+            ['author', 'editor', 'site_admin', 'reviewer'],
+            [Controller\Admin\IndexController::class],
+            ['propose']
         );
 
         // Configuración: solo Supervisor (site_admin) y superior, decisión del
@@ -109,8 +125,9 @@ class Module extends AbstractModule implements InitProviderInterface
 
         // Estadísticas: mismo nivel que la curación (spec TASK-006 §2.1). Datos
         // agregados de solo lectura, no gobernanza sensible como `config`.
+        // RF-016: `reviewer` se añade por el mismo motivo que arriba.
         $acl->allow(
-            ['editor', 'site_admin'],
+            ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\StatsController::class],
             ['index', 'export']
         );
