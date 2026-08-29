@@ -229,7 +229,20 @@ final class WorkflowService
         return $this->writeStatus((int) $item->id(), WorkflowStatus::REJECTED, trim($reason));
     }
 
-    /** @return array{updated:bool, status?:string, error?:string} */
+    /**
+     * ⚠️ TRAMPA CRÍTICA (skill `recatalogador`, incidente 2026-06-25):
+     * `$api->update(..., ['isPartial' => true])` con **valores** de propiedades
+     * NO es por-propiedad — `ValueHydrator` recorre la colección PLANA de
+     * TODOS los valores del item y borra los no reutilizados. Pasar solo
+     * `curation:status`/`curation:note` en `$data` sin más borraría título,
+     * descripción, alineamiento curricular y todo lo demás. Patrón correcto
+     * (el mismo que ya usa `RecatalogService`): limpiar SOLO las properties
+     * que se tocan vía `clear_property_values` y anexar con
+     * `'collectionAction' => 'append'`, para que Omeka no reutilice/borre el
+     * resto de la colección.
+     *
+     * @return array{updated:bool, status?:string, error?:string}
+     */
     public function publish(ItemRepresentation $item): array
     {
         if (!WorkflowStatus::canPublish($this->statusOf($item))) {
@@ -242,23 +255,29 @@ final class WorkflowService
             // item a medias (mismo criterio que RecatalogService::eventValue()).
             return ['updated' => false, 'error' => 'missing_property'];
         }
+        $clear = [$statusPropertyId];
         $data = [
             'o:is_public' => true,
             WorkflowStatus::STATUS_TERM => [],
         ];
         $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
         if (null !== $notePropertyId) {
+            $clear[] = $notePropertyId;
             $data[WorkflowStatus::NOTE_TERM] = [];
         }
-        $this->api->update('items', $itemId, $data, [], ['isPartial' => true]);
+        $data['clear_property_values'] = $clear;
+        $this->api->update('items', $itemId, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
         return ['updated' => true];
     }
 
     /**
-     * @param string|null $note null = no tocar `curation:note` (propose no la
-     *   escribe); '' = limpiarla (propose SÍ debe limpiar un motivo de un
-     *   rechazo previo, así que propose() pasa null aquí — ver más abajo,
-     *   se limpia solo en reject() con el motivo nuevo).
+     * Mismo patrón `clear_property_values` + `collectionAction=append` que
+     * `publish()` — ver el aviso de arriba. Sin esto, cada propose/reject
+     * borraría el resto de las properties del item.
+     *
+     * @param string|null $note null = no tocar `curation:note` (no usado hoy:
+     *   propose() SIEMPRE pasa '' para limpiar un motivo de un rechazo
+     *   previo); '' = limpiarla.
      */
     private function writeStatus(int $itemId, string $status, ?string $note): array
     {
@@ -266,16 +285,19 @@ final class WorkflowService
         if (null === $statusPropertyId) {
             return ['updated' => false, 'error' => 'missing_property'];
         }
+        $clear = [$statusPropertyId];
         $data = [
             WorkflowStatus::STATUS_TERM => [$this->literal($statusPropertyId, $status)],
         ];
         if (null !== $note) {
             $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
             if (null !== $notePropertyId) {
+                $clear[] = $notePropertyId;
                 $data[WorkflowStatus::NOTE_TERM] = '' === $note ? [] : [$this->literal($notePropertyId, $note)];
             }
         }
-        $this->api->update('items', $itemId, $data, [], ['isPartial' => true]);
+        $data['clear_property_values'] = $clear;
+        $this->api->update('items', $itemId, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
         return ['updated' => true, 'status' => $status];
     }
 
@@ -948,14 +970,23 @@ $result = $workflow->publish($item);
 check('publish() sobre un item ya publicado (sin estado) da updated=false', false === ($result['updated'] ?? true));
 
 // Restaurar el item a su estado original.
+//
+// ⚠️ MISMA TRAMPA que WorkflowService (skill `recatalogador`, incidente
+// 2026-06-25): un update con valores sin `clear_property_values` +
+// `collectionAction=append` borraría TODO lo demás del item (título,
+// descripción, alineamiento...), no solo el estado. Este arnés existe para
+// verificar de forma segura — restaurar de forma insegura sería peor que no
+// restaurar.
+$statusPropertyId = $api->search('properties', ['term' => WorkflowStatus::STATUS_TERM])->getContent()[0]->id();
 $api->update('items', $itemId, [
     'o:is_public' => $originalIsPublic,
     WorkflowStatus::STATUS_TERM => $originalStatus ? [[
         'type' => 'literal',
-        'property_id' => $api->search('properties', ['term' => WorkflowStatus::STATUS_TERM])->getContent()[0]->id(),
+        'property_id' => $statusPropertyId,
         '@value' => $originalStatus,
     ]] : [],
-], [], ['isPartial' => true]);
+    'clear_property_values' => [$statusPropertyId],
+], [], ['isPartial' => true, 'collectionAction' => 'append']);
 echo "Item #$itemId restaurado a su estado original (is_public=" . ($originalIsPublic ? '1' : '0') . ").\n";
 
 echo "\n$passed OK, $failed FAIL\n";
