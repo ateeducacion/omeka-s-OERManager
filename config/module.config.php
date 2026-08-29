@@ -40,7 +40,8 @@ return [
                     // quien invoca `init()` del formulario.
                     $container->get('FormElementManager'),
                     $container->get(Service\IntegrityChecker::class),
-                    $container->get(Service\ItemPanelData::class)
+                    $container->get(Service\ItemPanelData::class),
+                    $container->get(Service\Workflow\WorkflowService::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {

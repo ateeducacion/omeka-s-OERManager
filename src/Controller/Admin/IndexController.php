@@ -26,6 +26,7 @@ use OERManager\Service\MasterViewQuery;
 use OERManager\Service\PanelAreas;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
+use OERManager\Service\Workflow\WorkflowService;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Job\Dispatcher;
 use Omeka\Permissions\Exception\PermissionDeniedException;
@@ -60,6 +61,7 @@ class IndexController extends AbstractActionController
     private FormElementManager $formElementManager;
     private IntegrityChecker $integrityChecker;
     private ItemPanelData $itemPanelData;
+    private WorkflowService $workflowService;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -76,7 +78,8 @@ class IndexController extends AbstractActionController
         ResourceTypeVocab $resourceTypeVocab,
         FormElementManager $formElementManager,
         IntegrityChecker $integrityChecker,
-        ItemPanelData $itemPanelData
+        ItemPanelData $itemPanelData,
+        WorkflowService $workflowService
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -93,6 +96,7 @@ class IndexController extends AbstractActionController
         $this->formElementManager = $formElementManager;
         $this->integrityChecker = $integrityChecker;
         $this->itemPanelData = $itemPanelData;
+        $this->workflowService = $workflowService;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -885,5 +889,99 @@ class IndexController extends AbstractActionController
             }
         }
         return $out;
+    }
+
+    /**
+     * Un autor propone un REA (o lo re-propone tras un rechazo) para revisión
+     * (RF-016). No hay privilegio ACL propio para decidir quién: se apoya en
+     * el permiso nativo de edición del item — `$api->update()` deniega por sí
+     * mismo a quien no pueda editarlo (autor sobre lo suyo, curador+ sobre
+     * cualquiera), igual que ya hace `setVisibilityAction`.
+     */
+    public function proposeAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+        $id = (int) $this->params()->fromPost('id');
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['updated' => false, 'error' => 'not_found']);
+        }
+        try {
+            $result = $this->workflowService->propose($item);
+        } catch (PermissionDeniedException $e) {
+            return new JsonModel(['updated' => false, 'error' => 'denied']);
+        }
+        return new JsonModel($result);
+    }
+
+    /**
+     * Un curador rechaza un REA propuesto, con motivo (RF-016). Acción de
+     * curación: ACL restringida a `editor`/`reviewer`/`site_admin`
+     * (`Module::onBootstrap`), a diferencia de `proposeAction`.
+     */
+    public function rejectProposalAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+        $id = (int) $this->params()->fromPost('id');
+        $reason = (string) $this->params()->fromPost('reason', '');
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['updated' => false, 'error' => 'not_found']);
+        }
+        try {
+            $result = $this->workflowService->reject($item, $reason);
+        } catch (PermissionDeniedException $e) {
+            return new JsonModel(['updated' => false, 'error' => 'denied']);
+        }
+        return new JsonModel($result);
+    }
+
+    /**
+     * Un curador publica un REA propuesto (RF-016). Gate: IntegrityChecker
+     * debe dar `ok` estricto (ni error ni warning, ADR-0018 §4) — igual
+     * criterio que el drawer, `checkLinks=true`, porque es una acción de un
+     * solo item, no un browse. Acción de curación: ACL restringida igual que
+     * `rejectProposalAction`.
+     */
+    public function publishProposalAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+        $id = (int) $this->params()->fromPost('id');
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return new JsonModel(['updated' => false, 'error' => 'not_found']);
+        }
+        $integrity = $this->integrityChecker->check($item, true);
+        if (!$integrity->isOk()) {
+            return new JsonModel([
+                'updated' => false,
+                'error' => 'integrity',
+                'issues' => $integrity->getIssues(),
+            ]);
+        }
+        try {
+            $result = $this->workflowService->publish($item);
+        } catch (PermissionDeniedException $e) {
+            return new JsonModel(['updated' => false, 'error' => 'denied']);
+        }
+        return new JsonModel($result);
     }
 }
