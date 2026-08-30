@@ -21,14 +21,36 @@ $escape = $this->plugin('escapeHtml');
 </form>
 <?php endif; ?>
 <?php if ($canReject): ?>
-<form method="post" action="<?php echo $escape($rejectUrl); ?>" class="oer-workflow-form oer-workflow-reject">
+<?php /*
+ * Fila única, horizontal, en `style` inline (revisión final RF-016, hallazgo
+ * 2): esto se inyecta dentro de `#page-actions`, que el core renderiza con
+ * `position:fixed; height:48px` (verificado contra
+ * application/asset/css/style.css) — un <label>+<textarea>+<button> en bloque
+ * desborda esa barra. Se descarta a propósito mover el hook a otro evento o
+ * añadir una hoja CSS nueva (fuera de alcance de este hallazgo); el input de
+ * una sola línea + `required` cierra a la vez el hallazgo 3 (motivo
+ * obligatorio).
+ */ ?>
+<form
+    method="post"
+    action="<?php echo $escape($rejectUrl); ?>"
+    class="oer-workflow-form oer-workflow-reject"
+    style="display:inline-flex;align-items:center;gap:4px;margin:0;vertical-align:top;"
+>
     <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
     <input type="hidden" name="id" value="<?php echo $itemId; ?>">
-    <label for="oer-workflow-reject-reason-<?php echo $itemId; ?>">
-        <?php echo $translate('Motivo del rechazo'); ?>
-    </label>
-    <textarea id="oer-workflow-reject-reason-<?php echo $itemId; ?>" name="reason" rows="2"></textarea>
-    <button type="submit" class="button"><?php echo $translate('Rechazar propuesta'); ?></button>
+    <input
+        type="text"
+        name="reason"
+        required
+        maxlength="200"
+        placeholder="<?php echo $escape($translate('Motivo del rechazo')); ?>"
+        aria-label="<?php echo $escape($translate('Motivo del rechazo')); ?>"
+        style="height:24px;min-height:0;padding:2px 6px;width:14em;box-sizing:border-box;"
+    >
+    <button type="submit" class="button" style="height:24px;min-height:0;padding:2px 8px;line-height:1;">
+        <?php echo $translate('Rechazar propuesta'); ?>
+    </button>
 </form>
 <?php endif; ?>
 <?php if ($canPublish): ?>
