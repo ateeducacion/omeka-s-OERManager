@@ -204,6 +204,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'axis' => 'Eje temático', // @translate
         'resource_type' => 'Tipo de recurso', // @translate
         'licence' => 'Licencia', // @translate
+        'proposed' => 'Propuesta', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -217,6 +218,7 @@ class Module extends AbstractModule implements InitProviderInterface
             'partial' => 'Parcial', // @translate
             'none' => 'Sin alinear', // @translate
         ],
+        'proposed' => ['1' => 'Sí'], // @translate
     ];
 
     /**

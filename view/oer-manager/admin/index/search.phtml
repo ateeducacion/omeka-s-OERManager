@@ -153,6 +153,19 @@ $curricular = [
     ?>
     <div class="field">
         <div class="field-meta">
+            <span class="label"><?php echo $translate('Flujo de propuesta'); ?></span>
+        </div>
+        <div class="inputs">
+            <label class="oer-checkbox">
+                <input type="checkbox" name="proposed" value="1"
+                    <?php echo !empty($query['proposed']) ? 'checked' : ''; ?>>
+                <?php echo $translate('Solo propuestos'); ?>
+            </label>
+        </div>
+    </div>
+
+    <div class="field">
+        <div class="field-meta">
             <span class="label"><?php echo $translate('Gobernanza'); ?></span>
         </div>
         <div class="inputs">
