@@ -180,6 +180,14 @@ class Module extends AbstractModule implements InitProviderInterface
             'view.search.filters',
             [$this, 'addSearchFilters']
         );
+        // Botón de propuesta/rechazo/publicación en la página nativa del item
+        // (RF-016, ADR-0018). Hook verificado contra el core real: dispara
+        // dentro de #page-actions, junto al botón "Edit item" nativo.
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Item',
+            'view.show.page_actions',
+            [$this, 'addWorkflowActions']
+        );
     }
 
     /**
@@ -285,6 +293,61 @@ class Module extends AbstractModule implements InitProviderInterface
         }
 
         $event->setParam('filters', $filters);
+    }
+
+    /**
+     * Botón de propuesta/rechazo/publicación (RF-016). Solo se pinta para
+     * items `lrmi:LearningResource` — el flujo no aplica a nada más.
+     * `view.show.page_actions` no captura el retorno del listener (ver la
+     * nota de Task 5 del plan): hay que hacer `echo` directamente.
+     */
+    public function addWorkflowActions(Event $event): void
+    {
+        $item = $event->getParam('resource');
+        if (!$item instanceof ItemRepresentation) {
+            return;
+        }
+        $resourceClass = $item->resourceClass();
+        if (!$resourceClass || Service\MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM !== $resourceClass->term()) {
+            return;
+        }
+
+        $services = $this->getServiceLocator();
+        /** @var Service\Workflow\WorkflowService $workflowService */
+        $workflowService = $services->get(Service\Workflow\WorkflowService::class);
+        $status = $workflowService->statusOf($item);
+
+        /** @var \Omeka\Permissions\Acl $acl */
+        $acl = $services->get('Omeka\Acl');
+        $isCurator = $acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
+        $canEditItem = $item->userIsAllowed('update');
+
+        $canPropose = $canEditItem && !$isCurator && Service\Workflow\WorkflowStatus::canPropose($status);
+        $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
+        $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
+
+        if (!$canPropose && !$canReject && !$canPublish) {
+            return;
+        }
+
+        $csrf = new \Laminas\Validator\Csrf([
+            'name' => Controller\Admin\IndexController::CSRF_NAME,
+            'salt' => Controller\Admin\IndexController::CSRF_SALT,
+            'timeout' => 3600,
+        ]);
+
+        /** @var \Laminas\View\Renderer\PhpRenderer $view */
+        $view = $event->getTarget();
+        echo $view->partial('oer-manager/common/workflow-actions', [
+            'itemId' => (int) $item->id(),
+            'csrf' => $csrf->getHash(),
+            'canPropose' => $canPropose,
+            'canReject' => $canReject,
+            'canPublish' => $canPublish,
+            'proposeUrl' => $view->url('admin/oer-manager', ['action' => 'propose']),
+            'rejectUrl' => $view->url('admin/oer-manager', ['action' => 'reject-proposal']),
+            'publishUrl' => $view->url('admin/oer-manager', ['action' => 'publish-proposal']),
+        ]);
     }
 
     /**

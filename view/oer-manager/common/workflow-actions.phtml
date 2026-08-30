@@ -1,0 +1,40 @@
+<?php
+/**
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var int $itemId
+ * @var string $csrf
+ * @var bool $canPropose
+ * @var bool $canReject
+ * @var bool $canPublish
+ * @var string $proposeUrl
+ * @var string $rejectUrl
+ * @var string $publishUrl
+ */
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+?>
+<?php if ($canPropose): ?>
+<form method="post" action="<?php echo $escape($proposeUrl); ?>" class="oer-workflow-form">
+    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
+    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
+    <button type="submit" class="button"><?php echo $translate('Proponer para revisión'); ?></button>
+</form>
+<?php endif; ?>
+<?php if ($canReject): ?>
+<form method="post" action="<?php echo $escape($rejectUrl); ?>" class="oer-workflow-form oer-workflow-reject">
+    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
+    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
+    <label for="oer-workflow-reject-reason-<?php echo $itemId; ?>">
+        <?php echo $translate('Motivo del rechazo'); ?>
+    </label>
+    <textarea id="oer-workflow-reject-reason-<?php echo $itemId; ?>" name="reason" rows="2"></textarea>
+    <button type="submit" class="button"><?php echo $translate('Rechazar propuesta'); ?></button>
+</form>
+<?php endif; ?>
+<?php if ($canPublish): ?>
+<form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form">
+    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
+    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
+    <button type="submit" class="button"><?php echo $translate('Publicar propuesta'); ?></button>
+</form>
+<?php endif; ?>
