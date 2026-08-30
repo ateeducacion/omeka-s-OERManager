@@ -60,7 +60,7 @@ Borrador ──(autor: «Proponer para revisión»)──► Propuesto
 
 Al pulsar: `$api->update('items', $id, [...], [], ['isPartial' => true])` escribe `curation:status = "Propuesto"` (y borra `curation:note` si venía de un rechazo previo — el motivo viejo no debe sobrevivir a la corrección). CSRF igual que el resto de acciones de escritura del módulo.
 
-El autor ve el estado de sus propuestas en la propia página nativa del item (el valor de `curation:status` es una property más, visible con el resto). No necesita entrar en el panel del módulo — su ACL sigue sin acceso a `/admin/oer-manager*`, eso no cambia.
+El autor ve el estado de sus propuestas en la propia página nativa del item (el valor de `curation:status` es una property más, visible con el resto). No necesita entrar en el panel del módulo: gana exactamente un privilegio ACL nuevo (`propose`, ejercido a través del botón de esta página, no de una ruta del panel), pero sigue sin acceso al resto de `/admin/oer-manager*` (vista maestra, búsqueda, re-catalogador, etc.), que sigue reservado a `editor`/`site_admin`/`reviewer`.
 
 ## 5. Flujo del curador
 

@@ -102,11 +102,13 @@ final class WorkflowService
      * `publish()` — ver el aviso de arriba. Sin esto, cada propose/reject
      * borraría el resto de las properties del item.
      *
-     * @param string|null $note null = no tocar `curation:note` (no usado hoy:
-     *   propose() SIEMPRE pasa '' para limpiar un motivo de un rechazo
-     *   previo); '' = limpiarla.
+     * @param string $note '' = limpiar `curation:note` (siempre el caso en
+     *   práctica: propose() pasa '' para borrar un motivo de un rechazo
+     *   previo, reject() pasa el motivo). Antes aceptaba `null` como "no
+     *   tocar", pero ninguna llamada real pasaba ese valor — rama muerta
+     *   eliminada en la revisión final de RF-016 (hallazgo 7).
      */
-    private function writeStatus(int $itemId, string $status, ?string $note): array
+    private function writeStatus(int $itemId, string $status, string $note): array
     {
         $statusPropertyId = $this->propertyId(WorkflowStatus::STATUS_TERM);
         if (null === $statusPropertyId) {
@@ -116,12 +118,10 @@ final class WorkflowService
         $data = [
             WorkflowStatus::STATUS_TERM => [$this->literal($statusPropertyId, $status)],
         ];
-        if (null !== $note) {
-            $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
-            if (null !== $notePropertyId) {
-                $clear[] = $notePropertyId;
-                $data[WorkflowStatus::NOTE_TERM] = '' === $note ? [] : [$this->literal($notePropertyId, $note)];
-            }
+        $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
+        if (null !== $notePropertyId) {
+            $clear[] = $notePropertyId;
+            $data[WorkflowStatus::NOTE_TERM] = '' === $note ? [] : [$this->literal($notePropertyId, $note)];
         }
         $data['clear_property_values'] = $clear;
         $this->api->update('items', $itemId, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
