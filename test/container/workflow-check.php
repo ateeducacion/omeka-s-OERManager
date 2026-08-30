@@ -96,7 +96,16 @@ echo "Item de prueba: #$itemId\n";
 $originalItem = $api->read('items', $itemId)->getContent();
 $originalIsPublic = $originalItem->isPublic();
 $originalStatus = $workflow->statusOf($originalItem);
-check('El item de prueba empieza sin estado de flujo (o ya se limpia después)', true);
+$originalNoteValue = $originalItem->value(WorkflowStatus::NOTE_TERM);
+$originalNote = null;
+if (null !== $originalNoteValue) {
+    $trimmed = trim((string) $originalNoteValue->value());
+    $originalNote = '' === $trimmed ? null : $trimmed;
+}
+check(
+    'El estado inicial leído es válido (null, Propuesto o Rechazado)',
+    null === $originalStatus || WorkflowStatus::PROPOSED === $originalStatus || WorkflowStatus::REJECTED === $originalStatus
+);
 
 // 1. Proponer.
 $item = $api->read('items', $itemId)->getContent();
@@ -142,7 +151,22 @@ check('publish() sobre un item ya publicado (sin estado) da updated=false', fals
 // descripción, alineamiento...), no solo el estado. Este arnés existe para
 // verificar de forma segura — restaurar de forma insegura sería peor que no
 // restaurar.
-$statusPropertyId = $api->search('properties', ['term' => WorkflowStatus::STATUS_TERM])->getContent()[0]->id();
+//
+// Restaura TANTO curation:status COMO curation:note: si el item de partida
+// ya estaba Rechazado con un motivo, ese motivo también debe sobrevivir a
+// la restauración, no solo el estado.
+$statusProperties = $api->search('properties', ['term' => WorkflowStatus::STATUS_TERM])->getContent();
+if (!$statusProperties) {
+    fwrite(STDERR, "No existe la property " . WorkflowStatus::STATUS_TERM . " en esta instalación — no se puede restaurar.\n");
+    exit(1);
+}
+$statusPropertyId = $statusProperties[0]->id();
+$noteProperties = $api->search('properties', ['term' => WorkflowStatus::NOTE_TERM])->getContent();
+if (!$noteProperties) {
+    fwrite(STDERR, "No existe la property " . WorkflowStatus::NOTE_TERM . " en esta instalación — no se puede restaurar.\n");
+    exit(1);
+}
+$notePropertyId = $noteProperties[0]->id();
 $api->update('items', $itemId, [
     'o:is_public' => $originalIsPublic,
     WorkflowStatus::STATUS_TERM => $originalStatus ? [[
@@ -150,7 +174,12 @@ $api->update('items', $itemId, [
         'property_id' => $statusPropertyId,
         '@value' => $originalStatus,
     ]] : [],
-    'clear_property_values' => [$statusPropertyId],
+    WorkflowStatus::NOTE_TERM => $originalNote ? [[
+        'type' => 'literal',
+        'property_id' => $notePropertyId,
+        '@value' => $originalNote,
+    ]] : [],
+    'clear_property_values' => [$statusPropertyId, $notePropertyId],
 ], [], ['isPartial' => true, 'collectionAction' => 'append']);
 echo "Item #$itemId restaurado a su estado original (is_public=" . ($originalIsPublic ? '1' : '0') . ").\n";
 
