@@ -35,6 +35,8 @@
 
 require '/var/www/html/bootstrap.php';
 
+use OERManager\Controller\Admin\IndexController;
+use OERManager\Service\IntegrityChecker;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
@@ -106,6 +108,70 @@ check(
     'El estado inicial leído es válido (null, Propuesto o Rechazado)',
     null === $originalStatus || WorkflowStatus::PROPOSED === $originalStatus || WorkflowStatus::REJECTED === $originalStatus
 );
+
+/*
+ * Sección ACL (revisión final RF-016, hallazgo 4): la frontera de permisos
+ * autor/curador de este flujo descansa entera en `OwnsEntityAssertion` y
+ * `view-all` nativos de Omeka — nunca se había ejercido con una cuenta real
+ * `author`/`reviewer` (fuera de alcance de esta ronda: no se crean cuentas
+ * nuevas, ver el informe de cierre). Esto es la mitad barata: consultas
+ * puras a la tabla de privilegios ya construida, sin autenticar como nadie
+ * ni escribir nada. `$acl->isAllowed($role, $resource, $privilege)` es el
+ * mismo método que ya usa `test/container/acl-check.php` (heredado de
+ * `Laminas\Permissions\Acl\Acl`, verificado contra
+ * application/src/Permissions/Acl.php del core real).
+ */
+echo "\nACL autor/curador (hallazgo 4):\n";
+$acl = $services->get('Omeka\Acl');
+check('author puede proponer', $acl->isAllowed('author', IndexController::class, 'propose'));
+check('author NO puede rechazar', !$acl->isAllowed('author', IndexController::class, 'reject-proposal'));
+check('author NO puede publicar', !$acl->isAllowed('author', IndexController::class, 'publish-proposal'));
+check('reviewer puede publicar', $acl->isAllowed('reviewer', IndexController::class, 'publish-proposal'));
+check(
+    'author NO tiene view-all (por eso no ve el catálogo ajeno)',
+    !$acl->isAllowed('author', 'Omeka\Entity\Resource', 'view-all')
+);
+check('reviewer SÍ tiene view-all', $acl->isAllowed('reviewer', 'Omeka\Entity\Resource', 'view-all'));
+
+/*
+ * Sección IntegrityChecker (hallazgo 5): demuestra la condición real que
+ * `publishProposalAction()` guarda — que la transición de ESTADO
+ * (`WorkflowStatus::canPublish`) y el gate de CONTENIDO
+ * (`IntegrityChecker::check()->isOk()`) son comprobaciones independientes.
+ * Solo lectura: se buscan hasta 20 REAs reales del catálogo hasta encontrar
+ * uno con incidencias (según la propia historia del proyecto, la mayoría las
+ * tiene — p. ej. sin licencia), sin simular un POST/CSRF completo por el
+ * controlador (desproporcionado para este arnés).
+ */
+echo "\nGate de integridad de publicación (hallazgo 5):\n";
+$integrityChecker = $services->get(IntegrityChecker::class);
+$incompleteItem = null;
+$incompleteResult = null;
+$lrmiClasses = $api->search('resource_classes', ['term' => MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM])->getContent();
+if ($lrmiClasses) {
+    $sample = $api->search('items', ['resource_class_id' => $lrmiClasses[0]->id(), 'per_page' => 20])->getContent();
+    foreach ($sample as $candidate) {
+        $result = $integrityChecker->check($candidate, true);
+        if (!$result->isOk()) {
+            $incompleteItem = $candidate;
+            $incompleteResult = $result;
+            break;
+        }
+    }
+}
+if (null === $incompleteResult) {
+    echo "  [SALTA] ningún REA de los primeros 20 tiene incidencias de integridad — residual documentado, no se fuerza una escritura sintética\n";
+} else {
+    check(
+        'Existe un REA real con incidencias de integridad (isOk()=false)',
+        false === $incompleteResult->isOk(),
+        sprintf('item #%d status=%s', $incompleteItem->id(), $incompleteResult->getStatus())
+    );
+    check(
+        'canPublish(Propuesto) es true (transición de ESTADO permitida) pese a que ese REA falla el gate de CONTENIDO — son comprobaciones independientes',
+        WorkflowStatus::canPublish(WorkflowStatus::PROPOSED) && !$incompleteResult->isOk()
+    );
+}
 
 // 1. Proponer.
 $item = $api->read('items', $itemId)->getContent();

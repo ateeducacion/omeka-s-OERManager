@@ -324,7 +324,12 @@ class Module extends AbstractModule implements InitProviderInterface
         $isCurator = $acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
         $canEditItem = $item->userIsAllowed('update');
 
-        $canPropose = $canEditItem && !$isCurator && Service\Workflow\WorkflowStatus::canPropose($status);
+        // Revisión final RF-016 (hallazgo 6): antes excluía al curador
+        // (`!$isCurator`), pero el ACL SÍ concede `propose` a
+        // editor/site_admin/reviewer (ver el bloque de arriba en
+        // onBootstrap()) precisamente para poder reproponer algo en nombre de
+        // otro. La UI no puede contradecir lo que el ACL ya permite.
+        $canPropose = $canEditItem && Service\Workflow\WorkflowStatus::canPropose($status);
         $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
         $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
 
