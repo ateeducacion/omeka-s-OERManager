@@ -1223,6 +1223,45 @@ body.oer-master-view.sidebar-open footer {
     margin: 0;
 }
 
+/* Rechazar/publicar desde el drawer (RF-016, extensión post-PR#38). Mismo
+   tratamiento de caja que .oer-panel-alert, borde neutro: no es una
+   incidencia de integridad, es una acción disponible. */
+.oer-panel-workflow {
+    margin-bottom: 1.25em;
+    padding: 0.6em 0.9em;
+    background: #fff;
+    border-left: 3px solid var(--oer-rule);
+}
+
+.oer-panel-workflow .oer-workflow-status {
+    margin: 0 0 0.6em;
+    font-size: 0.85em;
+    color: var(--oer-muted);
+}
+
+.oer-panel-workflow .oer-drawer-workflow-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.5em;
+}
+
+.oer-panel-workflow .oer-drawer-workflow-form:last-of-type {
+    margin-bottom: 0;
+}
+
+.oer-panel-workflow input[type="text"] {
+    flex: 1 1 auto;
+    min-width: 10em;
+}
+
+.oer-panel-workflow .oer-workflow-error {
+    margin: 0.6em 0 0;
+    color: var(--oer-bad);
+    font-size: 0.85em;
+}
+
 /*
  * La rejilla se INVIERTE respecto a TASK-032, y no por capricho: el contenedor
  * pasó de ancho y bajo a estrecho y alto. El anclaje es lo más ancho que hay

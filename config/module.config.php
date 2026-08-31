@@ -41,7 +41,8 @@ return [
                     $container->get('FormElementManager'),
                     $container->get(Service\IntegrityChecker::class),
                     $container->get(Service\ItemPanelData::class),
-                    $container->get(Service\Workflow\WorkflowService::class)
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $container->get('Omeka\Acl')
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
