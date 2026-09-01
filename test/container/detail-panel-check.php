@@ -320,6 +320,48 @@ if (null === $item40437) {
     );
 }
 
+// --- 7. El renderer nativo de Omeka responde por cada medio (renderedHtml) -
+// MediaRepresentation::render() resuelve internamente su propia vista
+// (getViewHelper()), sin dependencia inyectada — la única forma de
+// verificarlo de verdad es contra el core real, igual que el resto de este
+// arnés.
+echo "\n7. MediaRepresentation::render() nativo responde por cada medio del catálogo\n";
+$allMediaChecked = 0;
+$emptyRendered = [];
+$typesSeen = [];
+foreach ($items as $item) {
+    foreach ($panelData->forItem($item)['media'] as $one) {
+        $allMediaChecked++;
+        $html = $one['renderedHtml'] ?? '';
+        if ('' === trim($html)) {
+            $emptyRendered[] = sprintf('#%d (%s)', $item->id(), $one['type']);
+        }
+        $typesSeen[$one['type']] = true;
+    }
+}
+if (0 === $allMediaChecked) {
+    skip('cada medio del catálogo trae renderedHtml no vacío', 'ningún REA del catálogo tiene medios');
+} else {
+    check(
+        sprintf('los %d medios del catálogo traen renderedHtml no vacío', $allMediaChecked),
+        [] === $emptyRendered,
+        implode(', ', $emptyRendered)
+    );
+    printf("   tipos de medio vistos: %s\n", implode(', ', array_keys($typesSeen)));
+}
+
+if (null !== $withMediaExample) {
+    $sampleHtml = (string) ($withMediaExample['media'][0]['renderedHtml'] ?? '');
+    check(
+        sprintf(
+            'renderedHtml del primer medio de #%d es marcado HTML de verdad (no texto plano)',
+            $withMediaExample['item']->id()
+        ),
+        false !== strpos($sampleHtml, '<'),
+        $sampleHtml
+    );
+}
+
 echo "\n" . str_repeat('-', 60) . "\n";
 echo "$passed OK, $failed FAIL, $skipped SKIP\n";
 

@@ -1396,11 +1396,39 @@ body.oer-master-view.sidebar-open footer {
 }
 
 .oer-media-list > li {
+    padding: 0.25em 0;
+    border-bottom: 1px solid var(--oer-rule);
+}
+
+/* Renderer nativo de Omeka (imagen inline, reproductor audio/vídeo, o la
+   miniatura/icono de ThumbnailRenderer para pdf/zip). Acotado en tamaño: el
+   render nativo no conoce el contexto de lista compacta del drawer. */
+.oer-media-preview {
+    margin-bottom: 0.35em;
+}
+
+.oer-media-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 8rem;
+    width: auto;
+    height: auto;
+}
+
+.oer-media-preview audio,
+.oer-media-preview video {
+    display: block;
+    max-width: 100%;
+}
+
+.oer-media-preview video {
+    max-height: 12rem;
+}
+
+.oer-media-info {
     display: flex;
     align-items: baseline;
     gap: 0.5em;
-    padding: 0.25em 0;
-    border-bottom: 1px solid var(--oer-rule);
 }
 
 .oer-media-name {

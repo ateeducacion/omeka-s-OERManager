@@ -274,16 +274,24 @@ $checked = null !== $integrity && !empty($integrity['status']);
                 <ul class="oer-media-list">
                     <?php foreach ($media['media'] as $one): ?>
                     <li>
-                        <span class="oer-media-name"><?php echo $escape($one['title']); ?></span>
-                        <span class="oer-media-meta"><?php echo $escape(sprintf(
-                            '%s · %d KB',
-                            $one['type'],
-                            (int) round($one['size'] / 1024)
-                        )); ?></span>
-                        <?php if ($one['url']): ?>
-                        <a class="oer-media-open" href="<?php echo $escape($one['url']); ?>"
-                           target="_blank" rel="noopener"><?php echo $escape($translate('Abrir')); ?></a>
+                        <?php if (!empty($one['renderedHtml'])): ?>
+                        <?php // Renderer nativo de Omeka (MediaRepresentation::render()): HTML de
+                        // confianza del propio core, se pinta sin escapar igual que hace
+                        // media-render.phtml (`echo $resource->render();`). ?>
+                        <div class="oer-media-preview"><?php echo $one['renderedHtml']; ?></div>
                         <?php endif; ?>
+                        <div class="oer-media-info">
+                            <span class="oer-media-name"><?php echo $escape($one['title']); ?></span>
+                            <span class="oer-media-meta"><?php echo $escape(sprintf(
+                                '%s · %d KB',
+                                $one['type'],
+                                (int) round($one['size'] / 1024)
+                            )); ?></span>
+                            <?php if ($one['url']): ?>
+                            <a class="oer-media-open" href="<?php echo $escape($one['url']); ?>"
+                               target="_blank" rel="noopener"><?php echo $escape($translate('Abrir')); ?></a>
+                            <?php endif; ?>
+                        </div>
                     </li>
                     <?php endforeach; ?>
                 </ul>
