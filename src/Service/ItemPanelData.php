@@ -140,7 +140,15 @@ class ItemPanelData
      * Metadatos de los medios. `o:media` en el JSON-LD solo trae `{@id, o:id}`,
      * así que nombre, tipo y tamaño solo pueden salir de aquí.
      *
-     * @return list<array{title:string, type:string, size:int, url:?string}>
+     * `renderedHtml` es el renderer NATIVO de Omeka (`MediaRepresentation::render()`,
+     * el mismo que usa el propio core en `file.phtml`/`media-render.phtml`):
+     * resuelve por tipo —imagen inline, `<audio>`/`<video controls>`, o la
+     * miniatura/icono genérico de `ThumbnailRenderer` para lo demás (pdf, zip)—
+     * en vez de reinventar la presentación por tipo de fichero en este módulo.
+     * `render()` resuelve su propia vista internamente (`getViewHelper()`), sin
+     * dependencia nueva aquí.
+     *
+     * @return list<array{title:string, type:string, size:int, url:?string, renderedHtml:string}>
      */
     private function media(ItemRepresentation $item): array
     {
@@ -151,6 +159,7 @@ class ItemPanelData
                 'type' => (string) $one->mediaType(),
                 'size' => (int) $one->size(),
                 'url' => $one->originalUrl(),
+                'renderedHtml' => (string) $one->render(['thumbnailType' => 'medium', 'link' => 'original']),
             ];
         }
         return $media;

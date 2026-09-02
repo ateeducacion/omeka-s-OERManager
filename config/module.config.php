@@ -40,7 +40,9 @@ return [
                     // quien invoca `init()` del formulario.
                     $container->get('FormElementManager'),
                     $container->get(Service\IntegrityChecker::class),
-                    $container->get(Service\ItemPanelData::class)
+                    $container->get(Service\ItemPanelData::class),
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $container->get('Omeka\Acl')
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -108,6 +110,9 @@ return [
                     $container->get('Omeka\ApiManager'),
                     $container->get('Omeka\Settings')
                 );
+            },
+            Service\Workflow\WorkflowService::class => function ($container) {
+                return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
             },
 
             // --- Catalogación IA-assistida (TASK-010, 4b) ---

@@ -75,8 +75,11 @@ class Module extends AbstractModule implements InitProviderInterface
         $acl = $this->getServiceLocator()->get('Omeka\Acl');
 
         // Curación: vista maestra, re-catalogador, propuesta IA y visibilidad.
+        // RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto a los roles
+        // que ya curaban — es el rol nativo que hace de curador de REA en el
+        // flujo autor→curador. No sustituye a editor/site_admin.
         $acl->allow(
-            ['editor', 'site_admin'],
+            ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\IndexController::class],
             [
                 'index',
@@ -93,7 +96,20 @@ class Module extends AbstractModule implements InitProviderInterface
                 'ai-propose-status',
                 'ai-propose-cancel',
                 'ai-evaluate',
+                'reject-proposal',
+                'publish-proposal',
             ]
+        );
+
+        // Proponer (RF-016): abierto también a `author`, a diferencia del
+        // resto de acciones de curación. El controlador solo es la puerta de
+        // entrada — quién puede tocar CADA item lo decide el permiso nativo
+        // de edición dentro de WorkflowService::propose() (OwnsEntityAssertion
+        // para author, view-all para el resto), no este ACL.
+        $acl->allow(
+            ['author', 'editor', 'site_admin', 'reviewer'],
+            [Controller\Admin\IndexController::class],
+            ['propose']
         );
 
         // Configuración: solo Supervisor (site_admin) y superior, decisión del
@@ -109,8 +125,9 @@ class Module extends AbstractModule implements InitProviderInterface
 
         // Estadísticas: mismo nivel que la curación (spec TASK-006 §2.1). Datos
         // agregados de solo lectura, no gobernanza sensible como `config`.
+        // RF-016: `reviewer` se añade por el mismo motivo que arriba.
         $acl->allow(
-            ['editor', 'site_admin'],
+            ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\StatsController::class],
             ['index', 'export']
         );
@@ -163,6 +180,14 @@ class Module extends AbstractModule implements InitProviderInterface
             'view.search.filters',
             [$this, 'addSearchFilters']
         );
+        // Botón de propuesta/rechazo/publicación en la página nativa del item
+        // (RF-016, ADR-0018). Hook verificado contra el core real: dispara
+        // dentro de #page-actions, junto al botón "Edit item" nativo.
+        $sharedEventManager->attach(
+            'Omeka\Controller\Admin\Item',
+            'view.show.page_actions',
+            [$this, 'addWorkflowActions']
+        );
     }
 
     /**
@@ -179,6 +204,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'axis' => 'Eje temático', // @translate
         'resource_type' => 'Tipo de recurso', // @translate
         'licence' => 'Licencia', // @translate
+        'proposed' => 'Propuesta', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -192,6 +218,7 @@ class Module extends AbstractModule implements InitProviderInterface
             'partial' => 'Parcial', // @translate
             'none' => 'Sin alinear', // @translate
         ],
+        'proposed' => ['1' => 'Sí'], // @translate
     ];
 
     /**
@@ -268,6 +295,66 @@ class Module extends AbstractModule implements InitProviderInterface
         }
 
         $event->setParam('filters', $filters);
+    }
+
+    /**
+     * Botón de propuesta/rechazo/publicación (RF-016). Solo se pinta para
+     * items `lrmi:LearningResource` — el flujo no aplica a nada más.
+     * `view.show.page_actions` no captura el retorno del listener (ver la
+     * nota de Task 5 del plan): hay que hacer `echo` directamente.
+     */
+    public function addWorkflowActions(Event $event): void
+    {
+        $item = $event->getParam('resource');
+        if (!$item instanceof ItemRepresentation) {
+            return;
+        }
+        $resourceClass = $item->resourceClass();
+        if (!$resourceClass || Service\MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM !== $resourceClass->term()) {
+            return;
+        }
+
+        $services = $this->getServiceLocator();
+        /** @var Service\Workflow\WorkflowService $workflowService */
+        $workflowService = $services->get(Service\Workflow\WorkflowService::class);
+        $status = $workflowService->statusOf($item);
+
+        /** @var \Omeka\Permissions\Acl $acl */
+        $acl = $services->get('Omeka\Acl');
+        $isCurator = $acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
+        $canEditItem = $item->userIsAllowed('update');
+
+        // Revisión final RF-016 (hallazgo 6): antes excluía al curador
+        // (`!$isCurator`), pero el ACL SÍ concede `propose` a
+        // editor/site_admin/reviewer (ver el bloque de arriba en
+        // onBootstrap()) precisamente para poder reproponer algo en nombre de
+        // otro. La UI no puede contradecir lo que el ACL ya permite.
+        $canPropose = $canEditItem && Service\Workflow\WorkflowStatus::canPropose($status);
+        $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
+        $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
+
+        if (!$canPropose && !$canReject && !$canPublish) {
+            return;
+        }
+
+        $csrf = new \Laminas\Validator\Csrf([
+            'name' => Controller\Admin\IndexController::CSRF_NAME,
+            'salt' => Controller\Admin\IndexController::CSRF_SALT,
+            'timeout' => 3600,
+        ]);
+
+        /** @var \Laminas\View\Renderer\PhpRenderer $view */
+        $view = $event->getTarget();
+        echo $view->partial('oer-manager/common/workflow-actions', [
+            'itemId' => (int) $item->id(),
+            'csrf' => $csrf->getHash(),
+            'canPropose' => $canPropose,
+            'canReject' => $canReject,
+            'canPublish' => $canPublish,
+            'proposeUrl' => $view->url('admin/oer-manager', ['action' => 'propose']),
+            'rejectUrl' => $view->url('admin/oer-manager', ['action' => 'reject-proposal']),
+            'publishUrl' => $view->url('admin/oer-manager', ['action' => 'publish-proposal']),
+        ]);
     }
 
     /**

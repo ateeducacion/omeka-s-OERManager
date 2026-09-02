@@ -26,8 +26,11 @@ use OERManager\Service\MasterViewQuery;
 use OERManager\Service\PanelAreas;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
+use OERManager\Service\Workflow\WorkflowService;
+use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Job\Dispatcher;
+use Omeka\Permissions\Acl;
 use Omeka\Permissions\Exception\PermissionDeniedException;
 use Omeka\Settings\Settings;
 
@@ -60,6 +63,8 @@ class IndexController extends AbstractActionController
     private FormElementManager $formElementManager;
     private IntegrityChecker $integrityChecker;
     private ItemPanelData $itemPanelData;
+    private WorkflowService $workflowService;
+    private Acl $acl;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -76,7 +81,9 @@ class IndexController extends AbstractActionController
         ResourceTypeVocab $resourceTypeVocab,
         FormElementManager $formElementManager,
         IntegrityChecker $integrityChecker,
-        ItemPanelData $itemPanelData
+        ItemPanelData $itemPanelData,
+        WorkflowService $workflowService,
+        Acl $acl
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -93,6 +100,8 @@ class IndexController extends AbstractActionController
         $this->formElementManager = $formElementManager;
         $this->integrityChecker = $integrityChecker;
         $this->itemPanelData = $itemPanelData;
+        $this->workflowService = $workflowService;
+        $this->acl = $acl;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -494,6 +503,12 @@ class IndexController extends AbstractActionController
                 'integrity' => null,
                 'areas' => PanelAreas::build(null, null),
                 'rail' => 'ok',
+                'workflowStatus' => null,
+                'canReject' => false,
+                'canPublish' => false,
+                'workflowCsrf' => '',
+                'rejectUrl' => '',
+                'publishUrl' => '',
             ]);
         }
 
@@ -504,6 +519,15 @@ class IndexController extends AbstractActionController
         ];
         $panel = $this->itemPanelData->forItem($item);
 
+        // Rechazar/publicar desde el drawer (extensión RF-016 post-PR#38):
+        // mismo criterio que `Module::addWorkflowActions()` en la página
+        // nativa del item — `view-all` es la señal de "es curador", no un
+        // nombre de rol propio.
+        $status = $this->workflowService->statusOf($item);
+        $isCurator = $this->acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
+        $canReject = $isCurator && WorkflowStatus::canReject($status);
+        $canPublish = $isCurator && WorkflowStatus::canPublish($status);
+
         return $view->setVariables([
             'panel' => $panel,
             'integrity' => $integrity,
@@ -512,6 +536,12 @@ class IndexController extends AbstractActionController
             // servidor, que ya conoce el estado: el cliente no tiene que
             // volver a deducirlo de la fila de la tabla.
             'rail' => $result->getStatus(),
+            'workflowStatus' => $status,
+            'canReject' => $canReject,
+            'canPublish' => $canPublish,
+            'workflowCsrf' => $this->csrfValidator()->getHash(),
+            'rejectUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'reject-proposal']),
+            'publishUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'publish-proposal']),
         ]);
     }
 
@@ -885,5 +915,278 @@ class IndexController extends AbstractActionController
             }
         }
         return $out;
+    }
+
+    /**
+     * Un autor propone un REA (o lo re-propone tras un rechazo) para revisión
+     * (RF-016). No hay privilegio ACL propio para decidir quién: se apoya en
+     * el permiso nativo de edición del item — `$api->update()` deniega por sí
+     * mismo a quien no pueda editarlo (autor sobre lo suyo, curador+ sobre
+     * cualquiera), igual que ya hace `setVisibilityAction`.
+     *
+     * Esta acción se llega desde un `<form>` HTML plano de la página nativa
+     * del item (`workflow-actions.phtml`): sin JS, así que responde con el
+     * mismo mecanismo que el resto del admin nativo de Omeka — mensaje flash
+     * + redirect a la página del item — en vez de `JsonModel` (revisión
+     * final RF-016, hallazgo 1). Cuando la petición SÍ lleva
+     * `X-Requested-With` (el drawer de la vista maestra, 100% AJAX igual que
+     * `setVisibilityAction` — extensión post-PR#38), responde JSON sin
+     * redirect: la misma lógica de negocio, dos contratos de respuesta según
+     * quién llama.
+     */
+    public function proposeAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        $ajax = $this->getRequest()->isXmlHttpRequest();
+        $id = (int) $this->params()->fromPost('id');
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'csrf',
+                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'not_found',
+                    'message' => 'El REA no existe o no se puede leer.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        try {
+            $result = $this->workflowService->propose($item);
+        } catch (PermissionDeniedException $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'denied',
+                    'message' => 'No tienes permiso para proponer este REA.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('No tienes permiso para proponer este REA.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        if ($ajax) {
+            return new JsonModel($result + [
+                'message' => ($result['updated'] ?? false)
+                    ? 'REA propuesto para revisión.' // @translate
+                    : 'No se pudo proponer el REA: su estado actual no lo permite.', // @translate
+            ]);
+        }
+        if ($result['updated'] ?? false) {
+            $this->messenger()->addSuccess('REA propuesto para revisión.'); // @translate
+        } else {
+            $this->messenger()->addError('No se pudo proponer el REA: su estado actual no lo permite.'); // @translate
+        }
+        return $this->redirectToItem($id);
+    }
+
+    /**
+     * Un curador rechaza un REA propuesto, con motivo (RF-016). Acción de
+     * curación: ACL restringida a `editor`/`reviewer`/`site_admin`
+     * (`Module::onBootstrap`), a diferencia de `proposeAction`.
+     *
+     * El motivo es obligatorio (revisión final RF-016, hallazgo 3): un
+     * rechazo sin motivo deja al autor sin saber qué corregir, que es
+     * precisamente lo que este campo existe para evitar. Se acota a 200
+     * caracteres, mismo tope que `collectJustifications()` en este mismo
+     * controlador (hallazgo 8).
+     *
+     * Igual que `proposeAction`, responde con mensaje flash + redirect al
+     * item si es un `<form>` plano, o `JsonModel` sin redirect si la
+     * petición lleva `X-Requested-With` (el drawer de la vista maestra,
+     * extensión post-PR#38).
+     */
+    public function rejectProposalAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        $ajax = $this->getRequest()->isXmlHttpRequest();
+        $id = (int) $this->params()->fromPost('id');
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'csrf',
+                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        $reason = mb_substr(trim((string) $this->params()->fromPost('reason', '')), 0, 200);
+        if ('' === $reason) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'reason_required',
+                    'message' => 'Debes indicar un motivo de rechazo.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('Debes indicar un motivo de rechazo.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'not_found',
+                    'message' => 'El REA no existe o no se puede leer.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        try {
+            $result = $this->workflowService->reject($item, $reason);
+        } catch (PermissionDeniedException $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'denied',
+                    'message' => 'No tienes permiso para rechazar este REA.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('No tienes permiso para rechazar este REA.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        if ($ajax) {
+            return new JsonModel($result + [
+                'message' => ($result['updated'] ?? false)
+                    ? 'Propuesta rechazada.' // @translate
+                    : 'No se pudo rechazar el REA: su estado actual no lo permite.', // @translate
+            ]);
+        }
+        if ($result['updated'] ?? false) {
+            $this->messenger()->addSuccess('Propuesta rechazada.'); // @translate
+        } else {
+            $this->messenger()->addError('No se pudo rechazar el REA: su estado actual no lo permite.'); // @translate
+        }
+        return $this->redirectToItem($id);
+    }
+
+    /**
+     * Un curador publica un REA propuesto (RF-016). Gate: IntegrityChecker
+     * debe dar `ok` estricto (ni error ni warning, ADR-0018 §4) — igual
+     * criterio que el drawer, `checkLinks=true`, porque es una acción de un
+     * solo item, no un browse. Acción de curación: ACL restringida igual que
+     * `rejectProposalAction`.
+     *
+     * Si el gate de integridad rechaza la publicación, se listan las
+     * incidencias una a una como mensajes de error (revisión final RF-016,
+     * hallazgo 1): el curador necesita saber qué falta, no solo que algo
+     * falló.
+     *
+     * Igual que las otras dos acciones, responde con mensaje flash +
+     * redirect al item si es un `<form>` plano, o `JsonModel` sin redirect
+     * si la petición lleva `X-Requested-With` (el drawer de la vista
+     * maestra, extensión post-PR#38) — en ese caso las incidencias de
+     * integridad viajan estructuradas (`issues`), no como mensajes flash.
+     */
+    public function publishProposalAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        $ajax = $this->getRequest()->isXmlHttpRequest();
+        $id = (int) $this->params()->fromPost('id');
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'csrf',
+                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'not_found',
+                    'message' => 'El REA no existe o no se puede leer.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        $integrity = $this->integrityChecker->check($item, true);
+        if (!$integrity->isOk()) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'integrity',
+                    'issues' => $integrity->getIssues(),
+                ]);
+            }
+            foreach ($integrity->getIssues() as $issue) {
+                $this->messenger()->addError(sprintf(
+                    'No se puede publicar: %s', // @translate
+                    $issue['message']
+                ));
+            }
+            return $this->redirectToItem($id);
+        }
+        try {
+            $result = $this->workflowService->publish($item);
+        } catch (PermissionDeniedException $e) {
+            if ($ajax) {
+                return new JsonModel([
+                    'updated' => false,
+                    'error' => 'denied',
+                    'message' => 'No tienes permiso para publicar este REA.', // @translate
+                ]);
+            }
+            $this->messenger()->addError('No tienes permiso para publicar este REA.'); // @translate
+            return $this->redirectToItem($id);
+        }
+        if ($ajax) {
+            return new JsonModel($result + [
+                'message' => ($result['updated'] ?? false)
+                    ? 'REA publicado.' // @translate
+                    : 'No se pudo publicar el REA: su estado actual no lo permite.', // @translate
+            ]);
+        }
+        if ($result['updated'] ?? false) {
+            $this->messenger()->addSuccess('REA publicado.'); // @translate
+        } else {
+            $this->messenger()->addError('No se pudo publicar el REA: su estado actual no lo permite.'); // @translate
+        }
+        return $this->redirectToItem($id);
+    }
+
+    /**
+     * Redirect a la página nativa de detalle del item (`admin/id`, verificado
+     * contra el core real: `AbstractResourceRepresentation::adminUrl()` y el
+     * "Edit item" de `application/view/omeka/admin/item/show.phtml` usan
+     * exactamente esta ruta). `controller => 'item'` es el alias que devuelve
+     * `ItemRepresentation::getControllerName()`, no el FQCN del controlador.
+     */
+    private function redirectToItem(int $id)
+    {
+        return $this->redirect()->toRoute('admin/id', [
+            'controller' => 'item',
+            'action' => 'show',
+            'id' => $id,
+        ]);
     }
 }

@@ -6,6 +6,7 @@ import { initTermPicker } from './ui/termPicker.js';
 import { initRecatalog } from './ui/recatalog.js';
 import { initAiPropose } from './ui/aiPropose.js';
 import { initSearchForm } from './ui/searchForm.js';
+import { initWorkflowDrawer } from './ui/workflowDrawer.js';
 
 const config = readConfig();
 if (config) {
@@ -16,4 +17,5 @@ if (config) {
     initRecatalog(config);
     initAiPropose(config);
     initSearchForm();
+    initWorkflowDrawer();
 }

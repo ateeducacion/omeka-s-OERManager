@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use OERManager\ColumnType\AlignmentStatus;
+use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Manager as ApiManager;
 
 /**
@@ -90,6 +91,14 @@ class MasterViewQuery
                 'property' => 'dcterms:rights',
                 'type' => 'eq',
                 'text' => $query['licence'],
+            ];
+        }
+
+        if (!empty($query['proposed'])) {
+            $params['property'][] = [
+                'property' => WorkflowStatus::STATUS_TERM,
+                'type' => 'eq',
+                'text' => WorkflowStatus::PROPOSED,
             ];
         }
 

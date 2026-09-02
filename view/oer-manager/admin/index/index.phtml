@@ -54,6 +54,11 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
                 <?php echo $translate('Con incidencias'); ?>
             </option>
         </select>
+        <label class="oer-checkbox oer-filter-proposed" for="oer-filter-proposed">
+            <input type="checkbox" id="oer-filter-proposed" name="proposed" value="1"
+                <?php echo !empty($query['proposed']) ? 'checked' : ''; ?>>
+            <?php echo $translate('Propuestos'); ?>
+        </label>
         <button type="submit" class="button oer-button-primary"><?php echo $translate('Filtrar'); ?></button>
         <?php echo $this->hyperlink(
             $translate('Búsqueda avanzada'),

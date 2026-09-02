@@ -15,6 +15,12 @@
  * @var array|null $integrity
  * @var array $areas
  * @var string $rail
+ * @var string|null $workflowStatus estado de curación (RF-016), null=Borrador
+ * @var bool $canReject
+ * @var bool $canPublish
+ * @var string $workflowCsrf
+ * @var string $rejectUrl
+ * @var string $publishUrl
  */
 
 use OERManager\Service\PanelAreas;
@@ -127,6 +133,49 @@ $checked = null !== $integrity && !empty($integrity['status']);
         </div>
     </div>
 
+    <?php
+    // Rechazar/publicar desde el drawer (extensión RF-016 post-PR#38): mismo
+    // criterio de visibilidad que la página nativa del item
+    // (`workflow-actions.phtml`/`addWorkflowActions()`), pero aquí el
+    // formulario lo intercepta `workflowDrawer.js` y lo envía por AJAX —el
+    // drawer entero es 100% AJAX (ADR-0017 §1), a diferencia de la página
+    // nativa— para no perder el filtro activo del curador al ir y volver.
+    ?>
+    <?php if ($canReject || $canPublish): ?>
+    <section class="oer-panel-workflow" data-status="<?php echo $escape((string) $workflowStatus); ?>">
+        <p class="oer-workflow-status">
+            <?php echo $escape(sprintf($translate('Estado del flujo: %s'), $workflowStatus)); ?>
+        </p>
+        <?php if ($canReject): ?>
+        <form
+            method="post"
+            action="<?php echo $escape($rejectUrl); ?>"
+            class="oer-workflow-form oer-drawer-workflow-form"
+        >
+            <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
+            <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
+            <input
+                type="text"
+                name="reason"
+                required
+                maxlength="200"
+                placeholder="<?php echo $escape($translate('Motivo del rechazo')); ?>"
+                aria-label="<?php echo $escape($translate('Motivo del rechazo')); ?>"
+            >
+            <button type="submit" class="button"><?php echo $translate('Rechazar propuesta'); ?></button>
+        </form>
+        <?php endif; ?>
+        <?php if ($canPublish): ?>
+        <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form">
+            <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
+            <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
+            <button type="submit" class="button"><?php echo $translate('Publicar propuesta'); ?></button>
+        </form>
+        <?php endif; ?>
+        <p class="oer-workflow-error" hidden></p>
+    </section>
+    <?php endif; ?>
+
     <?php if ($issueGroups): ?>
     <?php $worst = array_key_first($issueGroups); ?>
     <section class="oer-panel-alert oer-panel-alert-<?php echo $escape($worst); ?>">
@@ -225,16 +274,24 @@ $checked = null !== $integrity && !empty($integrity['status']);
                 <ul class="oer-media-list">
                     <?php foreach ($media['media'] as $one): ?>
                     <li>
-                        <span class="oer-media-name"><?php echo $escape($one['title']); ?></span>
-                        <span class="oer-media-meta"><?php echo $escape(sprintf(
-                            '%s · %d KB',
-                            $one['type'],
-                            (int) round($one['size'] / 1024)
-                        )); ?></span>
-                        <?php if ($one['url']): ?>
-                        <a class="oer-media-open" href="<?php echo $escape($one['url']); ?>"
-                           target="_blank" rel="noopener"><?php echo $escape($translate('Abrir')); ?></a>
+                        <?php if (!empty($one['renderedHtml'])): ?>
+                        <?php // Renderer nativo de Omeka (MediaRepresentation::render()): HTML de
+                        // confianza del propio core, se pinta sin escapar igual que hace
+                        // media-render.phtml (`echo $resource->render();`). ?>
+                        <div class="oer-media-preview"><?php echo $one['renderedHtml']; ?></div>
                         <?php endif; ?>
+                        <div class="oer-media-info">
+                            <span class="oer-media-name"><?php echo $escape($one['title']); ?></span>
+                            <span class="oer-media-meta"><?php echo $escape(sprintf(
+                                '%s · %d KB',
+                                $one['type'],
+                                (int) round($one['size'] / 1024)
+                            )); ?></span>
+                            <?php if ($one['url']): ?>
+                            <a class="oer-media-open" href="<?php echo $escape($one['url']); ?>"
+                               target="_blank" rel="noopener"><?php echo $escape($translate('Abrir')); ?></a>
+                            <?php endif; ?>
+                        </div>
                     </li>
                     <?php endforeach; ?>
                 </ul>
