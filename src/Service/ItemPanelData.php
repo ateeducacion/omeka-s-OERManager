@@ -7,6 +7,8 @@ namespace OERManager\Service;
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use OERManager\Service\Governance\CurricularGrouping;
+use OERManager\Service\Governance\IntegrityPolicy;
+use OERManager\Service\Governance\ValueText;
 
 /**
  * Reúne lo que el panel de detalle necesita y el JSON-LD público NO puede dar
@@ -52,7 +54,7 @@ class ItemPanelData
     {
         $fields = [
             'dcterms:description',
-            'dcterms:rights',
+            IntegrityPolicy::LICENSE_TERM,
             'schema:isPartOf',
             'lrmi:learningResourceType',
         ];
@@ -62,7 +64,9 @@ class ItemPanelData
             $texts = [];
             foreach ($values as $value) {
                 $resource = $value->valueResource();
-                $texts[] = $resource ? (string) $resource->displayTitle() : trim((string) $value->value());
+                $texts[] = $resource
+                    ? (string) $resource->displayTitle()
+                    : ValueText::of($value->value(), $value->uri());
             }
             $texts = array_values(array_filter($texts, static fn (string $t): bool => '' !== $t));
             if ($texts) {

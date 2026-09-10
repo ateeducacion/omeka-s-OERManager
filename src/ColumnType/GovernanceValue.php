@@ -6,11 +6,12 @@ use Laminas\View\Renderer\PhpRenderer;
 use Omeka\Api\Representation\AbstractEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\ColumnType\ColumnTypeInterface;
+use OERManager\Service\Governance\ValueText;
 
 /**
  * Valor de una property con ESTADO VACÍO EXPLÍCITO (TASK-027 §3).
  *
- * Sirve a Licencia (dcterms:rights) y a Tipo de recurso
+ * Sirve a Licencia (dcterms:license, URI — ADR-0019) y a Tipo de recurso
  * (lrmi:learningResourceType): el mismo problema, un solo tipo registrado y
  * usado dos veces con `property_term` distinto.
  *
@@ -68,7 +69,9 @@ class GovernanceValue implements ColumnTypeInterface
 
         $texts = [];
         foreach ($values as $value) {
-            $text = trim((string) $value);
+            // (string) $value es la etiqueta; una licencia URI sin etiqueta
+            // daría '' y la celda diría «Sin licencia» (ADR-0019).
+            $text = ValueText::of((string) $value, $value->uri());
             if ('' !== $text) {
                 $texts[] = $text;
             }

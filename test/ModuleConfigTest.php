@@ -156,7 +156,7 @@ final class ModuleConfigTest extends TestCase
         $defaults = $config['column_defaults']['admin']['oer_items'] ?? [];
 
         $terms = array_values(array_filter(array_column($defaults, 'property_term')));
-        $this->assertSame(['lrmi:learningResourceType', 'dcterms:rights'], $terms);
+        $this->assertSame(['lrmi:learningResourceType', 'dcterms:license'], $terms);
     }
 
     /**

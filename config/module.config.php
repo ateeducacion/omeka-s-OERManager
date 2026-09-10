@@ -417,7 +417,7 @@ return [
                 ],
                 [
                     'type' => 'oerGovernanceValue',
-                    'property_term' => 'dcterms:rights',
+                    'property_term' => Service\Governance\IntegrityPolicy::LICENSE_TERM,
                     'header' => 'Licencia', // @translate
                     'empty_label' => 'Sin licencia', // @translate
                 ],

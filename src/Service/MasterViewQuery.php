@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use OERManager\ColumnType\AlignmentStatus;
+use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Manager as ApiManager;
 
@@ -21,7 +22,7 @@ class MasterViewQuery
      * 18/19, descripción 4/19, tipo 3/19, título 1/19.
      */
     public const MISSING_FILTERS = [
-        'licence' => 'dcterms:rights',
+        'licence' => IntegrityPolicy::LICENSE_TERM,
         'description' => 'dcterms:description',
         'title' => 'dcterms:title',
         'resource_type' => 'lrmi:learningResourceType',
@@ -86,9 +87,11 @@ class MasterViewQuery
             }
         }
 
+        // `eq` del core casa contra `value` O `uri` (buildPropertyQuery), así que
+        // el filtro admite la etiqueta exacta o la URI exacta (ADR-0019).
         if (!empty($query['licence'])) {
             $params['property'][] = [
-                'property' => 'dcterms:rights',
+                'property' => IntegrityPolicy::LICENSE_TERM,
                 'type' => 'eq',
                 'text' => $query['licence'],
             ];
