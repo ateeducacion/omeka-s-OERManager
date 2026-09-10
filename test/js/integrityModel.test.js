@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../../asset/js/core/integrityModel.js';
 
-const issue = (severity, code) => ({ severity, code, field: 'dcterms:rights', message: 'msg ' + code });
+const issue = (severity, code) => ({ severity, code, field: 'dcterms:license', message: 'msg ' + code });
 
 test('sin integridad devuelve lista vacía', () => {
     assert.deepEqual(integrityGroups(null), []);

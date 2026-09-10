@@ -13,7 +13,7 @@ export const DRAWER_FIELDS = [
     ['dcterms:relation', 'Eje temático'],
     ['schema:isPartOf', 'Proyecto'],
     ['lrmi:learningResourceType', 'Tipo de recurso'],
-    ['dcterms:rights', 'Licencia']
+    ['dcterms:license', 'Licencia']
 ];
 
 /**
