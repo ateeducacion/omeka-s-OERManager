@@ -53,6 +53,8 @@ Semánticamente es lo correcto: en DCMI `dcterms:license` es «a legal document 
 - La regla `license_not_uri` detecta sola un vocabulario mal apuntado (uno de términos literales): cada licencia elegida desde él dispararía el aviso.
 - Queda abierto, como ya estaba: validar contra el vocabulario (rebanada 3b de TASK-028) y la higiene masiva de licencias heredadas (exige ADR propio, ADR-0013).
 
+**Addendum (2026-09-10, revisión final de rama):** una selección de columnas **guardada por un usuario** (`user_setting` id `columns_admin_oer_items`) sustituye a `column_defaults` (core `Browse::getColumnsData()`); si esa selección aún apunta a `dcterms:rights`, ese usuario sigue viendo una columna «Licencia» que contradice integridad, panel y estadísticas. Medido en la revisión final: usuarios #3 y #10. El módulo no reescribe preferencias ajenas (decisión del propietario); paso manual: esos usuarios deben restablecer o reañadir la columna «Licencia» en sus preferencias de la vista maestra. Alternativa a decidir por el propietario: un `upgrade()` que reescriba `property_term` en las selecciones guardadas (escritura sobre datos de usuario).
+
 ## Fuentes
 
 - Instrucción del propietario en el chat (2026-09-10) y respuestas a las cuatro preguntas de diseño de esa misma sesión.

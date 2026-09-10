@@ -6,7 +6,9 @@
  * 1. SOLO LECTURA (siempre): sobre los REA reales, `missing_license` sale
  *    exactamente en los que no tienen dcterms:license; un REA que solo tiene
  *    dcterms:rights ya no cuenta como licenciado; la columna por defecto
- *    apunta a dcterms:license.
+ *    apunta a dcterms:license; ninguna selección de columnas GUARDADA por un
+ *    usuario sigue apuntando a dcterms:rights (si alguna lo hace, se informa
+ *    como SKIP: el módulo no reescribe preferencias ajenas).
  * 2. ESCRITURA CON RESTAURACIÓN (solo con --write): en un REA SIN
  *    dcterms:license escribe, uno tras otro, una URI sin etiqueta, una URI con
  *    etiqueta, un literal y —si el setting apunta a un CustomVocab— un valor de
@@ -114,6 +116,31 @@ $defaultTerms = array_values(array_filter(array_column(
 check('la columna por defecto «Licencia» apunta a dcterms:license',
     in_array('dcterms:license', $defaultTerms, true) && !in_array('dcterms:rights', $defaultTerms, true),
     'property_term: ' . implode(', ', $defaultTerms));
+
+// Una selección de columnas GUARDADA por un usuario sustituye a column_defaults
+// (core Browse::getColumnsData()): si aún apunta a dcterms:rights, ese usuario
+// ve una columna de licencia que contradice integridad, panel y estadísticas.
+// El módulo no reescribe preferencias ajenas (decisión del propietario): se
+// informa como SKIP, igual que un paso manual pendiente.
+$stale = [];
+$rows = $services->get('Omeka\Connection')->fetchAllAssociative(
+    "SELECT user_id, value FROM user_setting WHERE id = 'columns_admin_oer_items'"
+);
+foreach ($rows as $row) {
+    $columns = json_decode((string) $row['value'], true);
+    foreach (is_array($columns) ? $columns : [] as $columnSpec) {
+        if ('dcterms:rights' === ($columnSpec['property_term'] ?? null)) {
+            $stale[] = (int) $row['user_id'];
+            break;
+        }
+    }
+}
+if ([] === $stale) {
+    check('ninguna selección de columnas guardada apunta a dcterms:rights', true);
+} else {
+    skip('ninguna selección de columnas guardada apunta a dcterms:rights',
+        'usuarios #' . implode(', #', $stale) . ': deben restablecer o reañadir la columna «Licencia» (paso manual)');
+}
 
 $withLicence = 0;
 $rightsOnly = [];
