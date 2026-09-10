@@ -20,14 +20,20 @@ final class IntegrityPolicyTest extends TestCase
         return ['type' => 'resource:item', 'hasResource' => true];
     }
 
-    /** Un REA completo: las cuatro properties de anclaje enlazadas + licencia. */
+    /** Un REA completo: las cuatro properties de anclaje enlazadas + licencia URI. */
     private function healthy(): array
     {
-        $values = [IntegrityPolicy::LICENSE_TERM => [['type' => 'literal', 'hasResource' => false]]];
+        $values = [IntegrityPolicy::LICENSE_TERM => [$this->licence()]];
         foreach (IntegrityPolicy::ALIGNMENT_TERMS as $term) {
             $values[$term] = [$this->link()];
         }
         return $values;
+    }
+
+    /** Licencia sana (ADR-0019): un valor con URI, del CustomVocab o nativo. */
+    private function licence(string $type = 'uri'): array
+    {
+        return ['type' => $type, 'hasResource' => false, 'hasUri' => true];
     }
 
     private function codes(array $issues): array
@@ -165,5 +171,54 @@ final class IntegrityPolicyTest extends TestCase
         $this->assertSame(['missing_alignment'], $this->codes(
             IntegrityPolicy::issuesFor($values, [], false)
         ));
+    }
+
+    public function testLicenceTermIsDctermsLicense(): void
+    {
+        $this->assertSame('dcterms:license', IntegrityPolicy::LICENSE_TERM);
+    }
+
+    public function testCustomVocabUriLicenceIsHealthy(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [$this->licence('customvocab:4')];
+
+        $this->assertSame([], IntegrityPolicy::issuesFor($values, [], false));
+    }
+
+    public function testLiteralLicenceIsNotAUri(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [['type' => 'literal', 'hasResource' => false, 'hasUri' => false]];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], false);
+
+        $this->assertSame(['license_not_uri'], $this->codes($issues));
+        $this->assertSame('warning', $issues[0]['severity']);
+        $this->assertSame(IntegrityPolicy::LICENSE_TERM, $issues[0]['field']);
+    }
+
+    /** Sin la clave `hasUri` no se presume URI: mejor un aviso de más que uno de menos. */
+    public function testLicenceWithoutHasUriFlagCountsAsNotUri(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [['type' => 'literal', 'hasResource' => false]];
+
+        $this->assertSame(['license_not_uri'], $this->codes(IntegrityPolicy::issuesFor($values, [], false)));
+    }
+
+    public function testEachNonUriLicenceValueIsItsOwnWarning(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [
+            ['type' => 'literal', 'hasResource' => false, 'hasUri' => false],
+            $this->licence(),
+            ['type' => 'customvocab:2', 'hasResource' => false, 'hasUri' => false],
+        ];
+
+        $this->assertSame(
+            ['license_not_uri', 'license_not_uri'],
+            $this->codes(IntegrityPolicy::issuesFor($values, [], false))
+        );
     }
 }

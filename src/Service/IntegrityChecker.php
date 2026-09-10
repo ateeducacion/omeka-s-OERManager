@@ -56,7 +56,7 @@ class IntegrityChecker
      * mira porque no evalúa la regla de enlace vivo.
      *
      * @param list<string> $terms
-     * @return array<string, list<array{type:string, hasResource:bool}>>
+     * @return array<string, list<array{type:string, hasResource:bool, hasUri:bool}>>
      */
     private function project(ItemRepresentation $item, array $terms, bool $checkLinks): array
     {
@@ -72,6 +72,8 @@ class IntegrityChecker
                     'hasResource' => (!$checkLinks || !str_starts_with($type, 'resource'))
                         ? true
                         : (bool) $value->valueResource(),
+                    // Barato: uri() es un getter de la entidad, no despierta proxies.
+                    'hasUri' => '' !== trim((string) $value->uri()),
                 ];
             }
         }
