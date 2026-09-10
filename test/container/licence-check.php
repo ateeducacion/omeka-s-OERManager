@@ -5,8 +5,10 @@
  *
  * 1. SOLO LECTURA (siempre): sobre los REA reales, `missing_license` sale
  *    exactamente en los que no tienen dcterms:license; un REA que solo tiene
- *    dcterms:rights ya no cuenta como licenciado; la columna por defecto
- *    apunta a dcterms:license; ninguna selección de columnas GUARDADA por un
+ *    dcterms:rights ya no cuenta como licenciado; las columnas «Licencia» y
+ *    «Tipo de recurso» se pueden añadir desde el selector sin configurar nada
+ *    y el tipo genérico ya no se ofrece, aunque lo guardado con él se sigue
+ *    pintando (TASK-042); ninguna selección de columnas GUARDADA por un
  *    usuario sigue apuntando a dcterms:rights (si alguna lo hace, se informa
  *    como SKIP: el módulo no reescribe preferencias ajenas).
  * 2. ESCRITURA CON RESTAURACIÓN (solo con --write): en un REA SIN
@@ -25,8 +27,8 @@
 
 require '/var/www/html/bootstrap.php';
 
-use OERManager\ColumnType\GovernanceValue;
 use OERManager\Service\GovernanceSettings;
+use OERManager\Service\Governance\GovernanceColumns;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Governance\ValueText;
 use OERManager\Service\IntegrityChecker;
@@ -102,20 +104,44 @@ if (!$items) {
     exit(1);
 }
 
-$column = new GovernanceValue();
-$columnData = ['property_term' => IntegrityPolicy::LICENSE_TERM, 'empty_label' => 'Sin licencia'];
+// TASK-042: la columna sale del gestor de columnas del core con los MISMOS
+// datos que trae una columna añadida desde el selector del usuario —ninguno,
+// salvo header/default a null—. Si dependiera de la configuración, aquí no
+// tendría property que mostrar.
+$columnTypes = $services->get('Omeka\ColumnTypeManager');
+$column = $columnTypes->get(GovernanceColumns::LICENCE);
+$columnData = ['header' => null, 'default' => null];
 
 echo "\n1. Solo lectura\n";
 
 check('el término de licencia es dcterms:license', 'dcterms:license' === IntegrityPolicy::LICENSE_TERM);
 
-$defaultTerms = array_values(array_filter(array_column(
-    $services->get('Config')['column_defaults']['admin']['oer_items'] ?? [],
-    'property_term'
-)));
-check('la columna por defecto «Licencia» apunta a dcterms:license',
-    in_array('dcterms:license', $defaultTerms, true) && !in_array('dcterms:rights', $defaultTerms, true),
-    'property_term: ' . implode(', ', $defaultTerms));
+$defaults = $services->get('Config')['column_defaults']['admin']['oer_items'] ?? [];
+$defaultTypes = array_column($defaults, 'type');
+check('las columnas por defecto usan los tipos «Licencia» y «Tipo de recurso», sin property en config',
+    in_array(GovernanceColumns::LICENCE, $defaultTypes, true)
+        && in_array(GovernanceColumns::RESOURCE_TYPE, $defaultTypes, true)
+        && [] === array_filter(array_column($defaults, 'property_term')),
+    'tipos: ' . implode(', ', $defaultTypes));
+
+// Lo que el selector ofrece es exactamente lo que el core filtra por
+// getResourceTypes() (View\Helper\Browse::getColumnTypeSelect()).
+$offered = [];
+foreach ($columnTypes->getRegisteredNames() as $name) {
+    if (in_array('oer_items', $columnTypes->get($name)->getResourceTypes(), true)) {
+        $offered[] = $name;
+    }
+}
+check('el selector de columnas ofrece «Licencia» y «Tipo de recurso»',
+    in_array(GovernanceColumns::LICENCE, $offered, true) && in_array(GovernanceColumns::RESOURCE_TYPE, $offered, true),
+    'ofrecidos: ' . implode(', ', $offered));
+check('el selector ya no ofrece el tipo genérico sin property', !in_array('oerGovernanceValue', $offered, true));
+check('una «Licencia» añadida desde el selector rotula su cabecera',
+    'Licencia' === $column->renderHeader($view, $columnData), $column->renderHeader($view, $columnData));
+
+$typeCell = (string) $columnTypes->get(GovernanceColumns::RESOURCE_TYPE)->renderContent($view, $items[0], $columnData);
+check('una «Tipo de recurso» añadida desde el selector pinta valor o «Sin tipo»',
+    str_contains($typeCell, 'oer-value'), strip_tags($typeCell));
 
 // Una selección de columnas GUARDADA por un usuario sustituye a column_defaults
 // (core Browse::getColumnsData()): si aún apunta a dcterms:rights, ese usuario
@@ -169,6 +195,15 @@ if ([] === $rightsOnly) {
     $cell = (string) $column->renderContent($view, $rightsOnly[0], $columnData);
     check(sprintf('un REA con solo dcterms:rights (#%d) se ve «Sin licencia» en la columna', $rightsOnly[0]->id()),
         str_contains($cell, 'oer-value-missing'), strip_tags($cell));
+
+    // Una selección guardada con el tipo genérico (la de los usuarios #3/#10)
+    // se sigue pintando: salir del selector no es desregistrarse.
+    $legacy = (string) $columnTypes->get('oerGovernanceValue')->renderContent($view, $rightsOnly[0], [
+        'property_term' => 'dcterms:rights',
+        'empty_label' => 'Sin licencia',
+    ]);
+    check('una selección guardada con el tipo genérico se sigue pintando',
+        str_contains($legacy, 'class="oer-value"'), strip_tags($legacy));
 }
 
 if (!$writeMode) {
