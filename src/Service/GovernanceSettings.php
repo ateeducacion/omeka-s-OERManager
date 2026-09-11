@@ -19,7 +19,11 @@ namespace OERManager\Service;
  */
 final class GovernanceSettings
 {
-    /** CustomVocab de licencias (dcterms:rights). Lo siembra el módulo si falta. */
+    /**
+     * CustomVocab de licencias (dcterms:license, de tipo URI — ADR-0019). La
+     * siembra bajo demanda de ADR-0013 no está implementada; si se implementa,
+     * debe crear un vocabulario de tipo URI.
+     */
     public const LICENCE_VOCAB_ID = 'oermanager_licence_vocab_id';
 
     /**

@@ -42,12 +42,14 @@ final class IntegrityPolicy
         'lrmi:assesses',
     ];
 
-    public const LICENSE_TERM = 'dcterms:rights';
+    /** Licencia del REA (ADR-0019): `dcterms:license`, guardada como URI. Antes `dcterms:rights` (ADR-0004 §5). */
+    public const LICENSE_TERM = 'dcterms:license';
 
     /**
-     * @param array<string, list<array{type:string, hasResource:bool}>> $values
+     * @param array<string, list<array{type:string, hasResource:bool, hasUri?:bool}>> $values
      *        Término → sus valores. Basta con incluir los términos de anclaje,
      *        la licencia y los obligatorios de plantilla; el resto se ignora.
+     *        `hasUri` solo se mira en la licencia; si falta, cuenta como false.
      * @param list<string> $requiredTerms Obligatorios de la plantilla, [] si no hay
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo
      * @return list<array{severity:string, code:string, field:string, message:string}>
@@ -99,13 +101,29 @@ final class IntegrityPolicy
             }
         }
 
-        if ([] === ($values[self::LICENSE_TERM] ?? [])) {
+        $licenceValues = $values[self::LICENSE_TERM] ?? [];
+        if ([] === $licenceValues) {
             $issues[] = [
                 'severity' => 'warning',
                 'code' => 'missing_license',
                 'field' => self::LICENSE_TERM,
                 'message' => 'El REA no tiene licencia asignada.', // @translate
             ];
+        }
+
+        // ADR-0019: la licencia se guarda como URI. Un literal («CC BY» metido
+        // por la REST API, una importación o un CustomVocab de términos mal
+        // apuntado en la configuración) tiene licencia pero no la que se puede
+        // resolver. Un aviso por valor, como literal_in_link_property.
+        foreach ($licenceValues as $value) {
+            if (!($value['hasUri'] ?? false)) {
+                $issues[] = [
+                    'severity' => 'warning',
+                    'code' => 'license_not_uri',
+                    'field' => self::LICENSE_TERM,
+                    'message' => 'La licencia no está guardada como URI.', // @translate
+                ];
+            }
         }
 
         // A-3 (revisión final, TASK-028 rebanada 2): saltar los términos que las

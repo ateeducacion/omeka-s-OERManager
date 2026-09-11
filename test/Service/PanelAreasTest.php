@@ -109,7 +109,7 @@ final class PanelAreasTest extends TestCase
         $empty = PanelAreas::build($this->panel(), $this->checked());
         self::assertSame(PanelAreas::STATE_EMPTY, $this->area($empty, 'record')['state']);
 
-        $ready = PanelAreas::build($this->panel(['record' => ['dcterms:rights' => 'CC BY-SA']]), $this->checked());
+        $ready = PanelAreas::build($this->panel(['record' => ['dcterms:license' => 'CC BY-SA']]), $this->checked());
         self::assertSame(PanelAreas::STATE_READY, $this->area($ready, 'record')['state']);
     }
 

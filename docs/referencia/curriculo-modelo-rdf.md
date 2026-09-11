@@ -49,7 +49,7 @@ Resolver SIEMPRE por término; los `property_id` son de esta instalación (refer
 | Criterios de evaluación | `lrmi:assesses` | 7807 | Criterio de evaluación (varios) |
 | Eje temático (tag) | `dcterms:relation` | 13 | Eje (DefinedTermSet aparte, ADR-0006) |
 | Proyecto | `schema:isPartOf` | 7799 | item de proyecto — gestor aparte |
-| Licencia | `dcterms:rights` | 15 | literal (CustomVocab) |
+| Licencia | `dcterms:rights` | 15 | literal (CustomVocab) (desde 2026-09-10 la licencia es `dcterms:license`, ver ADR-0019) |
 
 La **Etapa** y la **Competencia específica** no se escriben en el REA: son nodos de navegación/acotación.
 

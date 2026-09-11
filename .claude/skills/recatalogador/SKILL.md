@@ -56,7 +56,7 @@ Verificado contra la instalación real (JSON-LD de un item `lrmi:LearningResourc
 | Criterios de evaluación | `lrmi:assesses` | resource:item (varios) | currículo existente | sí |
 | Eje temático (= tags) | `dcterms:relation` | resource:item | `schema:DefinedTermSet` (config del módulo) | sí |
 | Proyecto | `schema:isPartOf` | resource:item | items de proyecto | **no** — lo asigna el gestor (acción aparte) |
-| Licencia del REA | `dcterms:rights` | literal | `CustomVocab` controlado | curación/integridad |
+| Licencia del REA | `dcterms:license` | URI (+ etiqueta) | `CustomVocab` de tipo URI (setting `oermanager_licence_vocab_id`) | curación/integridad — ADR-0019; `dcterms:rights` ya no se lee |
 
 - **Tags = ejes temáticos**: `dcterms:relation`, vocabulario **controlado** por un `schema:DefinedTermSet` configurable en el módulo (no libre, no se hardcodea el set).
 - **Plantilla**: hoy los items van sin `resource_template`; definir una plantilla REA (properties obligatorias) se evalúa en RF-006 (integridad, ya implementada en TASK-005).

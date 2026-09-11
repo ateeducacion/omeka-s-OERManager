@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OERManager\Service\Stats;
 
 use Omeka\Api\Representation\ItemRepresentation;
+use OERManager\Service\Governance\IntegrityPolicy;
+use OERManager\Service\Governance\ValueText;
 
 /**
  * Extrae los "hechos" de las 5 dimensiones de RF-007/ADR-0004 de un item, en
@@ -14,7 +16,10 @@ use Omeka\Api\Representation\ItemRepresentation;
  */
 final class DimensionFacts
 {
-    /** Dimensiones resource:item (ADR-0004). La licencia es literal y se trata aparte. */
+    /**
+     * Dimensiones resource:item (ADR-0004). La licencia no es un enlace a
+     * item y se trata aparte.
+     */
     public const DIMENSION_TERMS = [
         'etapa' => 'lrmi:educationalLevel',
         'materia' => 'schema:about',
@@ -22,7 +27,8 @@ final class DimensionFacts
         'proyecto' => 'schema:isPartOf',
     ];
 
-    public const LICENCE_TERM = 'dcterms:rights';
+    /** ADR-0019: una sola fuente para el término de licencia. */
+    public const LICENCE_TERM = IntegrityPolicy::LICENSE_TERM;
 
     /**
      * @param ItemRepresentation[] $items
@@ -45,8 +51,12 @@ final class DimensionFacts
                 }
                 $row[$key] = $ids;
             }
+            // Se agrupa por el texto mostrable: con un CustomVocab de URIs la
+            // etiqueta es la del vocabulario; sin etiqueta, la URI (ADR-0019 §6).
             $licenceValue = $item->value(self::LICENCE_TERM);
-            $row['licencia'] = null !== $licenceValue ? trim((string) $licenceValue->value()) : null;
+            $row['licencia'] = null !== $licenceValue
+                ? ValueText::of($licenceValue->value(), $licenceValue->uri())
+                : null;
             if ('' === $row['licencia']) {
                 $row['licencia'] = null;
             }

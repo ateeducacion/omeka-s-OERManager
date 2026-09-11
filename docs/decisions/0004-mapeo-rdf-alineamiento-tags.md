@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptado (2026-06-15)
+Aceptado (2026-06-15). **§5 (licencia) y la fila «Licencia del REA» de la tabla: reemplazados por [ADR-0019](0019-licencia-dcterms-license-uri.md) (2026-09-10)** — la licencia es `dcterms:license`, guardada como URI desde un CustomVocab de tipo URI. El resto del mapeo sigue vigente.
 
 ## Contexto
 

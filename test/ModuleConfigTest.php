@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Test;
 
+use OERManager\Service\Governance\GovernanceColumns;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -122,7 +123,10 @@ final class ModuleConfigTest extends TestCase
             array_keys($config['column_types']['factories'] ?? [])
         );
 
-        foreach (['oerIntegrity', 'oerCurricular', 'oerGovernanceValue'] as $type) {
+        // `oerGovernanceValue` sigue registrado aunque ya no esté en los
+        // defaults: las selecciones de columnas ya guardadas lo usan, y el core
+        // salta en silencio un tipo desconocido (TASK-042).
+        foreach (['oerIntegrity', 'oerCurricular', 'oerGovernanceValue', 'oerLicence', 'oerResourceType'] as $type) {
             $this->assertContains($type, $types);
         }
     }
@@ -143,20 +147,24 @@ final class ModuleConfigTest extends TestCase
         $this->assertSame([
             'oerIntegrity',
             'oerCurricular',
-            'oerGovernanceValue',
-            'oerGovernanceValue',
+            GovernanceColumns::RESOURCE_TYPE,
+            GovernanceColumns::LICENCE,
             'oerIsPublic',
             'oerModified',
         ], array_column($defaults, 'type'));
     }
 
-    public function testTheTwoGovernanceValueColumnsPointAtLicenceAndResourceType(): void
+    /**
+     * TASK-042: la property va con el tipo, no con la configuración. Si los
+     * defaults volvieran a fijar `property_term`, un usuario que quite la
+     * columna no podría reañadirla igual desde su selector.
+     */
+    public function testGovernanceDefaultColumnsDoNotCarryTheirProperty(): void
     {
         $config = include __DIR__ . '/../config/module.config.php';
         $defaults = $config['column_defaults']['admin']['oer_items'] ?? [];
 
-        $terms = array_values(array_filter(array_column($defaults, 'property_term')));
-        $this->assertSame(['lrmi:learningResourceType', 'dcterms:rights'], $terms);
+        $this->assertSame([], array_values(array_filter(array_column($defaults, 'property_term'))));
     }
 
     /**

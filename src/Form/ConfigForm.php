@@ -129,9 +129,10 @@ class ConfigForm extends Form implements InputFilterProviderInterface
             'name' => GovernanceSettings::LICENCE_VOCAB_ID,
             'type' => 'Number',
             'options' => [
-                'label' => 'CustomVocab de licencias (dcterms:rights)', // @translate
-                'info' => 'ID del CustomVocab con las licencias admitidas. Si se deja vacío, '
-                    . 'la licencia se edita como texto libre y no se puede normalizar.', // @translate
+                'label' => 'CustomVocab de licencias (dcterms:license)', // @translate
+                'info' => 'ID del CustomVocab de tipo URI con las licencias admitidas (URI canónica y '
+                    . 'etiqueta). Si se deja vacío, la licencia se edita a mano y no se puede '
+                    . 'normalizar.', // @translate
             ],
             'attributes' => [
                 'id' => GovernanceSettings::LICENCE_VOCAB_ID,

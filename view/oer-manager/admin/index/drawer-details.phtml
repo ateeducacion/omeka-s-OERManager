@@ -23,6 +23,7 @@
  * @var string $publishUrl
  */
 
+use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\PanelAreas;
 
 $translate = $this->plugin('translate');
@@ -47,7 +48,7 @@ $termLabels = [
     'dcterms:relation' => $translate('Eje temático'),
     'schema:isPartOf' => $translate('Proyecto'),
     'lrmi:learningResourceType' => $translate('Tipo de recurso'),
-    'dcterms:rights' => $translate('Licencia'),
+    IntegrityPolicy::LICENSE_TERM => $translate('Licencia'),
 ];
 
 // El código de razón de `CurricularGrouping::build` cubre DOS casos: un valor

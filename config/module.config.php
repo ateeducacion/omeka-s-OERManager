@@ -369,7 +369,11 @@ return [
             'oerId' => ColumnType\Id::class,
             'oerResourceTemplate' => ColumnType\ResourceTemplate::class,
             'oerCurricular' => ColumnType\Curricular::class,
+            // Genérico: ya no se ofrece en el selector, pero sigue registrado
+            // porque hay selecciones guardadas que lo usan (TASK-042).
             'oerGovernanceValue' => ColumnType\GovernanceValue::class,
+            Service\Governance\GovernanceColumns::LICENCE => ColumnType\Licence::class,
+            Service\Governance\GovernanceColumns::RESOURCE_TYPE => ColumnType\ResourceType::class,
         ],
         'factories' => [
             // Value necesita FormElementManager y ApiManager, igual que el del core.
@@ -409,18 +413,11 @@ return [
                 // estados, que no cambia.
                 ['type' => 'oerIntegrity'],
                 ['type' => 'oerCurricular'],
-                [
-                    'type' => 'oerGovernanceValue',
-                    'property_term' => 'lrmi:learningResourceType',
-                    'header' => 'Tipo de recurso', // @translate
-                    'empty_label' => 'Sin tipo', // @translate
-                ],
-                [
-                    'type' => 'oerGovernanceValue',
-                    'property_term' => 'dcterms:rights',
-                    'header' => 'Licencia', // @translate
-                    'empty_label' => 'Sin licencia', // @translate
-                ],
+                // TASK-042: property y texto de vacío van con el tipo
+                // (GovernanceColumns), no aquí, para que la columna sea la
+                // misma que un usuario añade desde su selector.
+                ['type' => Service\Governance\GovernanceColumns::RESOURCE_TYPE],
+                ['type' => Service\Governance\GovernanceColumns::LICENCE],
                 ['type' => 'oerIsPublic'],
                 ['type' => 'oerModified'],
             ],
