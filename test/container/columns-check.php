@@ -248,31 +248,72 @@ function anchorTitle(Omeka\Api\Representation\ItemRepresentation $item, string $
     return '';
 }
 
+// TASK-041: desde 4f9ebf7 (2026-08-10) la celda ya no queda en blanco en un REA
+// sin anclar — lleva la insignia «Sin anclar» (Curricular::badge()), así que
+// «rinde» dejó de ser sinónimo de «tiene anclaje». Se comprueban por separado
+// las dos cosas que la celda promete, cada una contra su propia fuente:
+//   a) los pares materia/curso salen exactamente en los REA con un título no
+//      vacío en materia o en curso (anchorTitle(), independiente del render);
+//   b) la insignia «Sin anclar» sale exactamente en los REA sin criterios ni
+//      saberes (ADR-0005 §4), leídos aquí directamente de lrmi:teaches /
+//      lrmi:assesses y NO vía AlignmentStatus::statusFor(), que es lo que usa
+//      la propia celda — compararla consigo misma no podría fallar.
+// Son independientes: un REA sin criterios ni saberes puede tener materia y
+// curso, y entonces lleva la insignia Y sus pares.
 $curricular = new OERManager\ColumnType\Curricular();
-$withAnchor = 0;
 $rendered = 0;
+$withAnchor = 0;
+$pairsWhereAnchored = 0;
+$pairsMismatch = [];
+$unaligned = 0;
+$badgeMismatch = [];
 foreach ($items as $item) {
-    // «Tiene anclaje» = renderContent() produciría contenido: al menos un
-    // título no vacío en materia o en curso. Es el subconjunto exacto que la
-    // etiqueta promete, no «al menos uno rinde en todo el catálogo».
     $hasAnchor = '' !== anchorTitle($item, OERManager\Service\Governance\CurricularPairs::SUBJECT_TERM)
         || '' !== anchorTitle($item, OERManager\Service\Governance\CurricularPairs::STAGE_TERM);
-    if ($hasAnchor) {
-        $withAnchor++;
-    }
+    $isUnaligned = !$item->value('lrmi:teaches') && !$item->value('lrmi:assesses');
 
-    $html = $curricular->renderContent(
-        $services->get('ViewRenderer'),
-        $item,
-        []
-    );
-    if (null !== $html) {
+    $html = (string) $curricular->renderContent($services->get('ViewRenderer'), $item, []);
+    if ('' !== $html) {
         $rendered++;
     }
+
+    // Los pares y la línea «Sin materia» del curso huérfano comparten la clase
+    // de grupo; la insignia no la lleva.
+    $hasPairs = str_contains($html, 'oer-curricular-group');
+    $hasBadge = str_contains($html, 'oer-anchor-none');
+
+    if ($hasAnchor) {
+        $withAnchor++;
+        if ($hasPairs) {
+            $pairsWhereAnchored++;
+        }
+    }
+    if ($hasAnchor !== $hasPairs) {
+        $pairsMismatch[] = '#' . $item->id();
+    }
+
+    if ($isUnaligned) {
+        $unaligned++;
+    }
+    if ($isUnaligned !== $hasBadge) {
+        $badgeMismatch[] = '#' . $item->id();
+    }
 }
-check('la celda curricular rinde exactamente en los REA con anclaje (ni más ni menos)',
-    $rendered === $withAnchor,
-    "ha rendido en $rendered de $withAnchor REA con anclaje (catálogo completo: " . count($items) . ')');
+echo "   REA=" . count($items) . "  con anclaje=$withAnchor  sin criterios ni saberes=$unaligned\n";
+
+check('la celda curricular rinde en todos los REA (lo que no está anclado lo dice)',
+    count($items) === $rendered,
+    "ha rendido en $rendered de " . count($items));
+check('los pares materia/curso salen exactamente en los REA con anclaje (ni más ni menos)',
+    [] === $pairsMismatch,
+    "pares en $pairsWhereAnchored de $withAnchor con anclaje; discrepan: " . implode(', ', $pairsMismatch));
+check('ningún REA con criterios o saberes lleva la insignia «Sin anclar», y todo REA sin ellos la lleva',
+    [] === $badgeMismatch,
+    'discrepan: ' . implode(', ', $badgeMismatch));
+if (0 === $unaligned) {
+    skip('la insignia «Sin anclar» aparece en un REA real sin criterios ni saberes',
+        'hoy todos los REA tienen criterios o saberes: solo se ha verificado que la insignia no sobra');
+}
 
 echo "\n5. Curso huérfano ⇒ anclaje parcial (ADR-0005 §4 ampliado 2026-08-10)\n";
 
