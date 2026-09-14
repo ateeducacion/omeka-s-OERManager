@@ -46,7 +46,10 @@
             "/package.json",
             "/prompt_fase0.md",
             "/prompt_fase1.md",
-            "/CLAUDE.md"
+            "/CLAUDE.md",
+            "/.agents",
+            "/AGENTS.md",
+            "/.gitattributes"
         ]
     }
 }
