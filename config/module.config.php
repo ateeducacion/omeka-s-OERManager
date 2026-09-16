@@ -98,6 +98,67 @@ return [
                     }
                 );
             },
+            // Vocabulario de licencias (dcterms:license, ADR-0019). Dependencia BLANDA
+            // de CustomVocab, igual que el de tipos de recurso: si no resuelve,
+            // VocabEntries::uris() devuelve null (no []) y quien lo consuma lo trata
+            // como «no hay vocabulario con el que juzgar pertenencia», no como «vacío».
+            'OERManager\Service\Governance\VocabEntries\Licence' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\Governance\VocabEntries(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::LICENCE_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        $entries = [];
+                        if ('uri' === $vocab->type()) {
+                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
+                                $entry = ['uri' => (string) $uri];
+                                if (null !== $label && '' !== (string) $label) {
+                                    $entry['label'] = (string) $label;
+                                }
+                                $entries[] = $entry;
+                            }
+                            return $entries;
+                        }
+                        foreach (($vocab->listTerms() ?? []) as $term) {
+                            $entries[] = ['value' => (string) $term];
+                        }
+                        return $entries;
+                    }
+                );
+            },
+            // Vocabulario de organismos editores (dcterms:publisher, RF-015). El
+            // módulo no lo crea: es un CustomVocab que el admin da de alta y apunta
+            // por id desde el setting, igual que el resto de vocabularios blandos.
+            'OERManager\Service\Governance\VocabEntries\Publisher' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\Governance\VocabEntries(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::PUBLISHER_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        $entries = [];
+                        if ('uri' === $vocab->type()) {
+                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
+                                $entry = ['uri' => (string) $uri];
+                                if (null !== $label && '' !== (string) $label) {
+                                    $entry['label'] = (string) $label;
+                                }
+                                $entries[] = $entry;
+                            }
+                            return $entries;
+                        }
+                        foreach (($vocab->listTerms() ?? []) as $term) {
+                            $entries[] = ['value' => (string) $term];
+                        }
+                        return $entries;
+                    }
+                );
+            },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {
                 return new Service\CurriculumSearch(

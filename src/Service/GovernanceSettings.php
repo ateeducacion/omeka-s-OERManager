@@ -40,6 +40,9 @@ final class GovernanceSettings
      */
     public const REA_TEMPLATE_ID = 'oermanager_rea_template_id';
 
+    /** CustomVocab of publishers (RF-015). Seeded by nobody: the admin creates it. */
+    public const PUBLISHER_VOCAB_ID = 'oermanager_publisher_vocab_id';
+
     /** Titular de derechos por defecto al rellenar la ficha (RF-015). */
     public const DEFAULT_RIGHTS_HOLDER = 'oermanager_default_rights_holder';
 
