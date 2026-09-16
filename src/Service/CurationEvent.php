@@ -85,9 +85,9 @@ class CurationEvent
         $parts = [];
         foreach ($payload['terms'] as $term => $entry) {
             if ($typed) {
-                // Los valores tipados son arrays, no ids: array_diff los
-                // trataría como cadenas. Se cuenta por entrada, comparando su
-                // forma canónica (claves ordenadas) en vez de por id.
+                // Typed values are arrays, not ids: array_diff would coerce
+                // them to strings. Count by entry, comparing a canonical
+                // form (sorted keys) instead of an id.
                 $added = count(array_diff(self::valueKeys($entry['after']), self::valueKeys($entry['before'])));
                 $removed = count(array_diff(self::valueKeys($entry['before']), self::valueKeys($entry['after'])));
             } else {
@@ -114,8 +114,8 @@ class CurationEvent
     }
 
     /**
-     * Forma canónica de una lista de valores tipados, para poder compararlos
-     * como si fueran ids con array_diff.
+     * Canonical form of a list of typed values, so they can be compared like
+     * ids with array_diff.
      *
      * @param list<array<string,string>> $values
      * @return list<string>
