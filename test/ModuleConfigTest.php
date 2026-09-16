@@ -62,10 +62,14 @@ final class ModuleConfigTest extends TestCase
         $this->assertArrayHasKey(\OERManager\Service\MasterViewQuery::class, $factories);
     }
 
+    /**
+     * TASK-028 rebanada 3b: IntegrityChecker pasó de invokable a factory al
+     * ganar una dependencia (VocabEntries\Licence, para license_not_in_vocab).
+     */
     public function testIntegrityCheckerServiceIsRegistered(): void
     {
-        $invokables = $this->config['service_manager']['invokables'] ?? [];
-        $this->assertArrayHasKey(\OERManager\Service\IntegrityChecker::class, $invokables);
+        $factories = $this->config['service_manager']['factories'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Service\IntegrityChecker::class, $factories);
     }
 
     public function testAlignmentStatusColumnTypeIsRegistered(): void

@@ -61,7 +61,6 @@ return [
     ],
     'service_manager' => [
         'invokables' => [
-            Service\IntegrityChecker::class => Service\IntegrityChecker::class,
             Service\ItemPanelData::class => Service\ItemPanelData::class,
             // Patrón de filtros computados (ADR-0013, D4).
             Service\ComputedFilter::class => Service\ComputedFilter::class,
@@ -79,6 +78,16 @@ return [
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // ADR-0020 / slice 3b (TASK-028): la regla license_not_in_vocab necesita
+            // saber si la licencia pertenece al vocabulario configurado. Reusa el
+            // MISMO VocabEntries que ya lee el setting y degrada a null si no
+            // resuelve (Task 5): duplicar esa lectura aquí bifurcaría la
+            // degradación que la clase centraliza.
+            Service\IntegrityChecker::class => function ($container) {
+                return new Service\IntegrityChecker(
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence')
+                );
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {

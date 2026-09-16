@@ -52,10 +52,16 @@ final class IntegrityPolicy
      *        `hasUri` solo se mira en la licencia; si falta, cuenta como false.
      * @param list<string> $requiredTerms Obligatorios de la plantilla, [] si no hay
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo
+     * @param list<string>|null $licenceVocabUris URIs del vocabulario configurado,
+     *        null si no resuelve (entonces no se juzga pertenencia)
      * @return list<array{severity:string, code:string, field:string, message:string}>
      */
-    public static function issuesFor(array $values, array $requiredTerms, bool $checkLinks): array
-    {
+    public static function issuesFor(
+        array $values,
+        array $requiredTerms,
+        bool $checkLinks,
+        ?array $licenceVocabUris = null
+    ): array {
         $issues = [];
 
         foreach (self::ALIGNMENT_TERMS as $term) {
@@ -123,6 +129,27 @@ final class IntegrityPolicy
                     'field' => self::LICENSE_TERM,
                     'message' => 'La licencia no está guardada como URI.', // @translate
                 ];
+            }
+        }
+
+        // ADR-0020 / slice 3b: membership in the configured vocabulary. Only
+        // evaluated when the setting resolves; unconfigured it stays silent,
+        // because no curator can fix a list that does not exist. A value that
+        // is not a URI already warned above and is not warned about twice.
+        if (null !== $licenceVocabUris) {
+            foreach ($licenceValues as $value) {
+                if (!($value['hasUri'] ?? false)) {
+                    continue;
+                }
+                $status = LicenceStatus::of([['uri' => (string) ($value['uri'] ?? '')]], $licenceVocabUris);
+                if (LicenceStatus::IN_VOCAB !== $status) {
+                    $issues[] = [
+                        'severity' => 'warning',
+                        'code' => 'license_not_in_vocab',
+                        'field' => self::LICENSE_TERM,
+                        'message' => 'La licencia no está en la lista de licencias aprobadas.', // @translate
+                    ];
+                }
             }
         }
 
