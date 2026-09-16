@@ -40,15 +40,23 @@ final class LicenceStatus
 
     /**
      * Host case and one trailing slash are not a different licence; the rest of
-     * the URI is compared verbatim, because a path is case-sensitive.
+     * the URI — including any later occurrence of the host substring, in a path
+     * or query — is compared verbatim, because a path is case-sensitive.
      */
     private static function canonical(string $uri): string
     {
-        $uri = rtrim(trim($uri), '/');
+        $uri = trim($uri);
+        if (str_ends_with($uri, '/')) {
+            $uri = substr($uri, 0, -1);
+        }
         $host = (string) parse_url($uri, PHP_URL_HOST);
         if ('' === $host) {
             return $uri;
         }
-        return str_replace($host, strtolower($host), $uri);
+        $offset = strpos($uri, $host);
+        if (false === $offset) {
+            return $uri;
+        }
+        return substr_replace($uri, strtolower($host), $offset, strlen($host));
     }
 }

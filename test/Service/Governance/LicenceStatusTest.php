@@ -51,4 +51,26 @@ final class LicenceStatusTest extends TestCase
 
         $this->assertSame(LicenceStatus::IN_VOCAB, LicenceStatus::of($values, self::VOCAB));
     }
+
+    public function testHostRecurringElsewhereInTheUriIsNotAltered(): void
+    {
+        // The host string "AB.CO" also occurs, in the same case, inside the path.
+        // Only the host component may be case-folded; the path's occurrence must
+        // stay verbatim, so this value (whose path case differs from the
+        // vocabulary) is correctly outside it rather than accidentally matched.
+        $vocab = ['https://ab.co/path/ab.co/tail'];
+        $values = [['type' => 'uri', 'uri' => 'https://AB.CO/path/AB.CO/tail']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
+    }
+
+    public function testOnlyOneTrailingSlashIsStripped(): void
+    {
+        // Canonicalisation strips a single trailing slash, not every one; a
+        // second slash is part of the path and must still count as a difference.
+        $vocab = ['https://example.org/licence'];
+        $values = [['type' => 'uri', 'uri' => 'https://example.org/licence//']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
+    }
 }
