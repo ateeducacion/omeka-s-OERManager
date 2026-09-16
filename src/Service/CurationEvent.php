@@ -81,10 +81,19 @@ class CurationEvent
      */
     public static function summary(array $payload): string
     {
+        $typed = self::isTyped($payload);
         $parts = [];
         foreach ($payload['terms'] as $term => $entry) {
-            $added = count(array_diff($entry['after'], $entry['before']));
-            $removed = count(array_diff($entry['before'], $entry['after']));
+            if ($typed) {
+                // Los valores tipados son arrays, no ids: array_diff los
+                // trataría como cadenas. Se cuenta por entrada, comparando su
+                // forma canónica (claves ordenadas) en vez de por id.
+                $added = count(array_diff(self::valueKeys($entry['after']), self::valueKeys($entry['before'])));
+                $removed = count(array_diff(self::valueKeys($entry['before']), self::valueKeys($entry['after'])));
+            } else {
+                $added = count(array_diff($entry['after'], $entry['before']));
+                $removed = count(array_diff($entry['before'], $entry['after']));
+            }
             $counts = [];
             if ($added) {
                 $counts[] = '+' . $added;
@@ -98,8 +107,28 @@ class CurationEvent
             }
             $parts[] = $line;
         }
-        $head = self::OP_UNDO === $payload['op'] ? 'Reversión' : 'Re-catalogación';
+        $head = self::OP_UNDO === $payload['op']
+            ? 'Reversión' // @translate
+            : (self::OP_GOVERNANCE === $payload['op'] ? 'Gobernanza' : 'Re-catalogación'); // @translate
         return $head . ' · ' . implode(' · ', $parts);
+    }
+
+    /**
+     * Forma canónica de una lista de valores tipados, para poder compararlos
+     * como si fueran ids con array_diff.
+     *
+     * @param list<array<string,string>> $values
+     * @return list<string>
+     */
+    private static function valueKeys(array $values): array
+    {
+        return array_map(
+            static function (array $value): string {
+                ksort($value);
+                return (string) json_encode($value);
+            },
+            $values
+        );
     }
 
     /** @param array<string,mixed> $payload */
@@ -118,7 +147,7 @@ class CurationEvent
     public static function decode(string $json): ?array
     {
         $data = json_decode($json, true);
-        if (!is_array($data) || (($data['v'] ?? null) !== self::VERSION)) {
+        if (!is_array($data) || !in_array($data['v'] ?? null, [self::VERSION, self::VERSION_TYPED], true)) {
             return null;
         }
         if (!isset($data['terms']) || !is_array($data['terms']) || !$data['terms']) {
@@ -193,5 +222,88 @@ class CurationEvent
         sort($before);
         sort($after);
         return $before !== $after;
+    }
+
+    /** Payload version whose before/after carry typed values (ADR-0020). */
+    public const VERSION_TYPED = 2;
+
+    public const OP_GOVERNANCE = 'governance';
+
+    /**
+     * Event for values that are not links: literals and URIs (ADR-0020).
+     * Comparison is by ordered list — reordering authors is a change — unlike
+     * v1, where curriculum dimensions compare as sets.
+     *
+     * @param array<string,array{before:list<array<string,string>>,after:list<array<string,string>>}> $terms
+     * @return array<string,mixed>|null null when nothing changed
+     */
+    public static function buildTyped(array $terms, ?string $undoOf = null): ?array
+    {
+        $changed = [];
+        foreach ($terms as $term => $state) {
+            $before = array_values($state['before']);
+            $after = array_values($state['after']);
+            if ($before === $after) {
+                continue;
+            }
+            $changed[$term] = ['before' => $before, 'after' => $after];
+        }
+        if (!$changed) {
+            return null;
+        }
+        return [
+            'v' => self::VERSION_TYPED,
+            'op' => null === $undoOf ? self::OP_GOVERNANCE : self::OP_UNDO,
+            'undoOf' => $undoOf,
+            'terms' => $changed,
+        ];
+    }
+
+    /** @param array<string,mixed> $payload */
+    public static function isTyped(array $payload): bool
+    {
+        return self::VERSION_TYPED === ($payload['v'] ?? null);
+    }
+
+    /**
+     * Which service can replay this event. The terms say it, not the version:
+     * an event never mixes curriculum terms with governance terms (ADR-0020 §4).
+     *
+     * @param array<string,mixed> $payload
+     */
+    public static function scopeOf(array $payload): string
+    {
+        foreach (array_keys($payload['terms'] ?? []) as $term) {
+            if (Governance\GovernanceFields::isGovernanceTerm((string) $term)) {
+                return 'governance';
+            }
+        }
+        return 'curriculum';
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,list<array<string,string>>>
+     */
+    public static function restoreValues(array $payload): array
+    {
+        $values = [];
+        foreach ($payload['terms'] as $term => $entry) {
+            $values[$term] = array_values($entry['before']);
+        }
+        return $values;
+    }
+
+    /**
+     * @param array<string,mixed> $payload
+     * @return array<string,list<array<string,string>>>
+     */
+    public static function expectedValues(array $payload): array
+    {
+        $values = [];
+        foreach ($payload['terms'] as $term => $entry) {
+            $values[$term] = array_values($entry['after']);
+        }
+        return $values;
     }
 }

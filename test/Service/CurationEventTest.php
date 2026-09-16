@@ -187,4 +187,88 @@ final class CurationEventTest extends TestCase
 
         $this->assertSame(['lrmi:teaches' => [305, 306]], CurationEvent::expectedTargets($payload));
     }
+
+    public function testTypedEventKeepsValuesAndOrder(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:creator' => [
+                'before' => [['type' => 'literal', 'value' => 'Ana']],
+                'after' => [['type' => 'literal', 'value' => 'Ana'], ['type' => 'literal', 'value' => 'Luis']],
+            ],
+        ]);
+
+        $this->assertSame(2, $payload['v']);
+        $this->assertSame('governance', $payload['op']);
+        $this->assertSame(
+            [['type' => 'literal', 'value' => 'Ana'], ['type' => 'literal', 'value' => 'Luis']],
+            $payload['terms']['dcterms:creator']['after']
+        );
+    }
+
+    public function testReorderingAuthorsIsAChange(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:creator' => [
+                'before' => [['type' => 'literal', 'value' => 'Ana'], ['type' => 'literal', 'value' => 'Luis']],
+                'after' => [['type' => 'literal', 'value' => 'Luis'], ['type' => 'literal', 'value' => 'Ana']],
+            ],
+        ]);
+
+        $this->assertNotNull($payload);
+    }
+
+    public function testTypedEventWithNoChangeIsNotAnEvent(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:license' => [
+                'before' => [['type' => 'customvocab:2', 'uri' => 'https://x/by/4.0/', 'label' => 'CC BY']],
+                'after' => [['type' => 'customvocab:2', 'uri' => 'https://x/by/4.0/', 'label' => 'CC BY']],
+            ],
+        ]);
+
+        $this->assertNull($payload);
+    }
+
+    public function testDecodeAcceptsBothVersionsAndRejectsOthers(): void
+    {
+        $v1 = CurationEvent::encode(CurationEvent::build([
+            'lrmi:teaches' => ['before' => [], 'after' => [7]],
+        ]));
+        $v2 = CurationEvent::encode(CurationEvent::buildTyped([
+            'dcterms:creator' => ['before' => [], 'after' => [['type' => 'literal', 'value' => 'Ana']]],
+        ]));
+
+        $this->assertSame(1, CurationEvent::decode($v1)['v']);
+        $this->assertSame(2, CurationEvent::decode($v2)['v']);
+        $this->assertNull(CurationEvent::decode('{"v":3,"op":"x","terms":{"a":{"before":[],"after":[]}}}'));
+        $this->assertNull(CurationEvent::decode('not json'));
+    }
+
+    public function testScopeComesFromTheTermsNotTheVersion(): void
+    {
+        $governance = CurationEvent::buildTyped([
+            'dcterms:license' => ['before' => [], 'after' => [['type' => 'uri', 'uri' => 'https://x/by/4.0/']]],
+        ]);
+        $curriculum = CurationEvent::build(['lrmi:teaches' => ['before' => [], 'after' => [7]]]);
+
+        $this->assertSame('governance', CurationEvent::scopeOf($governance));
+        $this->assertSame('curriculum', CurationEvent::scopeOf($curriculum));
+    }
+
+    public function testRestoreAndExpectedValuesRoundTrip(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:license' => [
+                'before' => [['type' => 'customvocab:2', 'uri' => 'https://x/by/4.0/', 'label' => 'CC BY']],
+                'after' => [],
+            ],
+        ]);
+        $decoded = CurationEvent::decode(CurationEvent::encode($payload));
+
+        $this->assertSame(
+            [['type' => 'customvocab:2', 'uri' => 'https://x/by/4.0/', 'label' => 'CC BY']],
+            CurationEvent::restoreValues($decoded)['dcterms:license']
+        );
+        $this->assertSame([], CurationEvent::expectedValues($decoded)['dcterms:license']);
+    }
 }
