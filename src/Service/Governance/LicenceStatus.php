@@ -28,9 +28,9 @@ final class LicenceStatus
         if (null === $vocabUris) {
             return self::UNCHECKED;
         }
-        $allowed = array_map([self::class, 'canonical'], $vocabUris);
+        $allowed = array_map([self::class, 'canonicalUri'], $vocabUris);
         foreach ($values as $value) {
-            $uri = self::canonical((string) ($value['uri'] ?? ''));
+            $uri = self::canonicalUri((string) ($value['uri'] ?? ''));
             if ('' === $uri || !in_array($uri, $allowed, true)) {
                 return self::OUTSIDE_VOCAB;
             }
@@ -42,8 +42,13 @@ final class LicenceStatus
      * Host case and one trailing slash are not a different licence; the rest of
      * the URI — including any later occurrence of the host substring, in a path
      * or query — is compared verbatim, because a path is case-sensitive.
+     *
+     * Public (fix round 1, Ruling 2): GovernanceService::withVocabularyType()
+     * uses this same canonicalisation to decide whether a submitted value
+     * matches a vocabulary entry, so that answer and this class's `of()` can
+     * never disagree about the same URI.
      */
-    private static function canonical(string $uri): string
+    public static function canonicalUri(string $uri): string
     {
         $uri = trim($uri);
         if (str_ends_with($uri, '/')) {

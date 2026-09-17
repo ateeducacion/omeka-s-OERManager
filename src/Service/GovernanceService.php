@@ -160,15 +160,28 @@ class GovernanceService
 
     /**
      * Upgrades a licence or publisher value to its configured vocabulary's data
-     * type when the submitted URI (licence) or text (publisher) matches one of
-     * its entries. Every other term, and any value that does not match, passes
-     * through unchanged (rule 2 of the brief).
+     * type when the submitted value matches one of its entries. Every other
+     * term, and any value that does not match, passes through unchanged
+     * (rule 2 of the brief).
      *
-     * A licence match keeps its `uri` key (and adds the entry's label if it has
-     * one): restoreValues() reads that key back on undo. A publisher match
-     * keeps its `value` key, replaced by the entry's own label text — the same
-     * key restoreValues() reads back, so an undo re-submits text that matches
-     * the same entry again.
+     * Matching and writing are uniform across both fields and both vocabulary
+     * shapes (fix round 1, Ruling 1): the submitted value's own identifying
+     * text — its `uri` if it has one, else its `value` — is compared against
+     * each entry's `uri` (canonicalised, Ruling 2) and against its display text
+     * (`label` if set, else `value`), and the FIRST MATCHING ENTRY decides the
+     * written shape, not the field. A match against a URI-typed entry is always
+     * written as `{type, uri, label?}` (`@id` + `o:label`, never `@value`: the
+     * core CustomVocab data type silently stores an `@value` sent to a
+     * URI-typed vocabulary as a bare literal and drops the URI, which is worse
+     * than an error). A match against a term-typed entry is written as
+     * `{type, value}`.
+     *
+     * This is also what makes undo round-trip: a publisher matched to a
+     * URI-typed entry is restored via `restoreValues()`'s `uri ?? value`, which
+     * yields the URI, resubmitted as literal text for `dcterms:publisher` (its
+     * field kind never validates URI-ness) — and this matching logic finds it
+     * again by comparing that text against each entry's `uri`, not only its
+     * label.
      *
      * @param list<array<string,string>> $submitted
      * @return list<array<string,string>>
@@ -185,33 +198,48 @@ class GovernanceService
         if (null === $dataType) {
             return $submitted;
         }
-        $isUri = GovernanceFields::LICENCE === $term;
         $entries = $vocab->entries();
 
         $upgraded = [];
         foreach ($submitted as $value) {
-            $needle = $isUri ? ($value['uri'] ?? '') : ($value['value'] ?? '');
-            $match = null;
-            foreach ($entries as $entry) {
-                $haystack = $isUri ? ($entry['uri'] ?? '') : ($entry['label'] ?? $entry['value'] ?? '');
-                if ('' !== $needle && $needle === $haystack) {
-                    $match = $entry;
-                    break;
-                }
-            }
+            $needle = (string) ($value['uri'] ?? $value['value'] ?? '');
+            $match = '' === $needle ? null : $this->matchingEntry($needle, $entries);
             if (null === $match) {
                 $upgraded[] = $value;
                 continue;
             }
-            if ($isUri) {
+            if (isset($match['uri'])) {
                 $upgraded[] = isset($match['label']) && '' !== $match['label']
-                    ? ['type' => $dataType, 'uri' => $value['uri'], 'label' => $match['label']]
-                    : ['type' => $dataType, 'uri' => $value['uri']];
+                    ? ['type' => $dataType, 'uri' => $match['uri'], 'label' => $match['label']]
+                    : ['type' => $dataType, 'uri' => $match['uri']];
             } else {
-                $upgraded[] = ['type' => $dataType, 'value' => $match['label'] ?? $match['value'] ?? $value['value']];
+                $upgraded[] = ['type' => $dataType, 'value' => $match['value'] ?? ''];
             }
         }
         return $upgraded;
+    }
+
+    /**
+     * First vocabulary entry whose URI (canonicalised) or display text equals
+     * $needle, or null. Split out of withVocabularyType() only because PHP has
+     * no early-return `break` out of a nested foreach with a value to keep.
+     *
+     * @param list<array<string,string>> $entries
+     * @return array<string,string>|null
+     */
+    private function matchingEntry(string $needle, array $entries): ?array
+    {
+        $canonicalNeedle = LicenceStatus::canonicalUri($needle);
+        foreach ($entries as $entry) {
+            if (isset($entry['uri']) && $canonicalNeedle === LicenceStatus::canonicalUri((string) $entry['uri'])) {
+                return $entry;
+            }
+            $text = $entry['label'] ?? $entry['value'] ?? null;
+            if (null !== $text && $needle === $text) {
+                return $entry;
+            }
+        }
+        return null;
     }
 
     /**

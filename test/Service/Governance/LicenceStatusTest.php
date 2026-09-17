@@ -73,4 +73,17 @@ final class LicenceStatusTest extends TestCase
 
         $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
     }
+
+    public function testCanonicalUriIsPublicSoAMatchDecidedHereCannotDisagreeWithOneBuildingAValue(): void
+    {
+        // GovernanceService::withVocabularyType() (fix round 1, Ruling 2) uses
+        // this same method to decide whether a submitted URI matches a
+        // vocabulary entry before writing it — pinning it here is the only host
+        // test that can cover that agreement, since GovernanceService itself
+        // needs the Omeka core.
+        $this->assertSame(
+            LicenceStatus::canonicalUri('https://creativecommons.org/licenses/by/4.0/'),
+            LicenceStatus::canonicalUri('https://CreativeCommons.org/licenses/by/4.0')
+        );
+    }
 }
