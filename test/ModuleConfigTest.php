@@ -72,6 +72,17 @@ final class ModuleConfigTest extends TestCase
         $this->assertArrayHasKey(\OERManager\Service\IntegrityChecker::class, $factories);
     }
 
+    /**
+     * TASK-028 rebanada 3b: el router de deshacer por ámbito (RecatalogService
+     * vs GovernanceService, TASK-008) — pinned aquí porque esta tarea lo
+     * registra y es quien lo introduce.
+     */
+    public function testUndoRouterServiceIsRegistered(): void
+    {
+        $factories = $this->config['service_manager']['factories'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Service\Curation\UndoRouter::class, $factories);
+    }
+
     public function testAlignmentStatusColumnTypeIsRegistered(): void
     {
         $invokables = $this->config['column_types']['invokables'] ?? [];

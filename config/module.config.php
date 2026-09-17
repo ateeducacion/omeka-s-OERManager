@@ -42,7 +42,12 @@ return [
                     $container->get(Service\IntegrityChecker::class),
                     $container->get(Service\ItemPanelData::class),
                     $container->get(Service\Workflow\WorkflowService::class),
-                    $container->get('Omeka\Acl')
+                    $container->get('Omeka\Acl'),
+                    // TASK-028 rebanada 3b: gobernanza (apply/read) y el router
+                    // de deshacer por ámbito, que reemplaza la llamada directa a
+                    // RecatalogService::undo() en recatalog-undo.
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\Curation\UndoRouter::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -199,6 +204,16 @@ return [
                     $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
                     $container->get('OERManager\Service\Governance\VocabEntries\Publisher'),
                     $container->get('Omeka\Settings')
+                );
+            },
+            // Deshacer por ámbito (TASK-028 rebanada 3b): el ledger compartido
+            // (ADR-0020) mezcla eventos de re-catalogación y de gobernanza; el
+            // router lee el ámbito del propio evento y delega en el servicio
+            // que sabe revertirlo.
+            Service\Curation\UndoRouter::class => function ($container) {
+                return new Service\Curation\UndoRouter(
+                    $container->get(Service\RecatalogService::class),
+                    $container->get(Service\GovernanceService::class)
                 );
             },
 

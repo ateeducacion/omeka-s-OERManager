@@ -18,7 +18,10 @@ use OERManager\Service\ComputedFilter;
 use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
+use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Governance\GovernanceFields;
+use OERManager\Service\GovernanceService;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
@@ -65,6 +68,8 @@ class IndexController extends AbstractActionController
     private ItemPanelData $itemPanelData;
     private WorkflowService $workflowService;
     private Acl $acl;
+    private GovernanceService $governanceService;
+    private UndoRouter $undoRouter;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -83,7 +88,9 @@ class IndexController extends AbstractActionController
         IntegrityChecker $integrityChecker,
         ItemPanelData $itemPanelData,
         WorkflowService $workflowService,
-        Acl $acl
+        Acl $acl,
+        GovernanceService $governanceService,
+        UndoRouter $undoRouter
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -102,6 +109,8 @@ class IndexController extends AbstractActionController
         $this->itemPanelData = $itemPanelData;
         $this->workflowService = $workflowService;
         $this->acl = $acl;
+        $this->governanceService = $governanceService;
+        $this->undoRouter = $undoRouter;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -399,6 +408,77 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * Escritura de las cinco properties de gobernanza (RF-015, TASK-028
+     * rebanada 3b): licencia, autoría, editor, titular de derechos y fuente.
+     * Mismas guardas que `recatalogApplyAction()` (CSRF, ACL vía onBootstrap,
+     * excepción de dominio con su propio mensaje, cualquier otra registrada
+     * y no filtrada al cliente — I2).
+     *
+     * Los errores de validación de `GovernanceService::apply()` llegan como
+     * `{updated:false, errors:{term:code}}` y se devuelven tal cual, para que
+     * el formulario los pinte junto a cada campo.
+     *
+     * Lee-tras-escribir (ruling de esta tarea): tras un apply que sí escribe,
+     * la respuesta la construye `GovernanceService::read()` sobre el item ya
+     * releído, no lo que la petición pidió escribir — así el panel repinta
+     * lo que el catálogo realmente tiene.
+     */
+    public function governanceApplyAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['updated' => false, 'error' => 'csrf']);
+        }
+
+        $id = (int) $this->params()->fromPost('id');
+        $raw = $this->collectGovernanceFields();
+        $identity = $this->identity();
+        $contributor = $identity ? $identity->getName() : 'unknown';
+
+        try {
+            $result = $this->governanceService->apply($id, $raw, $contributor);
+        } catch (PermissionDeniedException $e) {
+            return new JsonModel(['updated' => false, 'error' => 'denied']);
+        } catch (\RuntimeException $e) {
+            // Excepción de dominio: mensaje seguro y útil.
+            return new JsonModel(['updated' => false, 'error' => $e->getMessage()]);
+        } catch (\Exception $e) {
+            // Inesperada: registrar el detalle, no filtrarlo al cliente (I2).
+            $this->logger->err('OERManager governance apply item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['updated' => false, 'error' => 'unexpected']);
+        }
+
+        if (true !== ($result['updated'] ?? false)) {
+            // Validación fallida, nada que limpiar o sin cambios: el propio
+            // resultado de apply() ya es la respuesta completa.
+            return new JsonModel($result);
+        }
+
+        try {
+            $item = $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            $this->logger->err(
+                'OERManager governance apply item ' . $id . ': releer tras escribir — ' . $e->getMessage()
+            );
+            return new JsonModel(['updated' => false, 'error' => 'unexpected']);
+        }
+
+        $integrity = $this->integrityChecker->check($item, true);
+
+        return new JsonModel(array_merge(
+            ['updated' => true],
+            $this->governanceService->read($item),
+            [
+                'integrity' => ['status' => $integrity->getStatus(), 'issues' => $integrity->getIssues()],
+                'event' => $result['event'] ?? null,
+            ]
+        ));
+    }
+
+    /**
      * Configuración del módulo (TASK-029). Vivía en el listado de Módulos, a la
      * que solo se llegaba por *Módulos → OER Manager → Configurar*; ahora cuelga
      * del menú lateral, junto a la vista maestra que es donde se trabaja.
@@ -584,9 +664,14 @@ class IndexController extends AbstractActionController
     }
 
     /**
-     * Deshace la última re-catalogación del item (TASK-007). Escribe, así que
-     * lleva CSRF y ACL igual que el apply: deshacer no es más privilegiado que
-     * hacer, pero tampoco menos (NFR-003).
+     * Deshace el último evento de curación del item (TASK-007, extendido en
+     * TASK-028 rebanada 3b): re-catalogación o gobernanza, lo que sea que el
+     * evento sea. El endpoint y su contrato JSON no cambian —lo sigue llamando
+     * `asset/js/ui/recatalog.js` tal cual—; lo único nuevo es que el trabajo lo
+     * reparte `UndoRouter` según el ámbito del propio evento
+     * (`CurationEvent::scopeOf()`), en vez de ir siempre a `RecatalogService`.
+     * Escribe, así que lleva CSRF y ACL igual que el apply: deshacer no es más
+     * privilegiado que hacer, pero tampoco menos (NFR-003).
      */
     public function recatalogUndoAction()
     {
@@ -606,7 +691,7 @@ class IndexController extends AbstractActionController
         $contributor = $identity ? $identity->getName() : 'unknown';
 
         try {
-            $result = $this->recatalogService->undo($id, $contributor, $force);
+            $result = $this->undoRouter->undo($id, $contributor, $force);
         } catch (PermissionDeniedException $e) {
             return new JsonModel(['updated' => false, 'error' => 'denied']);
         } catch (\RuntimeException $e) {
@@ -915,6 +1000,39 @@ class IndexController extends AbstractActionController
             }
         }
         return $out;
+    }
+
+    /**
+     * Recoge del POST los cinco campos de gobernanza (RF-015) en la forma
+     * `term => list<string>` que espera `GovernanceFields::normalise()`
+     * (Task 1): autoría llega como lista (`governance[dcterms:creator][]`);
+     * los otros cuatro, como valor único (`governance[dcterms:license]`). El
+     * `(array)` cast trata ambos casos por igual — un escalar se convierte en
+     * una lista de un elemento— así que `normalise()` es quien detecta, por
+     * `too-many`, que alguien mandó más de un valor a un campo que no admite
+     * varios.
+     *
+     * Solo se incluye una clave si el POST la trae: su ausencia significa «no
+     * tocar este campo» para `apply()`, mientras que traerla vacía (cadena
+     * vacía, o lista vacía tras filtrar blancos) significa «vaciarlo» — la
+     * diferencia decide si se borra un valor ya guardado.
+     *
+     * @return array<string,list<string>>
+     */
+    private function collectGovernanceFields(): array
+    {
+        $posted = (array) $this->params()->fromPost('governance', []);
+        $raw = [];
+        foreach (GovernanceFields::all() as $term) {
+            if (!array_key_exists($term, $posted)) {
+                continue;
+            }
+            $raw[$term] = array_values(array_filter(
+                array_map('strval', (array) $posted[$term]),
+                static fn (string $value): bool => '' !== trim($value)
+            ));
+        }
+        return $raw;
     }
 
     /**

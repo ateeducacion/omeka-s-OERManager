@@ -74,10 +74,13 @@ class Module extends AbstractModule implements InitProviderInterface
         /** @var \Omeka\Permissions\Acl $acl */
         $acl = $this->getServiceLocator()->get('Omeka\Acl');
 
-        // Curación: vista maestra, re-catalogador, propuesta IA y visibilidad.
-        // RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto a los roles
-        // que ya curaban — es el rol nativo que hace de curador de REA en el
-        // flujo autor→curador. No sustituye a editor/site_admin.
+        // Curación: vista maestra, re-catalogador, gobernanza, propuesta IA y
+        // visibilidad. RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto
+        // a los roles que ya curaban — es el rol nativo que hace de curador de
+        // REA en el flujo autor→curador. No sustituye a editor/site_admin.
+        // `governance-apply` (TASK-028 rebanada 3b) entra al mismo nivel que
+        // `recatalog-apply`: escribir las cinco properties de gobernanza no es
+        // más privilegiado que re-catalogar, y `author` no lo tiene.
         $acl->allow(
             ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\IndexController::class],
@@ -88,6 +91,7 @@ class Module extends AbstractModule implements InitProviderInterface
                 'set-visibility',
                 'recatalog-preview',
                 'recatalog-apply',
+                'governance-apply',
                 'recatalog-last-event',
                 'drawer-details',
                 'drawer-history',
