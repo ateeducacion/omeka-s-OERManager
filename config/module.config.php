@@ -175,10 +175,14 @@ return [
                     $container->get('Omeka\Settings')
                 );
             },
+            Service\Curation\CurationWriter::class => function ($container) {
+                return new Service\Curation\CurationWriter($container->get('Omeka\ApiManager'));
+            },
             Service\RecatalogService::class => function ($container) {
                 return new Service\RecatalogService(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get(Service\Curation\CurationWriter::class)
                 );
             },
             Service\Workflow\WorkflowService::class => function ($container) {

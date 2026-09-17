@@ -2,6 +2,7 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Curation\CurationWriter;
 use OERManager\Service\Governance\CurationHistory;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
@@ -56,19 +57,15 @@ class RecatalogService
      */
     private const UNQUALIFIED_TERM = 'dcterms:relation';
 
-    /** Tope de longitud de la justificación anotada (defensa en profundidad). */
-    private const MAX_REASON_CHARS = 200;
-
-    /** @var array<string,int|null> caché term => property_id */
-    private array $propertyIds = [];
-
     private ApiManager $api;
     private Settings $settings;
+    private CurationWriter $writer;
 
-    public function __construct(ApiManager $api, Settings $settings)
+    public function __construct(ApiManager $api, Settings $settings, CurationWriter $writer)
     {
         $this->api = $api;
         $this->settings = $settings;
+        $this->writer = $writer;
     }
 
     /**
@@ -129,7 +126,7 @@ class RecatalogService
         // estado equivocado. Los microsegundos hacen el sello único, y sigue
         // siendo el MISMO en el evento y en las anotaciones por valor, que es lo
         // que mantiene el par (contributor, modified) como clave del evento.
-        $now = (new \DateTimeImmutable())->format('Y-m-d\TH:i:s.uP');
+        $now = $this->writer->stamp();
         $item = $this->api->read('items', $itemId)->getContent();
         $data = [];
         $clear = [];
@@ -139,7 +136,7 @@ class RecatalogService
             if (!array_key_exists($term, $proposed)) {
                 continue;
             }
-            $propertyId = $this->propertyId($term);
+            $propertyId = $this->writer->propertyId($term);
             if (null === $propertyId) {
                 continue;
             }
@@ -192,21 +189,14 @@ class RecatalogService
         // clear_property_values y anexar (collectionAction=append) los nuevos
         // valores; en modo append Omeka no reutiliza ni borra el resto, así que
         // título, descripción, licencia, proyecto, etc. quedan intactos.
-        $data['clear_property_values'] = $clear;
         // El evento se ANEXA: dcterms:provenance nunca entra en
         // clear_property_values, así que el registro es append-only y ninguna
         // re-catalogación posterior borra la traza de las anteriores.
-        $eventValue = $this->eventValue($event, $contributor, $now);
+        $eventValue = $this->writer->eventValue($event, $contributor, $now);
         if ($eventValue) {
             $data['dcterms:provenance'] = [$eventValue];
         }
-        $this->api->update(
-            'items',
-            $itemId,
-            $data,
-            [],
-            ['isPartial' => true, 'collectionAction' => 'append']
-        );
+        $this->writer->commit($itemId, $clear, $data);
         return [
             'updated' => true,
             'properties' => $properties,
@@ -429,37 +419,6 @@ class RecatalogService
     }
 
     /**
-     * Valor de evento sobre el propio item (ADR-0015): resumen legible en el
-     * valor y payload exacto en su anotación. PRIVADO a propósito — es un
-     * registro de máquina y no debe salir en la ficha pública del REA.
-     *
-     * @param array<string,mixed> $event
-     * @return array<string,mixed>|null null si la instalación no tiene las
-     *   properties necesarias: preferible no dejar traza a dejarla incompleta
-     *   (un payload perdido haría que el deshacer restaurase un estado falso).
-     */
-    private function eventValue(array $event, string $contributor, string $when): ?array
-    {
-        $propertyId = $this->propertyId('dcterms:provenance');
-        $annotation = $this->annotationValues([
-            'dcterms:contributor' => $contributor,
-            'dcterms:modified' => $when,
-            'dcterms:provenance' => CurationEvent::MARKER,
-            'dcterms:replaces' => CurationEvent::encode($event),
-        ]);
-        if (null === $propertyId || !isset($annotation['dcterms:replaces'])) {
-            return null;
-        }
-        return [
-            'type' => 'literal',
-            'property_id' => $propertyId,
-            'is_public' => false,
-            '@value' => CurationEvent::summary($event),
-            '@annotation' => $annotation,
-        ];
-    }
-
-    /**
      * @param int[] $ids
      * @param array<int,string> $justForTerm justificación IA por itemId (TASK-023)
      * @return array<int,array<string,mixed>>
@@ -480,56 +439,15 @@ class RecatalogService
                 'type' => 'resource:item',
                 'property_id' => $propertyId,
                 'value_resource_id' => $targetId,
-                '@annotation' => $this->annotation($contributor, $when, $term, $reason),
+                '@annotation' => $this->writer->annotation(
+                    $contributor,
+                    $when,
+                    sprintf('OERManager re-catalogación de %s', $term),
+                    $reason
+                ),
             ];
         }
         return $values;
-    }
-
-    /**
-     * Auditoría RDF nativa (ADR-0002): quién/cuándo/qué sobre el valor curado.
-     * El formato '@annotation' está verificado contra la instalación real
-     * (2026-06-25): se escribe correctamente como value annotation. Si hay
-     * justificación de la IA (TASK-023), se añade como dcterms:description (el
-     * «porqué», distinto del «qué» de dcterms:provenance), acotada en longitud.
-     *
-     * @return array<string,array<int,array<string,mixed>>>
-     */
-    private function annotation(string $contributor, string $when, string $term, string $reason = ''): array
-    {
-        $map = [
-            'dcterms:contributor' => $contributor,
-            'dcterms:modified' => $when,
-            'dcterms:provenance' => sprintf('OERManager re-catalogación de %s', $term),
-        ];
-        if ('' !== $reason) {
-            $map['dcterms:description'] = mb_substr($reason, 0, self::MAX_REASON_CHARS);
-        }
-        return $this->annotationValues($map);
-    }
-
-    /**
-     * Literales de una value annotation, en el formato que espera ValueHydrator.
-     * Las properties que la instalación no tenga se omiten en silencio.
-     *
-     * @param array<string,string> $map term => literal
-     * @return array<string,array<int,array<string,mixed>>>
-     */
-    private function annotationValues(array $map): array
-    {
-        $annotation = [];
-        foreach ($map as $annTerm => $literal) {
-            $annPropertyId = $this->propertyId($annTerm);
-            if (null === $annPropertyId) {
-                continue;
-            }
-            $annotation[$annTerm] = [[
-                'type' => 'literal',
-                'property_id' => $annPropertyId,
-                '@value' => $literal,
-            ]];
-        }
-        return $annotation;
     }
 
     /**
@@ -663,14 +581,5 @@ class RecatalogService
         }
         $typeValue = $item->value(CurriculumSearch::TYPE_TERM);
         return null !== $typeValue && trim((string) $typeValue) === $expected;
-    }
-
-    private function propertyId(string $term): ?int
-    {
-        if (array_key_exists($term, $this->propertyIds)) {
-            return $this->propertyIds[$term];
-        }
-        $content = $this->api->search('properties', ['term' => $term])->getContent();
-        return $this->propertyIds[$term] = $content ? $content[0]->id() : null;
     }
 }
