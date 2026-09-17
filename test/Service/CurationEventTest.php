@@ -271,4 +271,47 @@ final class CurationEventTest extends TestCase
         );
         $this->assertSame([], CurationEvent::expectedValues($decoded)['dcterms:license']);
     }
+
+    // The typed branch of summary() (Task 2) had no caller until GovernanceService
+    // (TASK-028 slice 3b, Task 7): these three cases were flagged in that review
+    // as untested and deferred here.
+
+    public function testTheSummaryOfATypedPayloadThatAddsAValue(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:creator' => [
+                'before' => [['type' => 'literal', 'value' => 'Ana']],
+                'after' => [['type' => 'literal', 'value' => 'Ana'], ['type' => 'literal', 'value' => 'Luis']],
+            ],
+        ]);
+
+        $this->assertSame('Gobernanza · dcterms:creator +1', CurationEvent::summary($payload));
+    }
+
+    public function testTheSummaryOfATypedPayloadThatClearsAField(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            'dcterms:license' => [
+                'before' => [['type' => 'uri', 'uri' => 'https://x/by/4.0/']],
+                'after' => [],
+            ],
+        ]);
+
+        $this->assertSame('Gobernanza · dcterms:license −1 (vaciada)', CurationEvent::summary($payload));
+    }
+
+    public function testTheSummaryOfATypedPayloadThatOnlyReordersValues(): void
+    {
+        // Typed comparison is by ordered list (unlike v1's set comparison), so
+        // reordering is a change and produces a payload — but neither value was
+        // added nor removed, so the summary carries no +/- count for the term.
+        $payload = CurationEvent::buildTyped([
+            'dcterms:creator' => [
+                'before' => [['type' => 'literal', 'value' => 'Ana'], ['type' => 'literal', 'value' => 'Luis']],
+                'after' => [['type' => 'literal', 'value' => 'Luis'], ['type' => 'literal', 'value' => 'Ana']],
+            ],
+        ]);
+
+        $this->assertSame('Gobernanza · dcterms:creator ', CurationEvent::summary($payload));
+    }
 }

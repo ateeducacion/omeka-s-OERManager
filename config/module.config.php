@@ -188,6 +188,19 @@ return [
             Service\Workflow\WorkflowService::class => function ($container) {
                 return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
             },
+            // Gobernanza (TASK-028 slice 3b, RF-015): lee y escribe las cinco
+            // properties de gobernanza por el mismo CurationWriter que el
+            // re-catalogador, con los dos VocabEntries blandos (licencia,
+            // editor) ya registrados más arriba.
+            Service\GovernanceService::class => function ($container) {
+                return new Service\GovernanceService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
+                    $container->get('OERManager\Service\Governance\VocabEntries\Publisher'),
+                    $container->get('Omeka\Settings')
+                );
+            },
 
             // --- Catalogación IA-assistida (TASK-010, 4b) ---
             // Transporte HTTP del LLM (envuelve Laminas\Http\Client; sin SSRF).
