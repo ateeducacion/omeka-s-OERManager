@@ -13,6 +13,7 @@
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var array|null $panel
  * @var array|null $integrity
+ * @var array|null $governance `GovernanceService::read()` plus `canEdit` and `csrf` (Task 9)
  * @var array $areas
  * @var string $rail
  * @var string|null $workflowStatus estado de curación (RF-016), null=Borrador
@@ -23,7 +24,10 @@
  * @var string $publishUrl
  */
 
+use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\Governance\IntegrityPolicy;
+use OERManager\Service\Governance\LicenceStatus;
+use OERManager\Service\Governance\ValueText;
 use OERManager\Service\PanelAreas;
 
 $translate = $this->plugin('translate');
@@ -49,7 +53,39 @@ $termLabels = [
     'schema:isPartOf' => $translate('Proyecto'),
     'lrmi:learningResourceType' => $translate('Tipo de recurso'),
     IntegrityPolicy::LICENSE_TERM => $translate('Licencia'),
+    GovernanceFields::CREATOR => $translate('Autoría'), // @translate
+    GovernanceFields::PUBLISHER => $translate('Editor'), // @translate
+    GovernanceFields::RIGHTS_HOLDER => $translate('Titular de derechos'), // @translate
+    GovernanceFields::SOURCE => $translate('Fuente'), // @translate
 ];
+
+// Missing text PER FIELD (the ADR-0014 rule this branch already follows,
+// extended to governance in Task 9): with 19/19 catalogue items lacking
+// authorship, a glyph on every field would mark the whole block and stop
+// signalling the exception — same criterion `ColumnType\GovernanceValue`
+// already applies in the table. Each of the five has its own text so the
+// absence says WHAT is missing.
+$governanceMissingText = [
+    GovernanceFields::LICENCE => 'Sin licencia', // @translate
+    GovernanceFields::CREATOR => 'Sin autoría', // @translate
+    GovernanceFields::PUBLISHER => 'Sin editor', // @translate
+    GovernanceFields::RIGHTS_HOLDER => 'Sin titular de derechos', // @translate
+    GovernanceFields::SOURCE => 'Sin fuente', // @translate
+];
+
+/** Displayable text for a list of governance values (uri or literal), comma-joined. */
+$governanceFieldText = static function (array $entries): string {
+    $texts = [];
+    foreach ($entries as $entry) {
+        $text = isset($entry['uri'])
+            ? ValueText::of($entry['label'] ?? null, $entry['uri'])
+            : (string) ($entry['value'] ?? '');
+        if ('' !== $text) {
+            $texts[] = $text;
+        }
+    }
+    return implode(', ', $texts);
+};
 
 // El código de razón de `CurricularGrouping::build` cubre DOS casos: un valor
 // cuyo curso no está declarado, y uno cuyo curso sí lo está pero al que ninguna
@@ -315,6 +351,71 @@ $checked = null !== $integrity && !empty($integrity['status']);
             </section>
         </div>
     </div>
+
+    <?php
+    // Licence and authorship (RF-015, TASK-028 slice 3b, Task 9): read view
+    // only for now — the form and its JS wiring are Tasks 10/11.
+    // `data-mode="read"` follows the same convention as `.oer-area-alignment`,
+    // which also toggles read/edit within its own section.
+    $govValues = $governance['values'] ?? [];
+    $licenceEntries = $govValues[GovernanceFields::LICENCE] ?? [];
+    $licenceStatus = $governance['licenceStatus'] ?? LicenceStatus::MISSING;
+    $licenceText = $governanceFieldText($licenceEntries);
+    $simpleGovernanceTerms = [
+        GovernanceFields::CREATOR,
+        GovernanceFields::PUBLISHER,
+        GovernanceFields::RIGHTS_HOLDER,
+        GovernanceFields::SOURCE,
+    ];
+    ?>
+    <section class="oer-area oer-area-governance" data-mode="read">
+        <h4><?php echo $escape($translate(PanelAreas::LABELS['governance'])); ?></h4>
+        <dl>
+            <dt><?php echo $escape($termLabels[GovernanceFields::LICENCE]); ?></dt>
+            <dd>
+                <?php if ('' === $licenceText): ?>
+                <span class="oer-value-missing">
+                    <?php echo $escape($translate($governanceMissingText[GovernanceFields::LICENCE])); ?>
+                </span>
+                <?php else: ?>
+                <span class="oer-value"><?php echo $escape($licenceText); ?></span>
+                <?php // The one case that earns a mark (ADR-0014): outside the configured vocabulary. ?>
+                <?php if (LicenceStatus::OUTSIDE_VOCAB === $licenceStatus): ?>
+                <span class="oer-governance-warning">
+                    <?php echo $escape($translate('No está en la lista de licencias aprobadas')); // @translate ?>
+                </span>
+                <?php endif; ?>
+                <?php endif; ?>
+            </dd>
+
+            <?php foreach ($simpleGovernanceTerms as $term): ?>
+            <?php $text = $governanceFieldText($govValues[$term] ?? []); ?>
+            <dt><?php echo $escape($termLabels[$term]); ?></dt>
+            <dd>
+                <?php if ('' === $text): ?>
+                <span class="oer-value-missing"><?php echo $escape($translate($governanceMissingText[$term])); ?></span>
+                <?php else: ?>
+                <span class="oer-value"><?php echo $escape($text); ?></span>
+                <?php endif; ?>
+            </dd>
+            <?php endforeach; ?>
+        </dl>
+
+        <?php foreach (($governance['notices'] ?? []) as $notice): ?>
+        <p class="oer-governance-notice"><?php echo $escape($translate($notice)); ?></p>
+        <?php endforeach; ?>
+
+        <?php // Only hides the button; governanceApplyAction checks the permission again (I2). ?>
+        <?php if (!empty($governance['canEdit'])): ?>
+        <button
+            type="button"
+            class="button oer-governance-edit"
+            data-item-id="<?php echo (int) $identity['id']; ?>"
+        >
+            <?php echo $escape($translate('Editar')); // @translate ?>
+        </button>
+        <?php endif; ?>
+    </section>
 
     <?php // Nace plegado y su petición NO se lanza hasta que se despliega (P-6). ?>
     <section class="oer-area oer-area-history">

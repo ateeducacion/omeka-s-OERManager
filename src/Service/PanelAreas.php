@@ -27,12 +27,13 @@ final class PanelAreas
      * Orden de presentación. Anclaje primero: es la decisión que el panel
      * habilita (ADR-0014 §1), y la única área con acciones.
      */
-    public const ORDER = ['alignment', 'media', 'record', 'integrity'];
+    public const ORDER = ['alignment', 'media', 'record', 'governance', 'integrity'];
 
     public const LABELS = [
         'alignment' => 'Anclaje curricular', // @translate
         'media' => 'Medios', // @translate
         'record' => 'Información', // @translate
+        'governance' => 'Licencia y autoría', // @translate
         'integrity' => 'Integridad', // @translate
     ];
 
@@ -58,9 +59,11 @@ final class PanelAreas
      *   o `null` si el item no se pudo leer.
      * @param array<string,mixed>|null $integrity Resultado del comprobador, o
      *   `null` si no llegó a comprobarse.
+     * @param array<string,mixed>|null $governance What `GovernanceService::read()`
+     *   returns, or `null` if it was never computed (TASK-028 slice 3b, Task 9).
      * @return list<array{id:string, state:string}> En el orden de `ORDER`.
      */
-    public static function build(?array $panel, ?array $integrity): array
+    public static function build(?array $panel, ?array $integrity, ?array $governance = null): array
     {
         if (null === $panel) {
             return array_map(
@@ -89,6 +92,11 @@ final class PanelAreas
                 'state' => $record ? self::STATE_READY : self::STATE_EMPTY,
                 'record' => $record,
             ],
+            'governance' => [
+                'id' => 'governance',
+                'state' => self::governanceState($governance),
+                'governance' => $governance,
+            ],
             'integrity' => [
                 'id' => 'integrity',
                 // `null` es «no se pudo comprobar», no «está sano»: un array de
@@ -115,5 +123,27 @@ final class PanelAreas
             || ($alignment['orphans'] ?? []);
 
         return $hasSomething ? self::STATE_READY : self::STATE_EMPTY;
+    }
+
+    /**
+     * `null` is «never computed» (same distinction as `integrity`: a caller
+     * that skipped `GovernanceService::read()` is not the same as one that
+     * called it and got nothing back), so it reports `STATE_UNKNOWN` rather
+     * than `STATE_EMPTY`. Otherwise it is empty only when all five governance
+     * fields (RF-015) carry no value.
+     *
+     * @param array<string,mixed>|null $governance
+     */
+    private static function governanceState(?array $governance): string
+    {
+        if (null === $governance) {
+            return self::STATE_UNKNOWN;
+        }
+        foreach ($governance['values'] ?? [] as $entries) {
+            if ($entries) {
+                return self::STATE_READY;
+            }
+        }
+        return self::STATE_EMPTY;
     }
 }

@@ -532,6 +532,46 @@
     margin-left: 0;
 }
 
+/* ==========================================================================
+   Licence and authorship (the «governance» area of the detail panel,
+   TASK-028 slice 3b, Task 9). Same field labels as .oer-area-record: support
+   text above the value, which carries the weight.
+   ========================================================================== */
+.oer-area-governance dt {
+    margin-top: 0.75em;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-area-governance dd {
+    margin-left: 0;
+}
+
+/* The one case that earns a mark (ADR-0014 rule 2): a licence outside the
+   configured vocabulary. Every other missing field reads in muted ink, WITH
+   NO glyph (.oer-value-missing) — with 19/19 lacking authorship, a glyph on
+   every field would mark the whole block, and a mark present everywhere
+   stops signalling the exception. */
+.oer-governance-warning {
+    display: inline-block;
+    margin-left: 0.5em;
+    color: var(--oer-warn);
+    font-size: 0.85em;
+}
+
+.oer-governance-warning::before {
+    content: "\26A0"; /* ⚠ */
+    margin-right: 0.3em;
+}
+
+/* Vocabulary not configured (GovernanceService::notices()): a neutral notice,
+   not an error or a warning — the field degrades to free text. */
+.oer-governance-notice {
+    margin: 0.75em 0 0;
+    color: var(--oer-muted);
+    font-size: 0.85em;
+}
+
 /* Salida al editor nativo (TASK-027 §5.1): sin regla propia se pintaba como
    texto normal, ni siquiera con la afordancia por defecto del navegador,
    que el admin de Omeka resetea en sus enlaces. Es la única acción del

@@ -581,6 +581,7 @@ class IndexController extends AbstractActionController
             return $view->setVariables([
                 'panel' => null,
                 'integrity' => null,
+                'governance' => null,
                 'areas' => PanelAreas::build(null, null),
                 'rail' => 'ok',
                 'workflowStatus' => null,
@@ -599,6 +600,19 @@ class IndexController extends AbstractActionController
         ];
         $panel = $this->itemPanelData->forItem($item);
 
+        // Governance block (RF-015, TASK-028 slice 3b, Task 9 — read view
+        // only: the form and its JS wiring are Tasks 10/11). `canEdit` is
+        // decided server-side and travels to the view only to show or hide
+        // the button: it is NOT access control — the write endpoint
+        // (`governanceApplyAction`) checks the permission again.
+        $governance = array_merge(
+            $this->governanceService->read($item),
+            [
+                'canEdit' => $this->acl->userIsAllowed(self::class, 'governance-apply'),
+                'csrf' => $this->csrfValidator()->getHash(),
+            ]
+        );
+
         // Rechazar/publicar desde el drawer (extensión RF-016 post-PR#38):
         // mismo criterio que `Module::addWorkflowActions()` en la página
         // nativa del item — `view-all` es la señal de "es curador", no un
@@ -611,7 +625,8 @@ class IndexController extends AbstractActionController
         return $view->setVariables([
             'panel' => $panel,
             'integrity' => $integrity,
-            'areas' => PanelAreas::build($panel, $integrity),
+            'governance' => $governance,
+            'areas' => PanelAreas::build($panel, $integrity, $governance),
             // El riel del canto del sidebar (ADR-0014 §4). Lo escribe el
             // servidor, que ya conoce el estado: el cliente no tiene que
             // volver a deducirlo de la fila de la tabla.
