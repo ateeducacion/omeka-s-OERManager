@@ -75,6 +75,33 @@ test('licenceState canonicalisation matches LicenceStatus::canonicalUri: host ca
     assert.equal(licenceState(values, vocab), 'in_vocab');
 });
 
+// The next two are ported from LicenceStatusTest.php's
+// testHostRecurringElsewhereInTheUriIsNotAltered() and
+// testOnlyOneTrailingSlashIsStripped() — the PHP side shipped both bugs once
+// before catching them, and neither had a JS test of its own before this fix
+// round. Each is written to fail against the naive fix that broke the PHP
+// version: a global (all-occurrences) host replace for the first, an
+// unbounded `replace(/\/+$/, '')` for the second.
+
+test('only the host is case-folded: the same string recurring in the path stays verbatim, so a path-case difference is outside the vocabulary', () => {
+    // The host string "AB.CO" also occurs, in the same case, inside the path.
+    // A naive case-fold that replaces every occurrence of the host substring
+    // (not just the host component) would fold the path's copy too and wrongly
+    // report in_vocab; canonicalUri() must fold only the host.
+    const vocab = ['https://ab.co/path/ab.co/tail'];
+    const values = [{ uri: 'https://AB.CO/path/AB.CO/tail' }];
+    assert.equal(licenceState(values, vocab), 'outside_vocab');
+});
+
+test('exactly one trailing slash is stripped, not every one', () => {
+    // A naive `replace(/\/+$/, '')` (or repeated single-slash stripping) would
+    // remove both slashes and wrongly report in_vocab; canonicalUri() strips
+    // one and leaves the second as a real path difference.
+    const vocab = ['https://example.org/licence'];
+    const values = [{ uri: 'https://example.org/licence//' }];
+    assert.equal(licenceState(values, vocab), 'outside_vocab');
+});
+
 test('licenceState treats a value without a uri as outside the vocabulary, never missing', () => {
     const vocab = ['https://x/by/4.0/'];
     assert.equal(licenceState([{ value: 'ccby' }], vocab), 'outside_vocab');
@@ -130,6 +157,13 @@ test('rows marks the licence row with a warning only when the server says outsid
 
     const empty = rows({ values: {}, licenceStatus: 'missing' });
     assert.equal(empty[0].warning, undefined);
+});
+
+test('rows treats a uri key that is explicitly null as unset, like PHP isset(), and falls back to the literal value', () => {
+    const governance = {
+        values: { 'dcterms:publisher': [{ type: 'literal', value: 'Texto libre', uri: null }] }
+    };
+    assert.equal(rows(governance)[2].text, 'Texto libre');
 });
 
 test('rows tolerates a governance payload with no values at all', () => {

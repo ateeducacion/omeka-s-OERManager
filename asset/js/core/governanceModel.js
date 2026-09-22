@@ -208,11 +208,18 @@ export function licenceState(values, vocabUris) {
  * Text of one governance value: a URI value's label if it has one, else its
  * URI; a literal value's text otherwise. Mirrors ValueText::of() (label wins,
  * URI is the fallback, never the raw `@value` of a URI-typed value).
+ *
+ * The branch is on "is `uri` set", mirroring PHP's `isset($entry['uri'])` —
+ * not merely "does the key exist" — so an entry that carries `uri: null`
+ * falls through to the literal branch exactly as PHP's `isset()` would,
+ * rather than being treated as a URI value with an empty URI. The server
+ * never sends such an entry today, but the two languages must not part ways
+ * over one if it ever does.
  * @param {{uri?: string, value?: string, label?: string}} entry
  * @returns {string}
  */
 function entryText(entry) {
-    if (entry && Object.prototype.hasOwnProperty.call(entry, 'uri')) {
+    if (entry && entry.uri !== undefined && entry.uri !== null) {
         const label = String(entry.label || '').trim();
         return label !== '' ? label : String(entry.uri || '').trim();
     }
