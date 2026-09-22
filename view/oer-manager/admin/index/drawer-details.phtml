@@ -10,6 +10,16 @@
  * `.oer-anchor-slot`, donde se monta el re-catalogador —necesita el `itemJson`
  * de una llamada aparte—, y el cuerpo del historial, que es perezoso.
  *
+ * Task 11 adds a third: `.oer-governance-form`, which `asset/js/ui/governance.js`
+ * fills in place of the read rows when `canEdit` is true. Unlike the anchor
+ * slot, this one carries its own data — `data-governance` on the section —
+ * because `governance.js` only ever receives a DOM root from `drawerDetails.js`
+ * (its exported `init(root)` is its whole public surface), never the
+ * page-level `config` object `main.js` builds for the other UI modules. So
+ * everything the form needs (current values, vocab options, notices, the
+ * default rights holder, and the per-load CSRF hash) travels as JSON in that
+ * one attribute, server-rendered here and read once when «Editar» is clicked.
+ *
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var array|null $panel
  * @var array|null $integrity
@@ -22,6 +32,7 @@
  * @var string $workflowCsrf
  * @var string $rejectUrl
  * @var string $publishUrl
+ * @var string $governanceApplyUrl POST target for the edit form (Task 11)
  */
 
 use OERManager\Service\Governance\GovernanceFields;
@@ -353,10 +364,12 @@ $checked = null !== $integrity && !empty($integrity['status']);
     </div>
 
     <?php
-    // Licence and authorship (RF-015, TASK-028 slice 3b, Task 9): read view
-    // only for now — the form and its JS wiring are Tasks 10/11.
-    // `data-mode="read"` follows the same convention as `.oer-area-alignment`,
-    // which also toggles read/edit within its own section.
+    // Licence and authorship (RF-015, TASK-028 slice 3b). Read view since
+    // Task 9; `.oer-governance-form` (Task 11) is the edit-mode counterpart of
+    // `.oer-anchor-slot`, filled by `asset/js/ui/governance.js` when «Editar»
+    // is clicked. `data-mode="read"` follows the same convention as
+    // `.oer-area-alignment`, which also toggles read/edit within its own
+    // section.
     $govValues = $governance['values'] ?? [];
     $licenceEntries = $govValues[GovernanceFields::LICENCE] ?? [];
     $licenceStatus = $governance['licenceStatus'] ?? LicenceStatus::MISSING;
@@ -367,8 +380,33 @@ $checked = null !== $integrity && !empty($integrity['status']);
         GovernanceFields::RIGHTS_HOLDER,
         GovernanceFields::SOURCE,
     ];
+    // Everything the form needs and the server already computed, for the one
+    // client-side read `governance.js` gets (see the file docblock): current
+    // values, vocab options, notices, the default rights holder and the CSRF
+    // hash this same request already minted. `JSON_HEX_*` keeps it safe to
+    // drop straight into a double-quoted HTML attribute (belt-and-braces with
+    // $escape(), which already covers the `"` case on its own).
+    $governanceData = !empty($governance['canEdit']) ? $escape(json_encode(
+        [
+            'id' => (int) $identity['id'],
+            'values' => $govValues,
+            'licenceStatus' => $licenceStatus,
+            'options' => $governance['options'] ?? ['licence' => [], 'publisher' => []],
+            'notices' => $governance['notices'] ?? [],
+            'defaultRightsHolder' => (string) ($governance['defaultRightsHolder'] ?? ''),
+            'csrf' => (string) ($governance['csrf'] ?? ''),
+        ],
+        JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
+    )) : null;
     ?>
-    <section class="oer-area oer-area-governance" data-mode="read">
+    <section
+        class="oer-area oer-area-governance"
+        data-mode="read"
+        data-governance-apply-url="<?php echo $escape($governanceApplyUrl); ?>"
+        <?php if (null !== $governanceData): ?>
+        data-governance="<?php echo $governanceData; ?>"
+        <?php endif; ?>
+    >
         <h4><?php echo $escape($translate(PanelAreas::LABELS['governance'])); ?></h4>
         <dl>
             <dt><?php echo $escape($termLabels[GovernanceFields::LICENCE]); ?></dt>
@@ -415,6 +453,8 @@ $checked = null !== $integrity && !empty($integrity['status']);
             <?php echo $escape($translate('Editar')); // @translate ?>
         </button>
         <?php endif; ?>
+        <?php // Filled by governance.js from `data-governance` above; empty in read mode. ?>
+        <div class="oer-governance-form"></div>
     </section>
 
     <?php // Nace plegado y su petición NO se lanza hasta que se despliega (P-6). ?>

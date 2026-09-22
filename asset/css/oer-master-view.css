@@ -572,6 +572,86 @@
     font-size: 0.85em;
 }
 
+/* ==========================================================================
+   Governance edit form (Task 11). Same two-mode pattern as
+   `.oer-area-alignment` above: the read `<dl>`, its notices and the «Editar»
+   button occupy the same space as the form and are never shown together. No
+   new colour anywhere in this block — `.oer-governance-field-error` and
+   `.oer-governance-form-error` reuse `--oer-bad`, the same token
+   `.oer-workflow-error` already uses for the sibling reject/publish forms.
+   ========================================================================== */
+.oer-area-governance[data-mode="edit"] dl,
+.oer-area-governance[data-mode="edit"] .oer-governance-edit,
+.oer-area-governance[data-mode="read"] .oer-governance-form {
+    display: none;
+}
+
+.oer-governance-field {
+    margin-bottom: 0.9em;
+}
+
+.oer-governance-field > label {
+    display: block;
+    margin-bottom: 0.25em;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-governance-field select,
+.oer-governance-field input[type="text"] {
+    width: 100%;
+    max-width: 28em;
+    box-sizing: border-box;
+}
+
+.oer-governance-author-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.4em;
+}
+
+.oer-governance-author-row input[type="text"] {
+    flex: 1 1 auto;
+    max-width: none;
+}
+
+.oer-governance-remove-author {
+    flex: 0 0 auto;
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-muted);
+    background: #fff;
+}
+
+.oer-governance-remove-author:hover,
+.oer-governance-remove-author:focus {
+    color: var(--oer-accent);
+    border-color: var(--oer-accent);
+}
+
+.oer-governance-add-author {
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-muted);
+    background: #fff;
+}
+
+.oer-governance-field-error {
+    margin: 0.3em 0 0;
+    color: var(--oer-bad);
+    font-size: 0.85em;
+}
+
+.oer-governance-form-error {
+    margin: 0 0 0.9em;
+    color: var(--oer-bad);
+    font-size: 0.85em;
+}
+
+.oer-governance-form-actions {
+    display: flex;
+    gap: 0.5em;
+}
+
 /* Salida al editor nativo (TASK-027 §5.1): sin regla propia se pintaba como
    texto normal, ni siquiera con la afordancia por defecto del navegador,
    que el admin de Omeka resetea en sus enlaces. Es la única acción del

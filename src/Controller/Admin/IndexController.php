@@ -590,6 +590,7 @@ class IndexController extends AbstractActionController
                 'workflowCsrf' => '',
                 'rejectUrl' => '',
                 'publishUrl' => '',
+                'governanceApplyUrl' => '',
             ]);
         }
 
@@ -637,6 +638,11 @@ class IndexController extends AbstractActionController
             'workflowCsrf' => $this->csrfValidator()->getHash(),
             'rejectUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'reject-proposal']),
             'publishUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'publish-proposal']),
+            // Task 11: the edit form posts here. Computed per render (like
+            // rejectUrl/publishUrl above) because `governance.js` only ever
+            // receives a DOM root, never the page-level `config` object — see
+            // its own file docblock.
+            'governanceApplyUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'governance-apply']),
         ]);
     }
 

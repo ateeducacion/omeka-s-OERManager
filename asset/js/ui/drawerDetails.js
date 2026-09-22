@@ -1,6 +1,7 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
+import { init as initGovernanceForm } from './governance.js';
 
 /**
  * Lo que queda del panel en cliente después de TASK-034 (ADR-0017 §1).
@@ -15,6 +16,12 @@ import { TERM_LABELS } from '../core/drawerModel.js';
  * 2. **El hueco de edición del anclaje**, que el partial deja vacío y rellena
  *    el re-catalogador. Este módulo es dueño del modo (`data-mode`) y le pasa
  *    el hueco; aquel decide si hay algo que montar.
+ * 3. **The governance form** (Task 11): `governance.js`'s only export is
+ *    `init(root)`, called below once per render with the freshly-inserted
+ *    content, the same call shape as `wireHistory(content, ...)` two lines
+ *    down — a real per-render listener scoped to that specific, disposable
+ *    DOM subtree, not a `document`-level delegation that would pile up across
+ *    repeated drawer opens.
  */
 
 /**
@@ -187,6 +194,12 @@ export function initDrawerDetails(config) {
         const { itemId, itemJson, content } = event.detail;
 
         wireHistory(content, config.drawerHistoryUrl);
+
+        // `.oer-area-governance` is absent entirely when `drawer-details`
+        // could not read the item (same branch the anchor slot check below
+        // guards against), and `init()` already no-ops when it does not find
+        // the section — no extra guard needed here.
+        initGovernanceForm(content);
 
         // Huecos que deja el partial. Si `drawer-details` no pudo leer el REA,
         // el partial los pinta igual junto al aviso, así que el re-catalogador
