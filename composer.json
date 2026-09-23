@@ -49,7 +49,10 @@
             "/CLAUDE.md",
             "/.agents",
             "/AGENTS.md",
-            "/.gitattributes"
+            "/.gitattributes",
+            "/codecov.yml",
+            "/coverage.xml",
+            "/coverage"
         ]
     }
 }

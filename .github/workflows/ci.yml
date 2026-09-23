@@ -3,23 +3,69 @@ name: CI
 on:
   pull_request:
   push:
+    paths-ignore:
+      - '.agents/skills/**'
+      - '.claude/skills/**'
     tags:
       - '*'
     branches:
-      - '*'
+      - '**'
+
+permissions:
+  contents: read
 
 jobs:
-  lint_and_test:
+  changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+    steps:
+      - name: Detect changes outside agent skills
+        id: files
+        uses: actions/github-script@v9
+        with:
+          script: |
+            let runCode = true;
+            if (context.eventName === 'pull_request') {
+              const request = { ...context.repo, pull_number: context.payload.pull_request.number };
+              const { data: before } = await github.rest.pulls.get(request);
+              const files = await github.paginate(github.rest.pulls.listFiles, { ...request, per_page: 100 });
+              const { data: after } = await github.rest.pulls.get(request);
+              // Incomplete results or a PR updated during the request must run CI.
+              const complete = files.length > 0 && files.length === before.changed_files
+                && before.head.sha === context.payload.pull_request.head.sha
+                && after.head.sha === before.head.sha && after.changed_files === before.changed_files;
+              if (complete) {
+                const isSkill = (path) => path.startsWith('.agents/skills/') || path.startsWith('.claude/skills/');
+                runCode = files.some((file) => !isSkill(file.filename)
+                  || (file.previous_filename && !isSkill(file.previous_filename)));
+              }
+            }
+            core.setOutput('code', String(runCode));
+
+
+  lint_and_test:
+    needs: changes
+    # Keep the required check available; detector failures must still run CI.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       # Checkout the code
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: PHP setup
-        # Accion de terceros anclada a SHA (supply-chain, NFR-009); Dependabot la actualiza
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'  # Runtime target del modulo (NFR-007)
+          coverage: pcov
           extensions: mbstring, intl, curl, dom, json, pdo, mysql, xml, zip
           tools: composer
 
@@ -38,8 +84,22 @@ jobs:
       - name: Run code linting
         run: make lint
 
-      - name: Run unit tests
-        run: make test
+      - name: Run unit tests with coverage
+        # PCOV defaults to src/, which would omit the module entry point.
+        run: |
+          rm -f coverage.xml
+          php -d pcov.directory=. -d pcov.exclude='~/(vendor|test)/~' vendor/bin/phpunit -c test/phpunit.xml --coverage-clover coverage.xml --coverage-text
+
+      - name: Enforce 90% line coverage
+        run: php test/check-coverage.php coverage.xml 90
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          use_oidc: true
+          files: coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
 
       - name: Run JS core tests
         run: make test-js
