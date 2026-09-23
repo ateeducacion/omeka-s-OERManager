@@ -2,6 +2,7 @@ import { TERMS, buildPayload, validate, licenceState, rows } from '../core/gover
 import { messageFor } from '../core/messages.js';
 import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../core/integrityModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
+import { GOVERNANCE_SLOT } from './drawerDetails.js';
 
 /**
  * Licence and authorship edit form (RF-015, TASK-028 slice 3b, Task 11).
@@ -9,21 +10,35 @@ import { TERM_LABELS } from '../core/drawerModel.js';
  * The read view and its markup are `view/oer-manager/admin/index/drawer-details.phtml`
  * (Task 9): a `<dl>` of five rows, a notice per unconfigured vocabulary, an
  * «Editar» button and an empty `.oer-governance-form` slot, all inside
- * `.oer-area-governance`. This file fills that slot on click, the same slot
- * pattern `ui/recatalog.js` uses for `.oer-anchor-slot` — except this one
- * carries its own data instead of a separate custom event: everything the
- * form needs (current values, vocab options, notices, the default rights
- * holder, the item id and the per-render CSRF hash) travels as JSON in the
- * section's `data-governance` attribute, because this module's only export is
- * `init(root)` — it never receives the page-level `config` object `main.js`
- * builds for the other UI modules, only a DOM root.
+ * `.oer-area-governance`. This file fills that slot on click.
  *
- * `init(root)` is called once per drawer render, by `drawerDetails.js`, with
- * `root` the freshly-inserted `.sidebar-content` node — the same call shape
- * as that file's own `wireHistory(content, ...)`. Every listener here is
- * bound to a node inside that specific `root` (never to `document`), so nothing
- * accumulates across repeated drawer opens: the old `root` and every element
- * inside it, listeners included, are discarded together on the next render.
+ * Initialised once from `main.js`, like `ui/recatalog.js`: `initGovernance()`
+ * subscribes to `GOVERNANCE_SLOT`, the event `drawerDetails.js` dispatches
+ * whenever a freshly-rendered drawer contains `.oer-area-governance` (fix
+ * round 1 — an earlier version had `drawerDetails.js` import and call this
+ * file directly; that hardcoded the coupling in both directions, which does
+ * not scale once a second editor of these same fields joins the panel).
+ * `drawerDetails.js` does not know this file exists, the same way it does
+ * not know `ui/recatalog.js` exists — it only announces that a slot exists.
+ *
+ * Unlike `ANCHOR_SLOT`, `GOVERNANCE_SLOT`'s detail carries no fetched data of
+ * its own, only `{ itemId, section }` — `section` (the `.oer-area-governance`
+ * element) already carries everything the form needs (current values, vocab
+ * options, notices, the default rights holder, the item id and the per-render
+ * CSRF hash) as JSON in its own `data-governance` attribute, server-rendered
+ * by the same authenticated request that rendered the rest of the drawer.
+ * This is deliberately unlike `ANCHOR_SLOT`'s `itemJson`, which `drawer.js`
+ * fetches separately and unauthenticated (`fetch(apiUrl)` against `/api`) —
+ * that route degrades to `null` on a private item, which would have broken
+ * this form outright, so the data travels through the authenticated markup
+ * instead. Either way, `governance.js` never receives the page-level `config`
+ * object `main.js` builds for the other UI modules; everything it needs comes
+ * from the DOM.
+ *
+ * Listeners built per slot event are bound to nodes inside that specific
+ * `section` (never to `document`), so nothing accumulates across repeated
+ * drawer opens: the old `section` and everything inside it, listeners
+ * included, is discarded together the next time the drawer renders.
  *
  * Wire shape and error handling follow `ui/recatalog.js` (the closest
  * sibling that already posts to a curation-write endpoint with a CSRF hash
@@ -614,17 +629,17 @@ function renderIntegrity(panelEl, integrity) {
 }
 
 /**
- * Wires the governance area within one freshly-rendered drawer. Called once
- * per `DRAWER_RENDERED` by `drawerDetails.js` — see the file docblock for why
- * that makes per-`root` (not `document`) delegation the correct, leak-safe
- * choice here.
- * @param {ParentNode} root
+ * Wires one governance area, freshly rendered. Called from the `GOVERNANCE_SLOT`
+ * listener `initGovernance()` sets up below, once per slot event — i.e. once
+ * per drawer render, same cadence as the direct call this replaced in fix
+ * round 1 (see the file docblock). `section` is the exact `.oer-area-governance`
+ * element the event handed over, not re-queried from a wider root.
+ * @param {Element} section
  */
-export function init(root) {
-    const panelEl = root.querySelector('.oer-detail-panel');
-    const section = root.querySelector('.oer-area-governance');
-    const formSlot = section && section.querySelector('.oer-governance-form');
-    if (!panelEl || !section || !formSlot) {
+function mountSection(section) {
+    const panelEl = section.closest('.oer-detail-panel');
+    const formSlot = section.querySelector('.oer-governance-form');
+    if (!panelEl || !formSlot) {
         return;
     }
 
@@ -730,4 +745,18 @@ export function init(root) {
     });
     $(formSlot).on('click', '.oer-governance-cancel', closeForm);
     $(formSlot).on('click', '.oer-governance-save', submit);
+}
+
+/**
+ * Entry point, called once from `main.js` — same call shape as
+ * `initRecatalog(config)` and the rest of the UI modules `main.js` bootstraps.
+ * No `config` parameter: unlike those, nothing here reads the page-level
+ * config object (see the file docblock for where its data comes from
+ * instead), so there is nothing to pass — the same shape `initWorkflowDrawer()`
+ * and `initSearchForm()` already use for the same reason.
+ */
+export function initGovernance() {
+    document.addEventListener(GOVERNANCE_SLOT, (event) => {
+        mountSection(event.detail.section);
+    });
 }

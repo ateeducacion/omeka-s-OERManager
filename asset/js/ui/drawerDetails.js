@@ -1,7 +1,6 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
-import { init as initGovernanceForm } from './governance.js';
 
 /**
  * Lo que queda del panel en cliente después de TASK-034 (ADR-0017 §1).
@@ -16,12 +15,14 @@ import { init as initGovernanceForm } from './governance.js';
  * 2. **El hueco de edición del anclaje**, que el partial deja vacío y rellena
  *    el re-catalogador. Este módulo es dueño del modo (`data-mode`) y le pasa
  *    el hueco; aquel decide si hay algo que montar.
- * 3. **The governance form** (Task 11): `governance.js`'s only export is
- *    `init(root)`, called below once per render with the freshly-inserted
- *    content, the same call shape as `wireHistory(content, ...)` two lines
- *    down — a real per-render listener scoped to that specific, disposable
- *    DOM subtree, not a `document`-level delegation that would pile up across
- *    repeated drawer opens.
+ * 3. **The governance form's slot** (Task 11, fix round 1): same indirection
+ *    as point 2, not a direct import. This file does not know `governance.js`
+ *    exists — it dispatches `GOVERNANCE_SLOT` whenever `.oer-area-governance`
+ *    is present, and `governance.js` (initialised once from `main.js`, like
+ *    `ui/recatalog.js`) is what subscribes. The point of the indirection: the
+ *    next slice adds a second, batch editor of these same fields to this same
+ *    panel, and a `drawerDetails.js` that imports every editor by name would
+ *    turn into exactly the hub this pattern avoids.
  */
 
 /**
@@ -34,6 +35,17 @@ import { init as initGovernanceForm } from './governance.js';
  * de entrada con `.oer-anchor-edit`, lo único que este fichero le escucha.
  */
 export const ANCHOR_SLOT = 'oer:anchor-slot';
+
+/**
+ * Same shape of indirection as `ANCHOR_SLOT`, for the governance area (Task
+ * 11, fix round 1): this file only announces that `.oer-area-governance`
+ * exists in the freshly-rendered content, and does not import or call
+ * whoever fills it. Unlike `ANCHOR_SLOT`, there is no separate slot/bar pair
+ * to hand over — the read rows, notices, «Editar» button and the empty
+ * `.oer-governance-form` it fills are all already part of `section` — so the
+ * contract with `ui/governance.js` is simply `{ itemId, section }`.
+ */
+export const GOVERNANCE_SLOT = 'oer:governance-slot';
 
 function note(text, className) {
     const element = document.createElement('p');
@@ -197,9 +209,13 @@ export function initDrawerDetails(config) {
 
         // `.oer-area-governance` is absent entirely when `drawer-details`
         // could not read the item (same branch the anchor slot check below
-        // guards against), and `init()` already no-ops when it does not find
-        // the section — no extra guard needed here.
-        initGovernanceForm(content);
+        // guards against) — no event, nothing for `governance.js` to mount.
+        const governanceSection = content.querySelector('.oer-area-governance');
+        if (governanceSection) {
+            document.dispatchEvent(new CustomEvent(GOVERNANCE_SLOT, {
+                detail: { itemId, section: governanceSection }
+            }));
+        }
 
         // Huecos que deja el partial. Si `drawer-details` no pudo leer el REA,
         // el partial los pinta igual junto al aviso, así que el re-catalogador
