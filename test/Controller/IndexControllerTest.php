@@ -10,6 +10,7 @@ use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
+use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\Workflow\WorkflowService;
@@ -26,6 +27,11 @@ use PHPUnit\Framework\TestCase;
 
 class IndexControllerTest extends TestCase
 {
+    private const CURRICULUM_EVENT = [
+        'when' => 'today', 'contributor' => 'Curator', 'summary' => 'Changed',
+        'payload' => ['v' => 1, 'op' => 'recatalog', 'undoOf' => null, 'terms' => ['lrmi:teaches' => []]],
+    ];
+
     private IndexController $controller;
     private array $dependencies;
     private $params;
@@ -95,7 +101,12 @@ class IndexControllerTest extends TestCase
         $arguments = [];
         foreach ((new \ReflectionClass(IndexController::class))->getConstructor()->getParameters() as $param) {
             $name = $param->getName();
-            $arguments[] = $this->dependencies[$name] = $real[$name] ?? $this->createMock($param->getType()->getName());
+            $type = $param->getType()->getName();
+            // UndoRouter is final: route over the same RecatalogService double
+            // the tests stub, so recatalog-undo still reaches it.
+            $arguments[] = $this->dependencies[$name] = $real[$name] ?? (UndoRouter::class === $type
+                ? new UndoRouter($this->dependencies['recatalogService'], $this->dependencies['governanceService'])
+                : $this->createMock($type));
         }
         $this->dependencies['integrityChecker']->method('check')
             ->willReturnCallback(fn () => new IntegrityResult($this->issues));
@@ -300,6 +311,7 @@ class IndexControllerTest extends TestCase
             ->method('preview')->with(7, ['lrmi:teaches' => [1]])->willReturn(['preview']);
         $this->assertSame(['preview'], $this->data('recatalogPreview')['diff']);
         $this->dependencies['recatalogService']->method('apply')->willReturn(['updated' => true]);
+        $this->dependencies['recatalogService']->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
         $this->dependencies['recatalogService']->method('undo')->willReturn(['updated' => true]);
         $this->assertTrue($this->data('recatalogApply')['updated']);
         $this->assertTrue($this->data('recatalogUndo')['updated']);
@@ -307,6 +319,7 @@ class IndexControllerTest extends TestCase
 
     public function testRecatalogErrorsAreSanitized(): void
     {
+        $this->dependencies['recatalogService']->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
         foreach (['apply' => 'recatalogApply', 'undo' => 'recatalogUndo'] as $method => $action) {
             $errors = [
                 new PermissionDeniedException(), new \RuntimeException('invalid targets'), new \Exception('secret'),
