@@ -353,6 +353,23 @@ try {
     check('(f) and names the drifted term', [GovernanceFields::CREATOR] === ($stale['terms'] ?? null));
     check('(f) and writes nothing', ['Written elsewhere']
         === array_column($governance->read($load())['values'][GovernanceFields::CREATOR], 'value'));
+
+    // (g) The router's other branch: a curriculum event goes back to
+    // RecatalogService, which undo-harness.php only reaches directly.
+    $teaches = static fn ($item): array => array_map(
+        static fn ($value): int => (int) $value->valueResource()->id(),
+        $item->value('lrmi:teaches', ['all' => true, 'type' => 'resource:item', 'default' => []])
+    );
+    $linked = $teaches($load());
+    $emptied = $recatalog->apply($itemId, ['lrmi:teaches' => []], $contributor);
+    check('(g) a recatalogue that empties lrmi:teaches writes a curriculum event', [] === $teaches($load())
+        && 'curriculum' === CurationEvent::scopeOf($recatalog->lastEvent($itemId)['payload'] ?? []),
+        json_encode($emptied));
+    $routed = $router->undo($itemId, $contributor);
+    check('(g) the router sends it to RecatalogService and the link comes back',
+        true === ($routed['updated'] ?? null) && $linked === $teaches($load()), json_encode($routed));
+    check('(g) governance values are not touched by the curriculum undo', ['Written elsewhere']
+        === array_column($governance->read($load())['values'][GovernanceFields::CREATOR], 'value'));
 } finally {
     if ($ownFixture) {
         $api->delete('items', $itemId);
