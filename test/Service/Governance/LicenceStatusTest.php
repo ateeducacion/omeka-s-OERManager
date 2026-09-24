@@ -1,0 +1,100 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OERManager\Test\Service\Governance;
+
+use OERManager\Service\Governance\LicenceStatus;
+use PHPUnit\Framework\TestCase;
+
+final class LicenceStatusTest extends TestCase
+{
+    private const VOCAB = ['https://creativecommons.org/licenses/by-sa/4.0/', 'https://creativecommons.org/licenses/by/4.0/'];
+
+    public function testNoValuesIsMissing(): void
+    {
+        $this->assertSame(LicenceStatus::MISSING, LicenceStatus::of([], self::VOCAB));
+    }
+
+    public function testUriInTheVocabulary(): void
+    {
+        $values = [['type' => 'customvocab:2', 'uri' => 'https://creativecommons.org/licenses/by/4.0/']];
+
+        $this->assertSame(LicenceStatus::IN_VOCAB, LicenceStatus::of($values, self::VOCAB));
+    }
+
+    public function testUriOutsideTheVocabulary(): void
+    {
+        $values = [['type' => 'uri', 'uri' => 'https://example.org/licencia-propia']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, self::VOCAB));
+    }
+
+    public function testLiteralWithoutUriIsOutsideTheVocabulary(): void
+    {
+        $values = [['type' => 'literal', 'value' => 'ccbysa']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, self::VOCAB));
+    }
+
+    public function testWithoutAConfiguredVocabularyMembershipIsNotJudged(): void
+    {
+        $values = [['type' => 'uri', 'uri' => 'https://example.org/licencia-propia']];
+
+        $this->assertSame(LicenceStatus::UNCHECKED, LicenceStatus::of($values, null));
+        $this->assertSame(LicenceStatus::MISSING, LicenceStatus::of([], null));
+    }
+
+    public function testTrailingSlashAndCaseOfHostDoNotChangeMembership(): void
+    {
+        $values = [['type' => 'uri', 'uri' => 'https://CreativeCommons.org/licenses/by/4.0']];
+
+        $this->assertSame(LicenceStatus::IN_VOCAB, LicenceStatus::of($values, self::VOCAB));
+    }
+
+    public function testHostRecurringElsewhereInTheUriIsNotAltered(): void
+    {
+        // The host string "AB.CO" also occurs, in the same case, inside the path.
+        // Only the host component may be case-folded; the path's occurrence must
+        // stay verbatim, so this value (whose path case differs from the
+        // vocabulary) is correctly outside it rather than accidentally matched.
+        $vocab = ['https://ab.co/path/ab.co/tail'];
+        $values = [['type' => 'uri', 'uri' => 'https://AB.CO/path/AB.CO/tail']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
+    }
+
+    public function testOnlyOneTrailingSlashIsStripped(): void
+    {
+        // Canonicalisation strips a single trailing slash, not every one; a
+        // second slash is part of the path and must still count as a difference.
+        $vocab = ['https://example.org/licence'];
+        $values = [['type' => 'uri', 'uri' => 'https://example.org/licence//']];
+
+        $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
+    }
+
+    public function testHostWithAControlCharacterIsLeftUnchangedRatherThanMisplaced(): void
+    {
+        // PHP's parse_url() can sanitise an invalid host character (a control
+        // character here) into a replacement that is no longer a literal
+        // substring of the original URI. strpos() then can't find an offset to
+        // rewrite, so canonicalUri() returns the URI as-is instead of guessing.
+        $uri = "http://\t.com/path";
+
+        $this->assertSame($uri, LicenceStatus::canonicalUri($uri));
+    }
+
+    public function testCanonicalUriIsPublicSoAMatchDecidedHereCannotDisagreeWithOneBuildingAValue(): void
+    {
+        // GovernanceService::withVocabularyType() (fix round 1, Ruling 2) uses
+        // this same method to decide whether a submitted URI matches a
+        // vocabulary entry before writing it — pinning it here is the only host
+        // test that can cover that agreement, since GovernanceService itself
+        // needs the Omeka core.
+        $this->assertSame(
+            LicenceStatus::canonicalUri('https://creativecommons.org/licenses/by/4.0/'),
+            LicenceStatus::canonicalUri('https://CreativeCommons.org/licenses/by/4.0')
+        );
+    }
+}

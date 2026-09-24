@@ -6,6 +6,7 @@ namespace OERManager\Test\Service;
 
 use OERManager\Service\CurationEvent;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curation\CurationWriter;
 use OERManager\Service\RecatalogService;
 use OERManager\Test\Support\RepresentationFactory;
 use Omeka\Api\Manager;
@@ -28,7 +29,7 @@ final class RecatalogServiceTest extends TestCase
     {
         $this->api = $this->createMock(Manager::class);
         $this->settings = $this->createMock(Settings::class);
-        $this->service = new RecatalogService($this->api, $this->settings);
+        $this->service = new RecatalogService($this->api, $this->settings, new CurationWriter($this->api));
         $this->items = [1 => $this->item(1), 2 => $this->item(2, 'Target'), 3 => $this->item(3, 'Other')];
         $this->api->method('read')->willReturnCallback(function ($resource, $id) {
             if (!isset($this->items[$id])) {

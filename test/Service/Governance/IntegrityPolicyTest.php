@@ -221,4 +221,58 @@ final class IntegrityPolicyTest extends TestCase
             $this->codes(IntegrityPolicy::issuesFor($values, [], false))
         );
     }
+
+    /**
+     * The brief's fixture supplies only `dcterms:license`; started from the raw
+     * array it also trips the four pre-existing (out-of-scope) missing_alignment
+     * warnings. Built on `healthy()`, like every other test below, to isolate
+     * the licence-vocabulary rule this test is actually about.
+     */
+    public function testLicenceOutsideTheVocabularyWarnsOnce(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [
+            ['type' => 'uri', 'hasResource' => true, 'hasUri' => true, 'uri' => 'https://example.org/mia'],
+        ];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], false, ['https://creativecommons.org/licenses/by/4.0/']);
+
+        $this->assertSame(['license_not_in_vocab'], $this->codes($issues));
+    }
+
+    public function testLicenceInTheVocabularyIsSilent(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [
+            ['type' => 'uri', 'hasResource' => true, 'hasUri' => true, 'uri' => 'https://creativecommons.org/licenses/by/4.0/'],
+        ];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], false, ['https://creativecommons.org/licenses/by/4.0/']);
+
+        $this->assertSame([], $this->codes($issues));
+    }
+
+    public function testWithoutAVocabularyMembershipIsNotWarnedAbout(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [
+            ['type' => 'uri', 'hasResource' => true, 'hasUri' => true, 'uri' => 'https://example.org/mia'],
+        ];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], false, null);
+
+        $this->assertSame([], $this->codes($issues));
+    }
+
+    public function testANonUriLicenceWarnsOnlyAboutNotBeingAUri(): void
+    {
+        $values = $this->healthy();
+        $values[IntegrityPolicy::LICENSE_TERM] = [
+            ['type' => 'literal', 'hasResource' => true, 'hasUri' => false, 'uri' => ''],
+        ];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], false, ['https://creativecommons.org/licenses/by/4.0/']);
+
+        $this->assertSame(['license_not_uri'], $this->codes($issues));
+    }
 }

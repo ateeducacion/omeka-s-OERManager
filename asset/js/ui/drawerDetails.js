@@ -15,6 +15,14 @@ import { TERM_LABELS } from '../core/drawerModel.js';
  * 2. **El hueco de edición del anclaje**, que el partial deja vacío y rellena
  *    el re-catalogador. Este módulo es dueño del modo (`data-mode`) y le pasa
  *    el hueco; aquel decide si hay algo que montar.
+ * 3. **The governance form's slot** (Task 11, fix round 1): same indirection
+ *    as point 2, not a direct import. This file does not know `governance.js`
+ *    exists — it dispatches `GOVERNANCE_SLOT` whenever `.oer-area-governance`
+ *    is present, and `governance.js` (initialised once from `main.js`, like
+ *    `ui/recatalog.js`) is what subscribes. The point of the indirection: the
+ *    next slice adds a second, batch editor of these same fields to this same
+ *    panel, and a `drawerDetails.js` that imports every editor by name would
+ *    turn into exactly the hub this pattern avoids.
  */
 
 /**
@@ -27,6 +35,17 @@ import { TERM_LABELS } from '../core/drawerModel.js';
  * de entrada con `.oer-anchor-edit`, lo único que este fichero le escucha.
  */
 export const ANCHOR_SLOT = 'oer:anchor-slot';
+
+/**
+ * Same shape of indirection as `ANCHOR_SLOT`, for the governance area (Task
+ * 11, fix round 1): this file only announces that `.oer-area-governance`
+ * exists in the freshly-rendered content, and does not import or call
+ * whoever fills it. Unlike `ANCHOR_SLOT`, there is no separate slot/bar pair
+ * to hand over — the read rows, notices, «Editar» button and the empty
+ * `.oer-governance-form` it fills are all already part of `section` — so the
+ * contract with `ui/governance.js` is simply `{ itemId, section }`.
+ */
+export const GOVERNANCE_SLOT = 'oer:governance-slot';
 
 function note(text, className) {
     const element = document.createElement('p');
@@ -187,6 +206,16 @@ export function initDrawerDetails(config) {
         const { itemId, itemJson, content } = event.detail;
 
         wireHistory(content, config.drawerHistoryUrl);
+
+        // `.oer-area-governance` is absent entirely when `drawer-details`
+        // could not read the item (same branch the anchor slot check below
+        // guards against) — no event, nothing for `governance.js` to mount.
+        const governanceSection = content.querySelector('.oer-area-governance');
+        if (governanceSection) {
+            document.dispatchEvent(new CustomEvent(GOVERNANCE_SLOT, {
+                detail: { itemId, section: governanceSection }
+            }));
+        }
 
         // Huecos que deja el partial. Si `drawer-details` no pudo leer el REA,
         // el partial los pinta igual junto al aviso, así que el re-catalogador

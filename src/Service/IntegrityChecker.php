@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use OERManager\Service\Governance\IntegrityPolicy;
+use OERManager\Service\Governance\VocabEntries;
 use Omeka\Api\Representation\ItemRepresentation;
 
 /**
@@ -20,6 +21,16 @@ class IntegrityChecker
     public const ALIGNMENT_TERMS = IntegrityPolicy::ALIGNMENT_TERMS;
 
     public const LICENSE_TERM = IntegrityPolicy::LICENSE_TERM;
+
+    /**
+     * @param VocabEntries $licenceVocab Lector del vocabulario de licencias
+     *        (Task 5, service key `VocabEntries\Licence`). Única fuente de
+     *        `uris()`/`null`: no se duplica aquí la lectura del setting ni de
+     *        CustomVocab, para no bifurcar la degradación que centraliza.
+     */
+    public function __construct(private readonly VocabEntries $licenceVocab)
+    {
+    }
 
     /**
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo.
@@ -43,7 +54,12 @@ class IntegrityChecker
         ));
 
         return new IntegrityResult(
-            IntegrityPolicy::issuesFor($this->project($item, $terms, $checkLinks), $requiredTerms, $checkLinks)
+            IntegrityPolicy::issuesFor(
+                $this->project($item, $terms, $checkLinks),
+                $requiredTerms,
+                $checkLinks,
+                $this->licenceVocab->uris()
+            )
         );
     }
 
@@ -56,7 +72,7 @@ class IntegrityChecker
      * mira porque no evalúa la regla de enlace vivo.
      *
      * @param list<string> $terms
-     * @return array<string, list<array{type:string, hasResource:bool, hasUri:bool}>>
+     * @return array<string, list<array{type:string, hasResource:bool, hasUri:bool, uri:string}>>
      */
     private function project(ItemRepresentation $item, array $terms, bool $checkLinks): array
     {
@@ -74,6 +90,7 @@ class IntegrityChecker
                         : (bool) $value->valueResource(),
                     // Barato: uri() es un getter de la entidad, no despierta proxies.
                     'hasUri' => '' !== trim((string) $value->uri()),
+                    'uri' => trim((string) $value->uri()),
                 ];
             }
         }

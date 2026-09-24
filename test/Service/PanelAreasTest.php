@@ -134,9 +134,61 @@ final class PanelAreasTest extends TestCase
         $areas = PanelAreas::build($this->panel(), $this->checked());
 
         self::assertSame(
-            ['alignment', 'media', 'record', 'integrity'],
+            ['alignment', 'media', 'record', 'governance', 'integrity'],
             array_column($areas, 'id')
         );
+    }
+
+    /** Task 9 (RF-015 read view): pins ORDER exactly, as the brief requires. */
+    public function testGovernanceAreaSitsBetweenRecordAndIntegrity(): void
+    {
+        $this->assertSame(
+            ['alignment', 'media', 'record', 'governance', 'integrity'],
+            PanelAreas::ORDER
+        );
+        $this->assertSame('Licencia y autoría', PanelAreas::LABELS['governance']);
+    }
+
+    public function testGovernanceIsEmptyWhenAllFiveFieldsAreEmpty(): void
+    {
+        $areas = PanelAreas::build(
+            $this->panel(),
+            $this->checked(),
+            ['values' => [
+                'dcterms:license' => [],
+                'dcterms:creator' => [],
+                'dcterms:publisher' => [],
+                'dcterms:rightsHolder' => [],
+                'dcterms:source' => [],
+            ]]
+        );
+
+        self::assertSame(PanelAreas::STATE_EMPTY, $this->area($areas, 'governance')['state']);
+    }
+
+    public function testGovernanceIsReadyWhenAnyOfTheFiveFieldsHasAValue(): void
+    {
+        $areas = PanelAreas::build(
+            $this->panel(),
+            $this->checked(),
+            ['values' => [
+                'dcterms:license' => [],
+                'dcterms:creator' => [['type' => 'literal', 'value' => 'Ana']],
+                'dcterms:publisher' => [],
+                'dcterms:rightsHolder' => [],
+                'dcterms:source' => [],
+            ]]
+        );
+
+        self::assertSame(PanelAreas::STATE_READY, $this->area($areas, 'governance')['state']);
+    }
+
+    /** Governance never computed (not the same as computed-and-empty): unknown, not empty. */
+    public function testGovernanceWithoutDataIsUnknownNotEmpty(): void
+    {
+        $areas = PanelAreas::build($this->panel(), $this->checked());
+
+        self::assertSame(PanelAreas::STATE_UNKNOWN, $this->area($areas, 'governance')['state']);
     }
 
     public function testEveryAreaHasATranslatableLabel(): void

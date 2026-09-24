@@ -25,6 +25,7 @@ class ConfigPayload
     private const GOVERNANCE_ID_SETTINGS = [
         GovernanceSettings::LICENCE_VOCAB_ID,
         GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+        GovernanceSettings::PUBLISHER_VOCAB_ID,
         GovernanceSettings::REA_TEMPLATE_ID,
     ];
 

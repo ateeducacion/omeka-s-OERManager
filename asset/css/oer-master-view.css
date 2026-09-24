@@ -532,6 +532,126 @@
     margin-left: 0;
 }
 
+/* ==========================================================================
+   Licence and authorship (the «governance» area of the detail panel,
+   TASK-028 slice 3b, Task 9). Same field labels as .oer-area-record: support
+   text above the value, which carries the weight.
+   ========================================================================== */
+.oer-area-governance dt {
+    margin-top: 0.75em;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-area-governance dd {
+    margin-left: 0;
+}
+
+/* The one case that earns a mark (ADR-0014 rule 2): a licence outside the
+   configured vocabulary. Every other missing field reads in muted ink, WITH
+   NO glyph (.oer-value-missing) — with 19/19 lacking authorship, a glyph on
+   every field would mark the whole block, and a mark present everywhere
+   stops signalling the exception. */
+.oer-governance-warning {
+    display: inline-block;
+    margin-left: 0.5em;
+    color: var(--oer-warn);
+    font-size: 0.85em;
+}
+
+.oer-governance-warning::before {
+    content: "\26A0"; /* ⚠ */
+    margin-right: 0.3em;
+}
+
+/* Vocabulary not configured (GovernanceService::notices()): a neutral notice,
+   not an error or a warning — the field degrades to free text. */
+.oer-governance-notice {
+    margin: 0.75em 0 0;
+    color: var(--oer-muted);
+    font-size: 0.85em;
+}
+
+/* ==========================================================================
+   Governance edit form (Task 11). Same two-mode pattern as
+   `.oer-area-alignment` above: the read `<dl>`, its notices and the «Editar»
+   button occupy the same space as the form and are never shown together. No
+   new colour anywhere in this block — `.oer-governance-field-error` and
+   `.oer-governance-form-error` reuse `--oer-bad`, the same token
+   `.oer-workflow-error` already uses for the sibling reject/publish forms.
+   ========================================================================== */
+.oer-area-governance[data-mode="edit"] dl,
+.oer-area-governance[data-mode="edit"] .oer-governance-edit,
+.oer-area-governance[data-mode="read"] .oer-governance-form {
+    display: none;
+}
+
+.oer-governance-field {
+    margin-bottom: 0.9em;
+}
+
+.oer-governance-field > label {
+    display: block;
+    margin-bottom: 0.25em;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-governance-field select,
+.oer-governance-field input[type="text"] {
+    width: 100%;
+    max-width: 28em;
+    box-sizing: border-box;
+}
+
+.oer-governance-author-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    margin-bottom: 0.4em;
+}
+
+.oer-governance-author-row input[type="text"] {
+    flex: 1 1 auto;
+    max-width: none;
+}
+
+.oer-governance-remove-author {
+    flex: 0 0 auto;
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-muted);
+    background: #fff;
+}
+
+.oer-governance-remove-author:hover,
+.oer-governance-remove-author:focus {
+    color: var(--oer-accent);
+    border-color: var(--oer-accent);
+}
+
+.oer-governance-add-author {
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-muted);
+    background: #fff;
+}
+
+.oer-governance-field-error {
+    margin: 0.3em 0 0;
+    color: var(--oer-bad);
+    font-size: 0.85em;
+}
+
+.oer-governance-form-error {
+    margin: 0 0 0.9em;
+    color: var(--oer-bad);
+    font-size: 0.85em;
+}
+
+.oer-governance-form-actions {
+    display: flex;
+    gap: 0.5em;
+}
+
 /* Salida al editor nativo (TASK-027 §5.1): sin regla propia se pintaba como
    texto normal, ni siquiera con la afordancia por defecto del navegador,
    que el admin de Omeka resetea en sus enlaces. Es la única acción del

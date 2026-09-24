@@ -85,6 +85,7 @@ final class ConfigPayloadTest extends TestCase
             [
                 GovernanceSettings::LICENCE_VOCAB_ID,
                 GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
+                GovernanceSettings::PUBLISHER_VOCAB_ID,
                 GovernanceSettings::REA_TEMPLATE_ID,
                 GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
                 LlmSettings::ENABLED,

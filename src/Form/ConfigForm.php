@@ -157,6 +157,22 @@ class ConfigForm extends Form implements InputFilterProviderInterface
         ]);
 
         $this->add([
+            'name' => GovernanceSettings::PUBLISHER_VOCAB_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'CustomVocab de organismos editores (dcterms:publisher)', // @translate
+                'info' => 'ID del CustomVocab con los organismos editores admitidos. El módulo NO lo '
+                    . 'crea: se apunta al vocabulario que ya exista en la instalación. Si se deja '
+                    . 'vacío, el editor se edita a mano.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::PUBLISHER_VOCAB_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
             'name' => GovernanceSettings::REA_TEMPLATE_ID,
             'type' => 'Number',
             'options' => [

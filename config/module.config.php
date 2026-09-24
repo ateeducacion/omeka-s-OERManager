@@ -42,7 +42,12 @@ return [
                     $container->get(Service\IntegrityChecker::class),
                     $container->get(Service\ItemPanelData::class),
                     $container->get(Service\Workflow\WorkflowService::class),
-                    $container->get('Omeka\Acl')
+                    $container->get('Omeka\Acl'),
+                    // TASK-028 rebanada 3b: gobernanza (apply/read) y el router
+                    // de deshacer por ámbito, que reemplaza la llamada directa a
+                    // RecatalogService::undo() en recatalog-undo.
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\Curation\UndoRouter::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -61,7 +66,6 @@ return [
     ],
     'service_manager' => [
         'invokables' => [
-            Service\IntegrityChecker::class => Service\IntegrityChecker::class,
             Service\ItemPanelData::class => Service\ItemPanelData::class,
             // Patrón de filtros computados (ADR-0013, D4).
             Service\ComputedFilter::class => Service\ComputedFilter::class,
@@ -79,6 +83,16 @@ return [
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // ADR-0020 / slice 3b (TASK-028): la regla license_not_in_vocab necesita
+            // saber si la licencia pertenece al vocabulario configurado. Reusa el
+            // MISMO VocabEntries que ya lee el setting y degrada a null si no
+            // resuelve (Task 5): duplicar esa lectura aquí bifurcaría la
+            // degradación que la clase centraliza.
+            Service\IntegrityChecker::class => function ($container) {
+                return new Service\IntegrityChecker(
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence')
+                );
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {
@@ -98,6 +112,67 @@ return [
                     }
                 );
             },
+            // Vocabulario de licencias (dcterms:license, ADR-0019). Dependencia BLANDA
+            // de CustomVocab, igual que el de tipos de recurso: si no resuelve,
+            // VocabEntries::uris() devuelve null (no []) y quien lo consuma lo trata
+            // como «no hay vocabulario con el que juzgar pertenencia», no como «vacío».
+            'OERManager\Service\Governance\VocabEntries\Licence' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\Governance\VocabEntries(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::LICENCE_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        $entries = [];
+                        if ('uri' === $vocab->type()) {
+                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
+                                $entry = ['uri' => (string) $uri];
+                                if (null !== $label && '' !== (string) $label) {
+                                    $entry['label'] = (string) $label;
+                                }
+                                $entries[] = $entry;
+                            }
+                            return $entries;
+                        }
+                        foreach (($vocab->listTerms() ?? []) as $term) {
+                            $entries[] = ['value' => (string) $term];
+                        }
+                        return $entries;
+                    }
+                );
+            },
+            // Vocabulario de organismos editores (dcterms:publisher, RF-015). El
+            // módulo no lo crea: es un CustomVocab que el admin da de alta y apunta
+            // por id desde el setting, igual que el resto de vocabularios blandos.
+            'OERManager\Service\Governance\VocabEntries\Publisher' => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $api = $container->get('Omeka\ApiManager');
+                return new Service\Governance\VocabEntries(
+                    Service\GovernanceSettings::parseId(
+                        $settings->get(Service\GovernanceSettings::PUBLISHER_VOCAB_ID)
+                    ),
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        $entries = [];
+                        if ('uri' === $vocab->type()) {
+                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
+                                $entry = ['uri' => (string) $uri];
+                                if (null !== $label && '' !== (string) $label) {
+                                    $entry['label'] = (string) $label;
+                                }
+                                $entries[] = $entry;
+                            }
+                            return $entries;
+                        }
+                        foreach (($vocab->listTerms() ?? []) as $term) {
+                            $entries[] = ['value' => (string) $term];
+                        }
+                        return $entries;
+                    }
+                );
+            },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {
                 return new Service\CurriculumSearch(
@@ -105,14 +180,41 @@ return [
                     $container->get('Omeka\Settings')
                 );
             },
+            Service\Curation\CurationWriter::class => function ($container) {
+                return new Service\Curation\CurationWriter($container->get('Omeka\ApiManager'));
+            },
             Service\RecatalogService::class => function ($container) {
                 return new Service\RecatalogService(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get(Service\Curation\CurationWriter::class)
                 );
             },
             Service\Workflow\WorkflowService::class => function ($container) {
                 return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
+            },
+            // Gobernanza (TASK-028 slice 3b, RF-015): lee y escribe las cinco
+            // properties de gobernanza por el mismo CurationWriter que el
+            // re-catalogador, con los dos VocabEntries blandos (licencia,
+            // editor) ya registrados más arriba.
+            Service\GovernanceService::class => function ($container) {
+                return new Service\GovernanceService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
+                    $container->get('OERManager\Service\Governance\VocabEntries\Publisher'),
+                    $container->get('Omeka\Settings')
+                );
+            },
+            // Deshacer por ámbito (TASK-028 rebanada 3b): el ledger compartido
+            // (ADR-0020) mezcla eventos de re-catalogación y de gobernanza; el
+            // router lee el ámbito del propio evento y delega en el servicio
+            // que sabe revertirlo.
+            Service\Curation\UndoRouter::class => function ($container) {
+                return new Service\Curation\UndoRouter(
+                    $container->get(Service\RecatalogService::class),
+                    $container->get(Service\GovernanceService::class)
+                );
             },
 
             // --- Catalogación IA-assistida (TASK-010, 4b) ---

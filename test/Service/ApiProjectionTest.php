@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OERManager\Test\Service;
 
 use OERManager\Service\IntegrityChecker;
+use OERManager\Service\Governance\VocabEntries;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\Stats\CatalogSnapshot;
@@ -145,7 +146,7 @@ final class ApiProjectionTest extends TestCase
             'https://license'
         )]]);
         $item->method('resourceTemplate')->willReturn($template);
-        $checker = new IntegrityChecker();
+        $checker = new IntegrityChecker(new VocabEntries(null, static fn (int $id): array => []));
         $result = $checker->check($item);
         $this->assertSame('error', $result->getStatus());
         $this->assertNotSame('error', $checker->check($item, false)->getStatus());
