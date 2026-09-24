@@ -64,4 +64,18 @@ final class GovernanceFieldsTest extends TestCase
         $this->assertSame([], $result['values']);
         $this->assertSame([], $result['errors']);
     }
+
+    public function testAllListsTheFiveGovernanceFields(): void
+    {
+        $this->assertSame([
+            GovernanceFields::LICENCE, GovernanceFields::CREATOR, GovernanceFields::PUBLISHER,
+            GovernanceFields::RIGHTS_HOLDER, GovernanceFields::SOURCE,
+        ], GovernanceFields::all());
+    }
+
+    public function testIsMultipleIsTrueOnlyForCreator(): void
+    {
+        $this->assertTrue(GovernanceFields::isMultiple(GovernanceFields::CREATOR));
+        $this->assertFalse(GovernanceFields::isMultiple(GovernanceFields::LICENCE));
+    }
 }

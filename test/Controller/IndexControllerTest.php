@@ -195,7 +195,8 @@ class IndexControllerTest extends TestCase
     {
         foreach (
             ['setVisibility', 'recatalogPreview', 'recatalogApply', 'recatalogLastEvent',
-            'recatalogUndo', 'aiPropose', 'propose', 'rejectProposal', 'publishProposal'] as $action
+            'recatalogUndo', 'aiPropose', 'propose', 'rejectProposal', 'publishProposal',
+            'governanceApply'] as $action
         ) {
             $this->request->post = false;
             $this->assertSame(['admin/oer-manager', []], $this->controller->{$action . 'Action'}());
@@ -207,7 +208,7 @@ class IndexControllerTest extends TestCase
         $this->params->post['csrf'] = 'invalid';
         foreach (
             ['recatalogApply', 'recatalogUndo', 'aiPropose', 'aiProposeStatus', 'aiProposeCancel',
-            'propose', 'rejectProposal', 'publishProposal'] as $action
+            'propose', 'rejectProposal', 'publishProposal', 'governanceApply'] as $action
         ) {
             $this->assertSame('csrf', $this->data($action)['error']);
         }
@@ -331,6 +332,57 @@ class IndexControllerTest extends TestCase
                 $this->assertSame($error, $this->data($action)['error']);
             }
         }
+    }
+
+    public function testGovernanceApplyCollectsPostedFieldsAndPassesErrorsThrough(): void
+    {
+        $this->params->post['governance'] = [
+            'dcterms:creator' => ['Ana Pérez', '  ', 'Luis'],
+            'dcterms:license' => '',
+        ];
+        $this->dependencies['governanceService']->expects($this->once())
+            ->method('apply')
+            ->with(7, ['dcterms:license' => [], 'dcterms:creator' => ['Ana Pérez', 'Luis']], 'unknown')
+            ->willReturn(['updated' => false, 'errors' => ['dcterms:license' => 'not-http-uri']]);
+        $result = $this->data('governanceApply');
+        $this->assertFalse($result['updated']);
+        $this->assertSame(['dcterms:license' => 'not-http-uri'], $result['errors']);
+    }
+
+    public function testGovernanceApplyErrorsAreSanitized(): void
+    {
+        $errors = [new PermissionDeniedException(), new \RuntimeException('bad uri'), new \Exception('secret')];
+        $this->dependencies['governanceService']->method('apply')->willReturnCallback(function () use (&$errors) {
+            throw array_shift($errors);
+        });
+        foreach (['denied', 'bad uri', 'unexpected'] as $error) {
+            $this->assertSame($error, $this->data('governanceApply')['error']);
+        }
+    }
+
+    public function testGovernanceApplySuccessRereadsAndMergesIntegrity(): void
+    {
+        $this->dependencies['governanceService']->method('apply')->willReturn([
+            'updated' => true,
+            'event' => ['when' => 'today', 'summary' => 'Gobernanza · dcterms:license +1'],
+        ]);
+        $this->dependencies['governanceService']->method('read')
+            ->willReturn(['values' => ['dcterms:license' => []]]);
+        $this->issues = [[
+            'severity' => 'warning', 'code' => 'missing', 'field' => 'license', 'message' => 'Falta licencia',
+        ]];
+        $result = $this->data('governanceApply');
+        $this->assertTrue($result['updated']);
+        $this->assertSame(['dcterms:license' => []], $result['values']);
+        $this->assertSame($this->issues, $result['integrity']['issues']);
+        $this->assertSame(['when' => 'today', 'summary' => 'Gobernanza · dcterms:license +1'], $result['event']);
+    }
+
+    public function testGovernanceApplyRereadFailureAfterWriteIsSanitized(): void
+    {
+        $this->dependencies['governanceService']->method('apply')->willReturn(['updated' => true]);
+        $this->missingItem = true;
+        $this->assertSame('unexpected', $this->data('governanceApply')['error']);
     }
 
     public function testHistoryOmitsPrivateEventPayload(): void

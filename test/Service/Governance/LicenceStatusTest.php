@@ -74,6 +74,17 @@ final class LicenceStatusTest extends TestCase
         $this->assertSame(LicenceStatus::OUTSIDE_VOCAB, LicenceStatus::of($values, $vocab));
     }
 
+    public function testHostWithAControlCharacterIsLeftUnchangedRatherThanMisplaced(): void
+    {
+        // PHP's parse_url() can sanitise an invalid host character (a control
+        // character here) into a replacement that is no longer a literal
+        // substring of the original URI. strpos() then can't find an offset to
+        // rewrite, so canonicalUri() returns the URI as-is instead of guessing.
+        $uri = "http://\t.com/path";
+
+        $this->assertSame($uri, LicenceStatus::canonicalUri($uri));
+    }
+
     public function testCanonicalUriIsPublicSoAMatchDecidedHereCannotDisagreeWithOneBuildingAValue(): void
     {
         // GovernanceService::withVocabularyType() (fix round 1, Ruling 2) uses
