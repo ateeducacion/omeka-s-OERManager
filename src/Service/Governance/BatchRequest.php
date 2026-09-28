@@ -41,17 +41,25 @@ final class BatchRequest
         $posted = is_array($governance) ? $governance : [];
 
         $raw = [];
+        $errors = [];
         foreach (self::BATCH_TERMS as $term) {
             if (!array_key_exists($term, $posted)) {
                 continue;
             }
+            $values = (array) $posted[$term];
+            // Check for non-scalar values before stringification
+            foreach ($values as $value) {
+                if (!is_scalar($value)) {
+                    $errors[$term] = 'invalid';
+                    continue 2;
+                }
+            }
             $raw[$term] = array_values(array_filter(
-                array_map(static fn ($value): string => trim((string) $value), (array) $posted[$term]),
+                array_map(static fn ($value): string => trim((string) $value), $values),
                 static fn (string $value): bool => '' !== $value
             ));
         }
 
-        $errors = [];
         if (!in_array($mode, [self::MODE_FILL, self::MODE_REPLACE], true)) {
             $errors['_'] = 'mode';
         }
@@ -63,7 +71,12 @@ final class BatchRequest
                 $errors[$term] = 'required';
             }
         }
-        $errors += GovernanceFields::normalise($raw)['errors'];
+        // Merge normalise errors, but do not overwrite 'invalid' errors
+        foreach (GovernanceFields::normalise($raw)['errors'] as $term => $code) {
+            if (!isset($errors[$term])) {
+                $errors[$term] = $code;
+            }
+        }
 
         return new self($raw, $mode, $errors);
     }

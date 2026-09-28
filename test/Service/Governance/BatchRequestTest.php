@@ -57,4 +57,17 @@ final class BatchRequestTest extends TestCase
             BatchRequest::fromPost([GovernanceFields::PUBLISHER => ['A', 'B']], 'fill')->errors[GovernanceFields::PUBLISHER]
         );
     }
+
+    public function testNonScalarValuesAreRejectedNotStringified(): void
+    {
+        $request = BatchRequest::fromPost([
+            GovernanceFields::CREATOR => ['Ana', ['x']],
+            GovernanceFields::PUBLISHER => 'ACME',
+        ], 'fill');
+
+        $this->assertFalse($request->isValid());
+        $this->assertSame('invalid', $request->errors[GovernanceFields::CREATOR]);
+        $this->assertArrayNotHasKey(GovernanceFields::CREATOR, $request->raw);
+        $this->assertSame(['ACME'], $request->raw[GovernanceFields::PUBLISHER]);
+    }
 }
