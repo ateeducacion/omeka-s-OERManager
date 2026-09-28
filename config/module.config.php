@@ -62,6 +62,16 @@ return [
                     $container->get('Omeka\ApiManager')
                 );
             },
+            Controller\Admin\GovernanceBatchController::class => function ($container) {
+                return new Controller\Admin\GovernanceBatchController(
+                    $container->get(Service\Governance\BatchSelection::class),
+                    $container->get(Service\Governance\BatchPlanStore::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get('Omeka\Logger')
+                );
+            },
         ],
     ],
     'service_manager' => [
@@ -427,6 +437,21 @@ return [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\StatsController::class,
                                 'action' => 'index',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-batch' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/batch[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\GovernanceBatchController::class,
+                                'action' => 'form',
                             ],
                         ],
                         'may_terminate' => true,

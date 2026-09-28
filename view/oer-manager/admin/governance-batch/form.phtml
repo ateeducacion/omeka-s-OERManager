@@ -1,0 +1,38 @@
+<?php
+/**
+ * Batch licence and authorship form (TASK-028 slice 4), served into the
+ * master view's batch sidebar. The widgets are built by ui/governanceBatch.js
+ * from `data-governance`, the same shape the item panel receives.
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var array $governance
+ * @var string $csrf
+ * @var array $urls
+ */
+$escape = $this->plugin('escapeHtml');
+$translate = $this->plugin('translate');
+$payload = ['values' => []] + $governance;
+?>
+<div class="oer-batch-governance"
+    data-governance="<?php echo $escape(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>"
+    data-csrf="<?php echo $escape($csrf); ?>"
+    data-preview-url="<?php echo $escape($urls['preview']); ?>"
+    data-apply-url="<?php echo $escape($urls['apply']); ?>"
+    data-status-url="<?php echo $escape($urls['status']); ?>"
+    data-cancel-url="<?php echo $escape($urls['cancel']); ?>"
+    data-item-url="<?php echo $escape($urls['item']); ?>">
+    <h3><?php echo $translate('Licencia y autoría en lote'); /* @translate */ ?></h3>
+    <p class="oer-batch-target"></p>
+    <div class="oer-batch-fields"></div>
+    <fieldset class="oer-batch-mode">
+        <legend><?php echo $translate('Valores existentes'); /* @translate */ ?></legend>
+        <label><input type="radio" name="oer-batch-mode" value="fill" checked> <?php echo $translate('Rellenar solo vacíos'); /* @translate */ ?></label>
+        <label><input type="radio" name="oer-batch-mode" value="replace"> <?php echo $translate('Sustituir'); /* @translate */ ?></label>
+    </fieldset>
+    <p class="oer-batch-error" hidden></p>
+    <div class="oer-batch-preview" hidden></div>
+    <div class="oer-batch-actions">
+        <button type="button" class="button oer-batch-preview-button"><?php echo $translate('Previsualizar'); /* @translate */ ?></button>
+    </div>
+    <div class="oer-batch-progress" hidden></div>
+</div>

@@ -135,6 +135,16 @@ class Module extends AbstractModule implements InitProviderInterface
             [Controller\Admin\StatsController::class],
             ['index', 'export']
         );
+
+        // Lote de licencia y autoría (TASK-028 slice 4): los mismos roles que
+        // `governance-apply`. Escribir en lote no es más privilegiado que
+        // escribir en un item; el ACL nativo de edición decide item a item
+        // dentro del Job, que corre como su dueño.
+        $acl->allow(
+            ['editor', 'site_admin', 'reviewer'],
+            [Controller\Admin\GovernanceBatchController::class],
+            ['form', 'preview', 'apply', 'status', 'cancel']
+        );
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
