@@ -51,4 +51,67 @@ final class BatchPlanTest extends TestCase
         $this->assertNull(BatchPlan::fromArray(['ids' => 'x']));
         $this->assertNull(BatchPlan::fromArray([]));
     }
+
+    public function testFromArrayRejectsInvalidData(): void
+    {
+        // owner 0 or non-numeric
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 0, 'ids' => [1], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 'not-numeric', 'ids' => [1], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // empty ids
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // non-numeric or zero ids
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => ['abc'], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [0], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1, 0], 'raw' => ['t' => ['v']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // empty raw
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1], 'raw' => [], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // raw value not a list
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1], 'raw' => ['dcterms:license' => 'not-a-list'], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // raw list with non-string element
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1], 'raw' => ['dcterms:license' => ['valid', 123]], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // empty raw key
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1], 'raw' => ['' => ['value']], 'mode' => BatchRequest::MODE_FILL]
+        ));
+
+        // unknown mode
+        $this->assertNull(BatchPlan::fromArray(
+            ['owner' => 3, 'ids' => [1], 'raw' => ['t' => ['v']], 'mode' => 'unknown']
+        ));
+
+        // Round-trip still works with valid data
+        $valid = BatchPlan::fromArray([
+            'owner' => 5,
+            'ids' => [1, 2, '3'],
+            'raw' => ['t' => ['v']],
+            'mode' => BatchRequest::MODE_REPLACE
+        ]);
+        $this->assertNotNull($valid);
+        $this->assertSame(5, $valid->ownerId);
+        $this->assertSame([1, 2, 3], $valid->ids);
+    }
 }

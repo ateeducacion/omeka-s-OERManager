@@ -80,4 +80,27 @@ final class BatchPlanStoreTest extends TestCase
         $this->assertFileExists($this->dir . '/../oer_victim.json');
         unlink($this->dir . '/../oer_victim.json');
     }
+
+    public function testCorruptedPlanDataIsRejectedWithoutReturning(): void
+    {
+        $store = new BatchPlanStore($this->dir);
+        mkdir($this->dir, 0700, true);
+
+        // Write a corrupted plan with bad ids directly to disk
+        $token = bin2hex(random_bytes(16));
+        $corruptedData = [
+            'owner' => 3,
+            'ids' => ['abc'],  // Should be integers > 0
+            'raw' => ['dcterms:creator' => ['Ana']],
+            'mode' => BatchRequest::MODE_FILL
+        ];
+        file_put_contents(
+            $this->dir . '/' . $token . '.json',
+            (string) json_encode($corruptedData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+
+        // take() should return null without returning corrupted plan
+        $result = $store->take($token, 3);
+        $this->assertNull($result);
+    }
 }

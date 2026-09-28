@@ -65,17 +65,64 @@ final class BatchPlan
     /** @param array<string,mixed> $data */
     public static function fromArray(array $data): ?self
     {
-        if (
-            !isset($data['owner'], $data['ids'], $data['raw'], $data['mode'])
-            || !is_array($data['ids']) || !is_array($data['raw'])
-        ) {
+        // Check all required keys exist
+        if (!isset($data['owner'], $data['ids'], $data['raw'], $data['mode'])) {
             return null;
         }
-        return new self(
-            (int) $data['owner'],
-            array_values(array_map('intval', $data['ids'])),
-            $data['raw'],
-            (string) $data['mode']
-        );
+
+        // Validate owner: numeric and > 0
+        $owner = $data['owner'];
+        if (!is_numeric($owner)) {
+            return null;
+        }
+        $ownerId = (int) $owner;
+        if ($ownerId <= 0) {
+            return null;
+        }
+
+        // Validate ids: non-empty array with each element int/numeric string > 0
+        if (!is_array($data['ids']) || empty($data['ids'])) {
+            return null;
+        }
+        $ids = [];
+        foreach ($data['ids'] as $id) {
+            if (!is_numeric($id)) {
+                return null;
+            }
+            $idInt = (int) $id;
+            if ($idInt <= 0) {
+                return null;
+            }
+            $ids[] = $idInt;
+        }
+
+        // Validate raw: non-empty array with non-empty string keys and list<string> values
+        if (!is_array($data['raw']) || empty($data['raw'])) {
+            return null;
+        }
+        foreach ($data['raw'] as $key => $value) {
+            // Key must be non-empty string
+            if (!is_string($key) || $key === '') {
+                return null;
+            }
+            // Value must be a list (array)
+            if (!is_array($value)) {
+                return null;
+            }
+            // Every element in value must be a string
+            foreach ($value as $element) {
+                if (!is_string($element)) {
+                    return null;
+                }
+            }
+        }
+
+        // Validate mode
+        $mode = (string) $data['mode'];
+        if ($mode !== BatchRequest::MODE_FILL && $mode !== BatchRequest::MODE_REPLACE) {
+            return null;
+        }
+
+        return new self($ownerId, $ids, $data['raw'], $mode);
     }
 }
