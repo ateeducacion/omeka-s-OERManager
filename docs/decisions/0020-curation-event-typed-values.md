@@ -101,3 +101,11 @@ We adopt **A**.
   `src/Service/Governance/IntegrityPolicy.php`.
 - Read-only container probe (2026-09-15): CustomVocab #2 «licencias» is URI-typed with 5 entries,
   `oermanager_licence_vocab_id=2`, `oermanager_rea_template_id=3`, governance field coverage.
+
+## Addendum (2026-09-24, TASK-028 slice 4): optional `batch` key
+
+A v2 payload may carry `"batch": "batch-<jobId>"`, the id of the batch job that wrote it. It has no
+effect on replay: `undoEvent()` restores `before` exactly as for an individual edit, and the undo
+event it writes carries no batch id. The key exists now, before any batch undo, because it cannot be
+added to events already written; a later slice can find every event of a batch by it. `decode()`
+already accepts it (it validates only `v` and `terms`). Owner decision in the slice 4 design session.
