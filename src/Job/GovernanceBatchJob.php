@@ -15,8 +15,9 @@ use Omeka\Job\AbstractJob;
  * Batch assignment of licence and authorship (TASK-028 slice 4). Thin glue:
  * the loop lives in GovernanceBatchRunner, the per-item write in
  * GovernanceService::apply(). Runs as its owner, so the native edit ACL
- * decides item by item. Doctrine's identity map is cleared every 50 items so
- * memory does not grow across thousands of writes.
+ * decides item by item. Does not clear the EntityManager because the job and
+ * owner entities must stay managed for shouldStop() and the dispatcher's
+ * final status write.
  */
 class GovernanceBatchJob extends AbstractJob
 {
@@ -27,7 +28,6 @@ class GovernanceBatchJob extends AbstractJob
         $governance = $services->get(GovernanceService::class);
         /** @var ProposalStore $store */
         $store = $services->get(ProposalStore::class);
-        $entityManager = $services->get('Omeka\EntityManager');
         $logger = $services->get('Omeka\Logger');
 
         $jobId = (int) $this->job->getId();
@@ -51,9 +51,7 @@ class GovernanceBatchJob extends AbstractJob
                     false
                 ),
                 $progress,
-                static function () use ($entityManager): void {
-                    $entityManager->clear();
-                },
+                null,
                 static function (string $message) use ($logger): void {
                     $logger->err($message);
                 }
