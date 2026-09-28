@@ -216,6 +216,19 @@ return [
                     $container->get(Service\GovernanceService::class)
                 );
             },
+            // Lote de gobernanza (TASK-028 slice 4): conjunto objetivo y planes.
+            Service\Governance\BatchSelection::class => function ($container) {
+                return new Service\Governance\BatchSelection(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get(Service\IntegrityChecker::class)
+                );
+            },
+            Service\Governance\BatchPlanStore::class => function () {
+                return new Service\Governance\BatchPlanStore(
+                    sys_get_temp_dir() . '/oer-manager-batch-plans'
+                );
+            },
 
             // --- Catalogación IA-assistida (TASK-010, 4b) ---
             // Transporte HTTP del LLM (envuelve Laminas\Http\Client; sin SSRF).
