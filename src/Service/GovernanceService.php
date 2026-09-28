@@ -32,9 +32,28 @@ class GovernanceService
     public function read(ItemRepresentation $item): array
     {
         $values = $this->currentValues($item);
+        return array_merge(
+            [
+                'values' => $values,
+                'licenceStatus' => LicenceStatus::of(
+                    $values[GovernanceFields::LICENCE] ?? [],
+                    $this->licenceVocab->uris()
+                ),
+            ],
+            $this->formOptions()
+        );
+    }
+
+    /**
+     * What a governance form needs that does not depend on any item: the two
+     * vocabularies, their degradation notices and the default rights holder.
+     * The batch form (slice 4) uses it on its own; `read()` adds the item.
+     *
+     * @return array<string,mixed>
+     */
+    public function formOptions(): array
+    {
         return [
-            'values' => $values,
-            'licenceStatus' => LicenceStatus::of($values[GovernanceFields::LICENCE] ?? [], $this->licenceVocab->uris()),
             'options' => [
                 'licence' => $this->licenceVocab->entries(),
                 'publisher' => $this->publisherVocab->entries(),
@@ -44,17 +63,44 @@ class GovernanceService
         ];
     }
 
-    /** @return array<string,mixed> */
-    public function apply(int $itemId, array $raw, string $contributor, ?string $undoOf = null): array
-    {
+    /**
+     * @param bool $onlyEmpty Fill mode (slice 4): drop every term the item already has a value in
+     * @param string|null $batch Batch id recorded in the event (ADR-0020 addendum)
+     * @param bool $reread Re-read the item for the panel's repaint; a batch does not need it
+     * @return array<string,mixed>
+     */
+    public function apply(
+        int $itemId,
+        array $raw,
+        string $contributor,
+        ?string $undoOf = null,
+        bool $onlyEmpty = false,
+        ?string $batch = null,
+        bool $reread = true
+    ): array {
         $normalised = GovernanceFields::normalise($raw);
         if ($normalised['errors']) {
-            return ['updated' => false, 'errors' => $normalised['errors']];
+            return ['updated' => false, 'errors' => $normalised['errors'], 'skipped' => []];
         }
 
         $when = $this->writer->stamp();
         $item = $this->api->read('items', $itemId)->getContent();
         $current = $this->currentValues($item);
+
+        // Checked here, on the read the write already needs, not at preview
+        // time: a value somebody set since the preview must not be overwritten.
+        $skipped = [];
+        if ($onlyEmpty) {
+            foreach (array_keys($normalised['values']) as $term) {
+                if ([] !== ($current[$term] ?? [])) {
+                    unset($normalised['values'][$term]);
+                    $skipped[] = $term;
+                }
+            }
+            if ([] === $normalised['values']) {
+                return ['updated' => false, 'unchanged' => true, 'skipped' => $skipped];
+            }
+        }
 
         $data = [];
         $clear = [];
@@ -72,14 +118,14 @@ class GovernanceService
             }
         }
         if (!$clear) {
-            return ['updated' => false, 'properties' => []];
+            return ['updated' => false, 'properties' => [], 'skipped' => $skipped];
         }
 
         // Nothing changed means nothing is written: rewriting identical values
         // would reseal every annotation with a new author and time.
-        $event = CurationEvent::buildTyped($terms, $undoOf);
+        $event = CurationEvent::buildTyped($terms, $undoOf, $batch);
         if (null === $event) {
-            return ['updated' => false, 'unchanged' => true];
+            return ['updated' => false, 'unchanged' => true, 'skipped' => $skipped];
         }
 
         $eventValue = $this->writer->eventValue($event, $contributor, $when);
@@ -88,11 +134,16 @@ class GovernanceService
         }
         $this->writer->commit($itemId, $clear, $data);
 
+        $summary = ['when' => $when, 'summary' => CurationEvent::summary($event)];
+        if (!$reread) {
+            return ['updated' => true, 'event' => $summary, 'skipped' => $skipped];
+        }
         $fresh = $this->api->read('items', $itemId)->getContent();
         return [
             'updated' => true,
             'values' => $this->currentValues($fresh),
-            'event' => ['when' => $when, 'summary' => CurationEvent::summary($event)],
+            'event' => $summary,
+            'skipped' => $skipped,
         ];
     }
 
