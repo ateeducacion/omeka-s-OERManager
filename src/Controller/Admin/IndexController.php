@@ -9,7 +9,6 @@ use Laminas\Session\Container as SessionContainer;
 use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
-use OERManager\ColumnType\AlignmentStatus;
 use OERManager\Form\ConfigForm;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
@@ -152,7 +151,7 @@ class IndexController extends AbstractActionController
                 $candidates[(int) $candidate->id()] = $candidate;
             }
 
-            $predicate = $this->computedPredicate($computedKeys, $candidates, $query);
+            $predicate = ComputedPredicates::predicate($computedKeys, $candidates, $query, $this->integrityChecker);
             $filtered = $this->computedFilter->apply(
                 array_keys($candidates),
                 $predicate,
@@ -210,41 +209,6 @@ class IndexController extends AbstractActionController
         // Pre-relleno IA (TASK-010): solo si la conexión LLM está activa y con modelo.
         $view->setVariable('aiEnabled', $this->aiEnabled());
         return $view;
-    }
-
-    /**
-     * Compone los predicados computados activos en uno solo (AND).
-     *
-     * @param list<string> $keys
-     * @param array<int,ItemRepresentation> $candidates
-     * @return callable(int):bool
-     */
-    private function computedPredicate(array $keys, array $candidates, array $query): callable
-    {
-        $predicates = [];
-
-        foreach ($keys as $key) {
-            if (ComputedPredicates::ALIGNMENT_PARTIAL === $key) {
-                $predicates[] = static fn (int $id): bool => AlignmentStatus::PARTIAL
-                    === AlignmentStatus::statusFor($candidates[$id]);
-                continue;
-            }
-            if (ComputedPredicates::INTEGRITY === $key) {
-                $wanted = (string) $query['integrity'];
-                $checker = $this->integrityChecker;
-                $predicates[] = static fn (int $id): bool => $wanted
-                    === $checker->check($candidates[$id], false)->getStatus();
-            }
-        }
-
-        return static function (int $id) use ($predicates): bool {
-            foreach ($predicates as $predicate) {
-                if (!$predicate($id)) {
-                    return false;
-                }
-            }
-            return true;
-        };
     }
 
     /**
