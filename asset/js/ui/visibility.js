@@ -56,7 +56,7 @@ function selectedInputs() {
     return Array.from(document.querySelectorAll('.oer-row-select:checked'));
 }
 
-function selectedIds() {
+export function selectedIds() {
     return selectedInputs().map((input) => input.value);
 }
 
@@ -65,7 +65,7 @@ function selectedIds() {
  * continuo la convierte en ruido, y sus dos acciones no significan nada sin
  * filas marcadas.
  */
-function refreshSelectionUi() {
+export function refreshSelectionUi() {
     const all = Array.from(document.querySelectorAll('.oer-row-select'));
     const selected = all.filter((input) => input.checked);
     const bar = document.querySelector('.oer-selection-bar');
@@ -82,6 +82,12 @@ function refreshSelectionUi() {
         selectAll.checked = all.length > 0 && selected.length === all.length;
         selectAll.indeterminate = selected.length > 0 && selected.length < all.length;
     }
+
+    // El lote de gobernanza (TASK-028 slice 4) escucha la selección para
+    // ofrecer «seleccionar los N que coinciden»; se avisa haya o no barra.
+    document.dispatchEvent(new CustomEvent('oer:selection-changed', {
+        detail: { checked: selected.length, pageCount: all.length }
+    }));
 
     if (!bar) {
         return;

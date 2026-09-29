@@ -160,6 +160,7 @@ class IndexController extends AbstractActionController
             );
             $items = array_map(static fn (int $id) => $candidates[$id], $filtered['ids']);
             $this->paginator($filtered['total']);
+            $totalResults = $filtered['total'];
             // `$filtered['truncated']` está aquí por CONTRATO de ComputedFilter (su
             // API lo expone, así que se respeta), pero con $fullParams['per_page'] =
             // HARD_CAP nunca se dispara en esta llamada: ComputedFilter aplica ese
@@ -174,6 +175,7 @@ class IndexController extends AbstractActionController
             $response = $this->api()->search('items', $searchParams);
             $items = $response->getContent();
             $this->paginator($response->getTotalResults());
+            $totalResults = $response->getTotalResults();
             $isTruncated = false;
         }
 
@@ -200,6 +202,14 @@ class IndexController extends AbstractActionController
         $view->setVariable('query', $query);
         $view->setVariable('isTruncated', $isTruncated);
         $view->setVariable('integrityStatuses', $integrityStatuses);
+        // Lote de gobernanza (TASK-028 slice 4): la franja «seleccionar los N
+        // que coinciden» necesita el total del filtro, y el botón solo se pinta
+        // a quien podría usarlo (el endpoint vuelve a comprobarlo).
+        $view->setVariable('totalResults', (int) $totalResults);
+        $view->setVariable(
+            'canBatchGovernance',
+            (bool) $this->acl->userIsAllowed(GovernanceBatchController::class, 'preview')
+        );
         // D1: si el vocabulario degrada, la plantilla cae a texto libre.
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
         // CSRF de visibilidad (QA TASK-003) y de la confirmación del
