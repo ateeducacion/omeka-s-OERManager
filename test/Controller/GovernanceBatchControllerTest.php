@@ -28,6 +28,7 @@ final class GovernanceBatchControllerTest extends TestCase
     private string $dir;
     private string $jobStatus = 'in_progress';
     private bool $jobMissing = false;
+    private string $jobClass = \OERManager\Job\GovernanceBatchJob::class;
 
     protected function setUp(): void
     {
@@ -43,14 +44,20 @@ final class GovernanceBatchControllerTest extends TestCase
                 throw new \RuntimeException('not yours');
             }
             $status = $this->jobStatus;
-            return new Response(new class ($status) {
-                public function __construct(private string $status)
+            $class = $this->jobClass;
+            return new Response(new class ($status, $class) {
+                public function __construct(private string $status, private string $class)
                 {
                 }
 
                 public function status()
                 {
                     return $this->status;
+                }
+
+                public function jobClass()
+                {
+                    return $this->class;
                 }
             });
         });
@@ -230,6 +237,24 @@ final class GovernanceBatchControllerTest extends TestCase
 
         $this->states->write(5, ['kind' => 'governance-batch', 'status' => 'in_progress', 'done' => 0, 'total' => 1]);
         $this->dispatcher->expects($this->once())->method('stop')->with(5);
+        $this->assertTrue($this->data('cancel')['stopped']);
+    }
+
+    public function testAJobOfAnotherClassWithoutStateIsNeverServedOrStopped(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'jobId' => 5];
+        $this->jobClass = 'Omeka\Job\BatchUpdate';
+        $this->dispatcher->expects($this->never())->method('stop');
+
+        $this->assertSame('not_batch', $this->data('status')['error']);
+        $this->assertSame('not_batch', $this->data('cancel')['error']);
+    }
+
+    public function testAJustDispatchedBatchWithoutStateCanBeCancelled(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'jobId' => 5];
+        $this->dispatcher->expects($this->once())->method('stop')->with(5);
+
         $this->assertTrue($this->data('cancel')['stopped']);
     }
 }

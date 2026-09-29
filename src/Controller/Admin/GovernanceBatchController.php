@@ -190,6 +190,9 @@ class GovernanceBatchController extends AbstractActionController
     /**
      * The posted job, readable by this user (the native job ACL restricts it
      * to its owner and admins), and its stored state only if it is a batch.
+     * The job class is checked, not only the state's `kind`: a job with no
+     * state yet — a core job, a swept AI propose, or any job for a global
+     * admin — must never be served or stopped as a batch.
      *
      * @return array{0:mixed,1:?array,2:?JsonModel}
      */
@@ -203,6 +206,9 @@ class GovernanceBatchController extends AbstractActionController
             $job = $this->api()->read('jobs', $jobId)->getContent();
         } catch (\Exception $e) {
             return [null, null, new JsonModel(['error' => 'not_found'])];
+        }
+        if (GovernanceBatchJob::class !== (string) $job->jobClass()) {
+            return [null, null, new JsonModel(['error' => 'not_batch'])];
         }
         $state = $this->states->read($jobId);
         if (null !== $state && BatchProgressReporter::KIND !== ($state['kind'] ?? null)) {
