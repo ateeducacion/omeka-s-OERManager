@@ -87,8 +87,19 @@ $valueOf = static function (int $id, string $term) use ($api, $governance): arra
     return array_map(static fn (array $v): string => (string) ($v['uri'] ?? $v['value'] ?? ''), $values[$term] ?? []);
 };
 
-/** Dispatches the real job synchronously and returns [jobId, state, seconds, peakBytes]. */
-$runJob = static function (array $jobArgs) use ($services, $states): array {
+$userId = (int) $user->getId();
+
+/**
+ * Dispatches the real job synchronously and returns [jobId, state, seconds, peakBytes, sync].
+ *
+ * Running several jobs in ONE process is a harness-only situation (production
+ * runs each job in its own PhpCli process): after a synchronous job the
+ * authenticated User entity is no longer managed, and every new value
+ * annotation (a Resource owned by the identity) would then fail with "a new
+ * entity was found through Resource#owner". Re-reading the user and writing it
+ * back as the identity after each job keeps the next writes valid.
+ */
+$runJob = static function (array $jobArgs) use ($services, $states, $userId): array {
     $dispatcher = $services->get('Omeka\Job\Dispatcher');
     $strategy = $services->has('Omeka\Job\DispatchStrategy\Synchronous')
         ? $services->get('Omeka\Job\DispatchStrategy\Synchronous')
@@ -100,6 +111,8 @@ $runJob = static function (array $jobArgs) use ($services, $states): array {
         : $dispatcher->dispatch(GovernanceBatchJob::class, $jobArgs, $strategy);
     $seconds = microtime(true) - $start;
     $jobId = (int) $job->getId();
+    $fresh = $services->get('Omeka\EntityManager')->find(\Omeka\Entity\User::class, $userId);
+    $services->get('Omeka\AuthenticationService')->getStorage()->write($fresh);
     return [$jobId, $states->read($jobId), $seconds, memory_get_peak_usage(true), null !== $strategy];
 };
 
@@ -193,7 +206,7 @@ try {
     foreach ($fixtures as $id) {
         $replaced = $replaced && ['Replaced'] === $creatorOf($id);
     }
-    check('replace overwrote every author', $replaced);
+    check('replace overwrote every author', $replaced, json_encode($replaceState['tallies'] ?? null));
 
     echo "\n7. per-item undo\n";
     /** @var UndoRouter $router */
@@ -255,14 +268,24 @@ try {
         ($perItem * 3000) / 60
     );
 } finally {
+    // Same one-process artefact as in $runJob, wider: listeners of other
+    // modules (Access) hold entities the earlier jobs left unmanaged, and a
+    // delete would then fail. Start the cleanup from a clean unit of work.
+    $entityManager->clear();
+    $services->get('Omeka\AuthenticationService')->getStorage()
+        ->write($entityManager->find(\Omeka\Entity\User::class, $userId ?? (int) $user->getId()));
+    $deleted = 0;
     foreach ($fixtures as $id) {
         try {
             $api->delete('items', $id);
+            $deleted++;
         } catch (\Throwable $e) {
             echo "   could not delete fixture #$id: " . $e->getMessage() . "\n";
         }
     }
-    printf("\n   deleted %d fixtures\n", count($fixtures));
+    printf("\n   deleted %d of %d fixtures\n", $deleted, count($fixtures));
+    check('every fixture deleted', $deleted === count($fixtures),
+        'delete leftovers whose title starts with "governance-batch-check fixture"');
 }
 
 printf("\n%d OK, %d FAIL\n", $passed, $failed);
