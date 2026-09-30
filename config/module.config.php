@@ -47,7 +47,10 @@ return [
                     // de deshacer por ámbito, que reemplaza la llamada directa a
                     // RecatalogService::undo() en recatalog-undo.
                     $container->get(Service\GovernanceService::class),
-                    $container->get(Service\Curation\UndoRouter::class)
+                    $container->get(Service\Curation\UndoRouter::class),
+                    // Estado/cancelación del propose IA: dueño leído de la
+                    // entidad Job, no de la API de jobs (vetada a editor/reviewer).
+                    $container->get(Service\Governance\BatchJobLookup::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {

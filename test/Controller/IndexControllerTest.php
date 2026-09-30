@@ -34,6 +34,7 @@ class IndexControllerTest extends TestCase
 
     private IndexController $controller;
     private array $dependencies;
+    private ?array $jobInfo = ['class' => \OERManager\Job\AiProposeJob::class, 'ownerId' => 3, 'status' => 'completed'];
     private $params;
     private $request;
     private $api;
@@ -66,12 +67,8 @@ class IndexControllerTest extends TestCase
                 throw new \RuntimeException('not readable');
             }
             if ($resource === 'jobs') {
-                return new Response(new class {
-                    public function status()
-                    {
-                        return 'completed';
-                    }
-                });
+                // Omeka 4.2 denies editor and reviewer any read of jobs.
+                throw new PermissionDeniedException('jobs');
             }
             return new Response($this->item);
         });
@@ -108,6 +105,7 @@ class IndexControllerTest extends TestCase
                 ? new UndoRouter($this->dependencies['recatalogService'], $this->dependencies['governanceService'])
                 : $this->createMock($type));
         }
+        $this->dependencies['jobLookup']->method('find')->willReturnCallback(fn () => $this->jobInfo);
         $this->dependencies['integrityChecker']->method('check')
             ->willReturnCallback(fn () => new IntegrityResult($this->issues));
         $this->dependencies['masterViewQuery']->method('buildSearchParams')->willReturn([]);
@@ -430,12 +428,14 @@ class IndexControllerTest extends TestCase
         $this->missingItem = false;
         $this->dependencies['jobDispatcher']->method('dispatch')->willReturn(new \Omeka\Entity\Job());
         $this->assertSame(1, $this->data('aiPropose')['jobId']);
+        $this->controller->plugins['identity'] = $this->curator(3);
         foreach (['aiProposeStatus', 'aiProposeCancel'] as $action) {
             $this->assertSame('id', $this->data($action)['error']);
             $this->params->post['jobId'] = 7;
-            $this->missingItem = true;
+            $saved = $this->jobInfo;
+            $this->jobInfo = null;
             $this->assertSame('not_found', $this->data($action)['error']);
-            $this->missingItem = false;
+            $this->jobInfo = $saved;
             if ($action === 'aiProposeStatus') {
                 $this->assertSame('in_progress', $this->data($action)['status']);
                 $this->dependencies['proposalStore']->write(7, ['status' => 'in_progress']);
@@ -446,6 +446,39 @@ class IndexControllerTest extends TestCase
                 $this->assertTrue($this->data($action)['stopped']);
             }
             unset($this->params->post['jobId']);
+        }
+    }
+
+    private function curator(int $id): object
+    {
+        return new class ($id) {
+            public function __construct(private int $id)
+            {
+            }
+
+            public function getId()
+            {
+                return $this->id;
+            }
+        };
+    }
+
+    public function testAiProposeJobsAreServedAndStoppedOnlyForTheirOwner(): void
+    {
+        $this->params->post['jobId'] = 7;
+        $this->dependencies['jobDispatcher']->expects($this->never())->method('stop');
+        $refused = [
+            'another owner' => [$this->curator(99), ['ownerId' => 3]],
+            'no identity' => [null, []],
+            'ownerless job' => [$this->curator(3), ['ownerId' => null]],
+            'another job class' => [$this->curator(3), ['class' => \OERManager\Job\GovernanceBatchJob::class]],
+        ];
+        $base = $this->jobInfo;
+        foreach ($refused as $case => [$identity, $override]) {
+            $this->controller->plugins['identity'] = $identity;
+            $this->jobInfo = $override + $base;
+            $this->assertSame('not_found', $this->data('aiProposeStatus')['error'], $case);
+            $this->assertSame('not_found', $this->data('aiProposeCancel')['error'], $case);
         }
     }
 

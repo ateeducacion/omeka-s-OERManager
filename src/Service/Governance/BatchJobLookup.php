@@ -8,7 +8,8 @@ namespace OERManager\Service\Governance;
  * Reads the Job entity behind a batch (TASK-028 slice 4) without the API.
  * In Omeka 4.2 `api()->read('jobs')` is denied to editor and reviewer — the
  * curators the batch is for — and allowed to site_admin for every user's job,
- * so ownership is decided here from the entity, not by the job ACL.
+ * so ownership is decided here from the entity, not by the job ACL. The AI
+ * propose status and cancel actions (IndexController) use it for the same reason.
  */
 class BatchJobLookup
 {
