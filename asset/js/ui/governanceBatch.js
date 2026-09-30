@@ -20,6 +20,7 @@ import { selectedIds, refreshSelectionUi } from './visibility.js';
 
 const JOB_KEY = 'oer-governance-batch-job';
 const POLL_MS = 2000;
+const MAX_POLL_RETRIES = 3;
 
 const FIELD_ERROR_TEXT = {
     required: 'Escribe o elige un valor.',
@@ -38,7 +39,18 @@ const PREVIEW_ERROR_TEXT = {
     plan_expired: 'La previsualización ha caducado. Vuelve a previsualizar.',
     dispatch: 'No se pudo iniciar el lote.',
     csrf: 'La sesión ha caducado. Recarga la página.',
+    id: 'El lote ya no está disponible.',
+    not_found: 'El lote ya no está disponible.',
+    not_batch: 'El lote ya no está disponible.',
     unexpected: 'Error inesperado. Consulta el registro.'
+};
+
+const JOB_ERROR_TEXT = {
+    job_died: 'El proceso del lote se interrumpió antes de terminar. Revisa el registro de trabajos.',
+    job_error: 'El lote terminó con error. Revisa el registro de trabajos.',
+    job_stopped: 'El lote se detuvo.',
+    job_completed: 'El lote terminó; su resumen ya no está disponible.',
+    unexpected: 'El lote terminó con error. Revisa el registro de trabajos.'
 };
 
 const FAILURE_TEXT = {
@@ -49,6 +61,11 @@ const FAILURE_TEXT = {
 };
 
 let selection = { scope: 'ids', pageCount: 0, checked: 0, totalMatching: 0 };
+// One poller for the whole page: reopening the sidebar must not start another.
+let pollTimer = null;
+// Set by the mounted form: repaints its target sentence and drops a preview
+// that no longer matches the selection.
+let onSelectionChange = null;
 
 function t(text) {
     return Omeka.jsTranslate(text);
@@ -103,6 +120,12 @@ function targetText() {
 
 function buildFields(root, governance) {
     const container = root.querySelector('.oer-batch-fields');
+    Object.values(governance.notices || {}).forEach((notice) => {
+        const p = document.createElement('p');
+        p.className = 'oer-governance-notice';
+        p.textContent = t(String(notice));
+        container.appendChild(p);
+    });
     const specs = [
         { key: 'licence', build: () => buildVocabField(TERMS.LICENCE, 'Licencia', governance, 'licence') },
         { key: 'creator', build: () => buildAuthorsField(governance) },
@@ -208,7 +231,10 @@ function renderPreview(root, response, onApply) {
         });
         box.appendChild(confirm);
     }
-    apply.addEventListener('click', () => onApply(response.token));
+    apply.addEventListener('click', () => {
+        apply.disabled = true;
+        onApply(response.token);
+    });
     box.appendChild(apply);
     box.hidden = false;
 }
@@ -238,7 +264,7 @@ function renderProgress(root, state, urls, csrf) {
     }
     const summary = document.createElement('p');
     if ('error' === model.status) {
-        summary.textContent = t('El lote terminó con error (%1$s).').replace('%1$s', model.code || 'unexpected');
+        summary.textContent = t(JOB_ERROR_TEXT[model.code] || JOB_ERROR_TEXT.unexpected);
     } else {
         const tallies = model.tallies;
         summary.textContent = t('%1$s escritos · %2$s omitidos (ya tenían valor) · %3$s sin cambios · %4$s fallidos')
@@ -277,10 +303,20 @@ function renderProgress(root, state, urls, csrf) {
     box.appendChild(reload);
 }
 
-function poll(root, jobId, urls, csrf) {
+function poll(root, jobId, urls, csrf, retries = 0) {
+    window.clearTimeout(pollTimer);
+    if (!root.isConnected) {
+        return;
+    }
     post(urls.status, [['csrf', csrf], ['jobId', String(jobId)]]).then((state) => {
         if (state.error) {
+            // A network blip must not lose a long batch's progress display.
+            if ('unexpected' === state.error && retries < MAX_POLL_RETRIES) {
+                pollTimer = window.setTimeout(() => poll(root, jobId, urls, csrf, retries + 1), POLL_MS * (retries + 2));
+                return;
+            }
             safeStorage((storage) => storage.removeItem(JOB_KEY));
+            showErrors(root, { _: state.error });
             return;
         }
         renderProgress(root, { ...state, jobId }, urls, csrf);
@@ -288,7 +324,7 @@ function poll(root, jobId, urls, csrf) {
             safeStorage((storage) => storage.removeItem(JOB_KEY));
             return;
         }
-        window.setTimeout(() => poll(root, jobId, urls, csrf), POLL_MS);
+        pollTimer = window.setTimeout(() => poll(root, jobId, urls, csrf), POLL_MS);
     });
 }
 
@@ -310,19 +346,45 @@ function mountForm(root) {
 
     const pending = safeStorage((storage) => storage.getItem(JOB_KEY));
     if (pending) {
+        onSelectionChange = null;
+        ['.oer-batch-target', '.oer-batch-fields', '.oer-batch-mode', '.oer-batch-actions'].forEach((selector) => {
+            root.querySelector(selector).hidden = true;
+        });
         poll(root, pending, urls, csrf);
         return;
     }
 
-    root.querySelector('.oer-batch-target').textContent = targetText();
+    const targetEl = root.querySelector('.oer-batch-target');
+    const previewBox = root.querySelector('.oer-batch-preview');
+    // A preview is a frozen plan: once the fields, the mode or the selection
+    // change, its Apply button would run values the form no longer shows.
+    const invalidatePreview = () => {
+        previewBox.hidden = true;
+        previewBox.textContent = '';
+    };
+    onSelectionChange = () => {
+        if (!root.isConnected) {
+            onSelectionChange = null;
+            return;
+        }
+        targetEl.textContent = targetText();
+        invalidatePreview();
+    };
+    targetEl.textContent = targetText();
     buildFields(root, governance);
+    ['input', 'change'].forEach((type) => {
+        root.querySelector('.oer-batch-fields').addEventListener(type, invalidatePreview);
+        root.querySelector('.oer-batch-mode').addEventListener(type, invalidatePreview);
+    });
     root.addEventListener('click', (event) => {
         if (event.target.closest('.oer-governance-add-author')) {
             addAuthorRow(root);
+            invalidatePreview();
         }
         const remove = event.target.closest('.oer-governance-remove-author');
         if (remove) {
             remove.closest('.oer-governance-author-row').remove();
+            invalidatePreview();
         }
     });
 
@@ -371,6 +433,9 @@ export function initGovernanceBatch(config) {
             { type: 'check', checked: event.detail.checked }
         );
         paintStrip();
+        if (onSelectionChange) {
+            onSelectionChange();
+        }
     });
 
     document.addEventListener('click', (event) => {
@@ -391,6 +456,9 @@ export function initGovernanceBatch(config) {
             selection = selectionAfterToggle(selection, { type: 'select-matching' });
         }
         paintStrip();
+        if (onSelectionChange) {
+            onSelectionChange();
+        }
     });
 
     const sidebar = document.getElementById('oer-batch-sidebar');
@@ -403,12 +471,19 @@ export function initGovernanceBatch(config) {
         });
     }
 
-    // Reattach: a running batch reopens its progress after a reload.
+    // Checkbox states the browser restored on reload never fired a change.
+    refreshSelectionUi();
+
+    // Reattach: a running batch reopens its progress after a reload. Module
+    // scripts run before DOMContentLoaded, while admin.js binds its sidebar
+    // click handler inside a jQuery ready callback: click only after that.
     if (safeStorage((storage) => storage.getItem(JOB_KEY))) {
-        const opener = document.querySelector('.oer-batch-governance-open');
-        if (opener) {
-            opener.closest('.oer-selection-bar').hidden = false;
-            opener.click();
-        }
+        $(() => {
+            const opener = document.querySelector('.oer-batch-governance-open');
+            if (opener) {
+                opener.closest('.oer-selection-bar').hidden = false;
+                opener.click();
+            }
+        });
     }
 }
