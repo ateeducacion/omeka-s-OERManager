@@ -11,6 +11,7 @@ use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\Job\GovernanceBatchJob;
 use OERManager\Service\Ai\ProposalStore;
+use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\Governance\BatchPlan;
 use OERManager\Service\Governance\BatchPlanStore;
 use OERManager\Service\Governance\BatchProgressReporter;
@@ -38,7 +39,8 @@ class GovernanceBatchController extends AbstractActionController
         private GovernanceService $governance,
         private Dispatcher $jobDispatcher,
         private ProposalStore $states,
-        private LoggerInterface $logger
+        private LoggerInterface $logger,
+        private BatchJobLookup $jobs
     ) {
     }
 
@@ -108,7 +110,7 @@ class GovernanceBatchController extends AbstractActionController
             }
         } catch (BatchSelectionException $e) {
             return new JsonModel(['error' => $e->reason]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             $this->logger->err('OERManager governance batch preview: ' . $e->getMessage());
             return new JsonModel(['error' => 'unexpected']);
         }
@@ -159,7 +161,7 @@ class GovernanceBatchController extends AbstractActionController
         if ($refusal) {
             return $refusal;
         }
-        $native = (string) $job->status();
+        $native = $job['status'];
         $finished = in_array($native, ['completed', 'error', 'stopped'], true);
         if (null === $state) {
             return new JsonModel($finished
@@ -183,18 +185,20 @@ class GovernanceBatchController extends AbstractActionController
         if ($refusal) {
             return $refusal;
         }
-        $this->jobDispatcher->stop((int) $this->params()->fromPost('jobId'));
+        $this->jobDispatcher->stop($job['id']);
         return new JsonModel(['stopped' => true]);
     }
 
     /**
-     * The posted job, readable by this user (the native job ACL restricts it
-     * to its owner and admins), and its stored state only if it is a batch.
-     * The job class is checked, not only the state's `kind`: a job with no
-     * state yet — a core job, a swept AI propose, or any job for a global
-     * admin — must never be served or stopped as a batch.
+     * The posted job, only if it is a governance batch owned by the current
+     * user, and its stored state. Read from the Job entity, not the API: in
+     * Omeka 4.2 `api()->read('jobs')` is denied to editor and reviewer — the
+     * curators this is for — and granted to site_admin for every user's job.
+     * The class is checked, not only the state's `kind`: a job with no state
+     * yet must never be served or stopped as a batch. Another user's batch is
+     * answered as `not_found`, so its existence is not disclosed.
      *
-     * @return array{0:mixed,1:?array,2:?JsonModel}
+     * @return array{0:?array{id:int, class:string, ownerId:?int, status:string}, 1:?array, 2:?JsonModel}
      */
     private function batchJob(): array
     {
@@ -202,18 +206,18 @@ class GovernanceBatchController extends AbstractActionController
         if ($jobId <= 0) {
             return [null, null, new JsonModel(['error' => 'id'])];
         }
-        try {
-            $job = $this->api()->read('jobs', $jobId)->getContent();
-        } catch (\Exception $e) {
+        $job = $this->jobs->find($jobId);
+        $identity = $this->identity();
+        if (null === $job || null === $identity || $job['ownerId'] !== (int) $identity->getId()) {
             return [null, null, new JsonModel(['error' => 'not_found'])];
         }
-        if (GovernanceBatchJob::class !== (string) $job->jobClass()) {
+        if (GovernanceBatchJob::class !== $job['class']) {
             return [null, null, new JsonModel(['error' => 'not_batch'])];
         }
         $state = $this->states->read($jobId);
         if (null !== $state && BatchProgressReporter::KIND !== ($state['kind'] ?? null)) {
             return [null, null, new JsonModel(['error' => 'not_batch'])];
         }
-        return [$job, $state, null];
+        return [['id' => $jobId] + $job, $state, null];
     }
 }

@@ -6,11 +6,11 @@ namespace OERManager\Test\Controller;
 
 use OERManager\Controller\Admin\GovernanceBatchController;
 use OERManager\Service\Ai\ProposalStore;
+use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\Governance\BatchPlanStore;
 use OERManager\Service\Governance\BatchSelection;
 use OERManager\Service\Governance\BatchSelectionException;
 use OERManager\Service\GovernanceService;
-use Omeka\Api\Response;
 use Omeka\Job\Dispatcher;
 use PHPUnit\Framework\TestCase;
 
@@ -29,6 +29,7 @@ final class GovernanceBatchControllerTest extends TestCase
     private string $jobStatus = 'in_progress';
     private bool $jobMissing = false;
     private string $jobClass = \OERManager\Job\GovernanceBatchJob::class;
+    private ?int $jobOwner = 3;
 
     protected function setUp(): void
     {
@@ -39,35 +40,20 @@ final class GovernanceBatchControllerTest extends TestCase
         $this->plans = new BatchPlanStore($this->dir . '/plans');
         $this->states = new ProposalStore($this->dir . '/states');
         $this->api = $this->createMock(\Omeka\Api\Manager::class);
-        $this->api->method('read')->willReturnCallback(function () {
-            if ($this->jobMissing) {
-                throw new \RuntimeException('not yours');
-            }
-            $status = $this->jobStatus;
-            $class = $this->jobClass;
-            return new Response(new class ($status, $class) {
-                public function __construct(private string $status, private string $class)
-                {
-                }
-
-                public function status()
-                {
-                    return $this->status;
-                }
-
-                public function jobClass()
-                {
-                    return $this->class;
-                }
-            });
-        });
+        $jobs = $this->createMock(BatchJobLookup::class);
+        $jobs->method('find')->willReturnCallback(fn (int $id) => $this->jobMissing ? null : [
+            'class' => $this->jobClass,
+            'ownerId' => $this->jobOwner,
+            'status' => $this->jobStatus,
+        ]);
         $this->controller = new GovernanceBatchController(
             $this->selection,
             $this->plans,
             $this->governance,
             $this->dispatcher,
             $this->states,
-            $this->createMock(\Laminas\Log\LoggerInterface::class)
+            $this->createMock(\Laminas\Log\LoggerInterface::class),
+            $jobs
         );
         $this->params = new class {
             public array $post = ['csrf' => 'valid'];
@@ -248,6 +234,20 @@ final class GovernanceBatchControllerTest extends TestCase
 
         $this->assertSame('not_batch', $this->data('status')['error']);
         $this->assertSame('not_batch', $this->data('cancel')['error']);
+    }
+
+    public function testAnotherUsersBatchIsNeitherServedNorStopped(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'jobId' => 5];
+        $this->jobOwner = 99;
+        $this->states->write(5, ['kind' => 'governance-batch', 'status' => 'in_progress', 'done' => 1, 'total' => 2]);
+        $this->dispatcher->expects($this->never())->method('stop');
+
+        $this->assertSame('not_found', $this->data('status')['error']);
+        $this->assertSame('not_found', $this->data('cancel')['error']);
+
+        $this->jobOwner = null;
+        $this->assertSame('not_found', $this->data('status')['error']);
     }
 
     public function testAJustDispatchedBatchWithoutStateCanBeCancelled(): void

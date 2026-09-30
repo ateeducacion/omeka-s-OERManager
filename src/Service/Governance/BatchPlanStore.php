@@ -12,7 +12,7 @@ namespace OERManager\Service\Governance;
  */
 final class BatchPlanStore
 {
-    private const TOKEN_PATTERN = '/^[a-f0-9]{32}$/';
+    private const TOKEN_PATTERN = '/^[a-f0-9]{32}\z/';
 
     public function __construct(private string $baseDir, private int $ttlSeconds = 1800)
     {

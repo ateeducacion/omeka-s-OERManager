@@ -69,7 +69,8 @@ return [
                     $container->get(Service\GovernanceService::class),
                     $container->get('Omeka\Job\Dispatcher'),
                     $container->get(Service\Ai\ProposalStore::class),
-                    $container->get('Omeka\Logger')
+                    $container->get('Omeka\Logger'),
+                    $container->get(Service\Governance\BatchJobLookup::class)
                 );
             },
         ],
@@ -233,6 +234,11 @@ return [
                     $container->get(Service\MasterViewQuery::class),
                     $container->get(Service\IntegrityChecker::class)
                 );
+            },
+            // Dueño, clase y estado del Job de lote, leídos de la entidad: la
+            // API de jobs no deja leerlos a editor/reviewer en Omeka 4.2.
+            Service\Governance\BatchJobLookup::class => function ($container) {
+                return new Service\Governance\BatchJobLookup($container->get('Omeka\EntityManager'));
             },
             Service\Governance\BatchPlanStore::class => function () {
                 return new Service\Governance\BatchPlanStore(

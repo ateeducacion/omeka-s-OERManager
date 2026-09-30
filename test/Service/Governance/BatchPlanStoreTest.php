@@ -74,7 +74,7 @@ final class BatchPlanStoreTest extends TestCase
         mkdir($this->dir, 0700, true);
         file_put_contents($this->dir . '/../oer_victim.json', '{}');
 
-        foreach (['', '../oer_victim', 'ABC', str_repeat('g', 32), str_repeat('a', 31)] as $token) {
+        foreach (['', '../oer_victim', 'ABC', str_repeat('g', 32), str_repeat('a', 31), str_repeat('a', 32) . "\n"] as $token) {
             $this->assertNull($store->take($token, 3), var_export($token, true));
         }
         $this->assertFileExists($this->dir . '/../oer_victim.json');
