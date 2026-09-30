@@ -17,6 +17,7 @@ require '/var/www/html/bootstrap.php';
 use OERManager\Job\GovernanceBatchJob;
 use OERManager\Service\Ai\ProgressReporter;
 use OERManager\Service\Ai\ProposalStore;
+use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Governance\BatchSelection;
 use OERManager\Service\Governance\GovernanceBatchRunner;
@@ -104,6 +105,13 @@ $runJob = static function (array $jobArgs) use ($services, $states, $userId): ar
     $strategy = $services->has('Omeka\Job\DispatchStrategy\Synchronous')
         ? $services->get('Omeka\Job\DispatchStrategy\Synchronous')
         : null;
+    // Measure the job, not the harness: drop what fixture creation left in
+    // Doctrine's identity map, then re-authenticate (clear() detaches the user).
+    $em = $services->get('Omeka\EntityManager');
+    $em->clear();
+    $services->get('Omeka\AuthenticationService')->getStorage()->write($em->find(\Omeka\Entity\User::class, $userId));
+    gc_collect_cycles();
+    $before = memory_get_usage();
     memory_reset_peak_usage();
     $start = microtime(true);
     $job = null === $strategy
@@ -113,7 +121,8 @@ $runJob = static function (array $jobArgs) use ($services, $states, $userId): ar
     $jobId = (int) $job->getId();
     $fresh = $services->get('Omeka\EntityManager')->find(\Omeka\Entity\User::class, $userId);
     $services->get('Omeka\AuthenticationService')->getStorage()->write($fresh);
-    return [$jobId, $states->read($jobId), $seconds, memory_get_peak_usage(true), null !== $strategy];
+    $growth = memory_get_usage() - $before;
+    return [$jobId, $states->read($jobId), $seconds, memory_get_peak_usage(), null !== $strategy, $growth];
 };
 
 try {
@@ -158,7 +167,7 @@ try {
         count($seeded) === $selection->countWithValue($fixtures, GovernanceFields::CREATOR));
 
     echo "\n4. fill mode through the real job\n";
-    [$fillJob, $fillState, $fillSeconds, $fillPeak, $sync] = $runJob([
+    [$fillJob, $fillState, $fillSeconds, $fillPeak, $sync, $fillGrowth] = $runJob([
         'ids' => $fixtures,
         'raw' => [GovernanceFields::CREATOR => ['Batch Author'], GovernanceFields::RIGHTS_HOLDER => ['Batch Holder']],
         'mode' => 'fill',
@@ -193,6 +202,21 @@ try {
         $batchOk = $batchOk && ('batch-' . $fillJob) === ($event['payload']['batch'] ?? null);
     }
     check('every written fixture carries batch-' . $fillJob . ' in its last event', $batchOk);
+
+    $info = $services->get(BatchJobLookup::class)->find($fillJob);
+    check('BatchJobLookup reads class and owner from the real Job entity',
+        GovernanceBatchJob::class === ($info['class'] ?? null) && $userId === ($info['ownerId'] ?? null), json_encode($info));
+
+    echo "\n5b. fill skips items that already have the value\n";
+    [, $skipState] = $runJob([
+        'ids' => $fixtures,
+        'raw' => [GovernanceFields::CREATOR => ['Another Author']],
+        'mode' => 'fill',
+        'contributor' => $contributor,
+    ]);
+    check('a fill over authors that all exist skips every item and writes none',
+        $count === (int) ($skipState['tallies']['skipped'] ?? -1) && 0 === (int) ($skipState['tallies']['written'] ?? -1),
+        json_encode($skipState['tallies'] ?? null));
 
     echo "\n6. replace mode\n";
     [, $replaceState] = $runJob([
@@ -261,11 +285,17 @@ try {
 
     echo "\n10. throughput (not a check)\n";
     $perItem = $fillSeconds / max(1, $count);
+    $perItemBytes = $fillGrowth / max(1, $count);
     printf(
-        "   per item: %.0f ms · peak memory: %.1f MB · extrapolated to 3000: %.1f min\n",
+        "   per item: %.1f ms · memory growth: %.1f KB/item (%.1f MB over %d items, peak %.1f MB)\n"
+        . "   extrapolated to 3000: %.1f min, +%.0f MB\n",
         $perItem * 1000,
+        $perItemBytes / 1024,
+        $fillGrowth / 1048576,
+        $count,
         $fillPeak / 1048576,
-        ($perItem * 3000) / 60
+        ($perItem * 3000) / 60,
+        ($perItemBytes * 3000) / 1048576
     );
 } finally {
     // Same one-process artefact as in $runJob, wider: listeners of other

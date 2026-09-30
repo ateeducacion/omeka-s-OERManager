@@ -15,9 +15,11 @@ use Omeka\Job\AbstractJob;
  * Batch assignment of licence and authorship (TASK-028 slice 4). Thin glue:
  * the loop lives in GovernanceBatchRunner, the per-item write in
  * GovernanceService::apply(). Runs as its owner, so the native edit ACL
- * decides item by item. Does not clear the EntityManager because the job and
- * owner entities must stay managed for shouldStop() and the dispatcher's
- * final status write.
+ * decides item by item. Does not clear the EntityManager: clearing detaches
+ * the authenticated owner, and every new value annotation is a Resource owned
+ * by that identity, so the next flush fails ("a new entity was found through
+ * Resource#owner"). It is not needed either: measured in the container, the
+ * job grows about 12 KB per item, some 35 MB for 3000 REA.
  */
 class GovernanceBatchJob extends AbstractJob
 {
