@@ -368,4 +368,65 @@ final class GovernanceServiceTest extends TestCase
         $this->assertTrue($result['updated']);
         $this->assertSame('Ana', $this->writes[0][GovernanceFields::CREATOR][0]['@value']);
     }
+
+    // --- apply(): fill mode, batch id and reread options ---
+
+    public function testFillModeSkipsFieldsThatAlreadyHaveAValueAndWritesTheRest(): void
+    {
+        $this->items[1] = $this->item(1, '', [GovernanceFields::CREATOR => [$this->value('Existing')]]);
+        $service = $this->makeService();
+
+        $result = $service->apply(1, [
+            GovernanceFields::CREATOR => ['Ana'],
+            GovernanceFields::RIGHTS_HOLDER => ['Consejería'],
+        ], 'Curator', null, onlyEmpty: true);
+
+        $this->assertTrue($result['updated']);
+        $this->assertSame([GovernanceFields::CREATOR], $result['skipped']);
+        $this->assertArrayNotHasKey(GovernanceFields::CREATOR, $this->writes[0]);
+        $this->assertNotContains($this->propertyId(GovernanceFields::CREATOR), $this->writes[0]['clear_property_values']);
+        $this->assertSame('Consejería', $this->writes[0][GovernanceFields::RIGHTS_HOLDER][0]['@value']);
+    }
+
+    public function testFillModeWithEveryFieldTakenWritesNothing(): void
+    {
+        $this->items[1] = $this->item(1, '', [GovernanceFields::CREATOR => [$this->value('Existing')]]);
+        $service = $this->makeService();
+
+        $result = $service->apply(1, [GovernanceFields::CREATOR => ['Ana']], 'Curator', null, onlyEmpty: true);
+
+        $this->assertFalse($result['updated']);
+        $this->assertTrue($result['unchanged']);
+        $this->assertSame([GovernanceFields::CREATOR], $result['skipped']);
+        $this->assertSame([], $this->writes);
+    }
+
+    public function testBatchIdReachesTheEventAndRereadCanBeSkipped(): void
+    {
+        $service = $this->makeService();
+
+        $result = $service->apply(1, [GovernanceFields::CREATOR => ['Ana']], 'Curator', batch: 'batch-7', reread: false);
+
+        $this->assertTrue($result['updated']);
+        $this->assertArrayNotHasKey('values', $result);
+        $this->assertSame([], $result['skipped']);
+        $payload = CurationEvent::decode(
+            $this->writes[0]['dcterms:provenance'][0]['@annotation']['dcterms:replaces'][0]['@value']
+        );
+        $this->assertSame('batch-7', $payload['batch']);
+    }
+
+    public function testFormOptionsCarryVocabulariesNoticesAndDefaultRightsHolder(): void
+    {
+        $this->settings->method('get')->willReturnCallback(
+            fn ($key, $default = null) => GovernanceSettings::DEFAULT_RIGHTS_HOLDER === $key ? 'Consejería' : $default
+        );
+        $service = $this->makeService(licenceVocabId: 2, licenceEntries: [['uri' => 'https://x/by/4.0/', 'label' => 'BY']]);
+
+        $options = $service->formOptions();
+
+        $this->assertSame([['uri' => 'https://x/by/4.0/', 'label' => 'BY']], $options['options']['licence']);
+        $this->assertArrayHasKey(GovernanceFields::PUBLISHER, $options['notices']);
+        $this->assertSame('Consejería', $options['defaultRightsHolder']);
+    }
 }

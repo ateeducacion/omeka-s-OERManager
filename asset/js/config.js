@@ -25,6 +25,8 @@ export function readConfig() {
         aiEnabled: flag(d.aiEnabled),
         canRecatalog: flag(d.canRecatalog),
         recatalogCsrf: d.recatalogCsrf,
-        drawerHistoryUrl: d.drawerHistoryUrl
+        drawerHistoryUrl: d.drawerHistoryUrl,
+        totalResults: Number(d.totalResults || 0),
+        canBatchGovernance: flag(d.canBatchGovernance)
     });
 }

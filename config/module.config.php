@@ -62,6 +62,17 @@ return [
                     $container->get('Omeka\ApiManager')
                 );
             },
+            Controller\Admin\GovernanceBatchController::class => function ($container) {
+                return new Controller\Admin\GovernanceBatchController(
+                    $container->get(Service\Governance\BatchSelection::class),
+                    $container->get(Service\Governance\BatchPlanStore::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get('Omeka\Logger'),
+                    $container->get(Service\Governance\BatchJobLookup::class)
+                );
+            },
         ],
     ],
     'service_manager' => [
@@ -214,6 +225,24 @@ return [
                 return new Service\Curation\UndoRouter(
                     $container->get(Service\RecatalogService::class),
                     $container->get(Service\GovernanceService::class)
+                );
+            },
+            // Lote de gobernanza (TASK-028 slice 4): conjunto objetivo y planes.
+            Service\Governance\BatchSelection::class => function ($container) {
+                return new Service\Governance\BatchSelection(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get(Service\IntegrityChecker::class)
+                );
+            },
+            // Dueño, clase y estado del Job de lote, leídos de la entidad: la
+            // API de jobs no deja leerlos a editor/reviewer en Omeka 4.2.
+            Service\Governance\BatchJobLookup::class => function ($container) {
+                return new Service\Governance\BatchJobLookup($container->get('Omeka\EntityManager'));
+            },
+            Service\Governance\BatchPlanStore::class => function () {
+                return new Service\Governance\BatchPlanStore(
+                    sys_get_temp_dir() . '/oer-manager-batch-plans'
                 );
             },
 
@@ -414,6 +443,21 @@ return [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\StatsController::class,
                                 'action' => 'index',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-batch' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/batch[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\GovernanceBatchController::class,
+                                'action' => 'form',
                             ],
                         ],
                         'may_terminate' => true,

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace OERManager\Service;
 
+use OERManager\ColumnType\AlignmentStatus;
 use OERManager\Service\Governance\AlignmentStatusValue;
+use Omeka\Api\Representation\ItemRepresentation;
 
 /**
  * Resuelve qué predicados computados pide una query de la vista maestra.
@@ -41,5 +43,39 @@ final class ComputedPredicates
         }
 
         return $keys;
+    }
+
+    /**
+     * The active computed predicates composed into one (AND). Shared by the
+     * master view and the batch selection so both judge «matching» the same way.
+     *
+     * @param list<string> $keys
+     * @param array<int,ItemRepresentation> $candidates
+     * @return callable(int):bool
+     */
+    public static function predicate(array $keys, array $candidates, array $query, IntegrityChecker $checker): callable
+    {
+        $predicates = [];
+        foreach ($keys as $key) {
+            if (self::ALIGNMENT_PARTIAL === $key) {
+                $predicates[] = static fn (int $id): bool => AlignmentStatus::PARTIAL
+                    === AlignmentStatus::statusFor($candidates[$id]);
+                continue;
+            }
+            if (self::INTEGRITY === $key) {
+                $wanted = (string) $query['integrity'];
+                $predicates[] = static fn (int $id): bool => $wanted
+                    === $checker->check($candidates[$id], false)->getStatus();
+            }
+        }
+
+        return static function (int $id) use ($predicates): bool {
+            foreach ($predicates as $predicate) {
+                if (!$predicate($id)) {
+                    return false;
+                }
+            }
+            return true;
+        };
     }
 }

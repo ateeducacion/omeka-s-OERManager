@@ -281,6 +281,16 @@ class IndexControllerTest extends TestCase
         $this->assertSame([], $this->controller->searchAction()->getVariable('resourceFilterTitles'));
     }
 
+    public function testIndexExposesTheMatchingTotalAndTheBatchPermission(): void
+    {
+        $this->dependencies['acl']->method('userIsAllowed')->willReturn(true);
+
+        $view = $this->controller->indexAction();
+
+        $this->assertSame(1, $view->getVariable('totalResults'));
+        $this->assertTrue($view->getVariable('canBatchGovernance'));
+    }
+
     public function testVisibilityAndTermSearch(): void
     {
         $session = new \Laminas\Session\Container('OERManager');

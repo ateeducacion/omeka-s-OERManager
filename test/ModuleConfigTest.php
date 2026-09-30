@@ -241,6 +241,19 @@ final class ModuleConfigTest extends TestCase
         }
     }
 
+    public function testBatchControllerAndRouteAreRegistered(): void
+    {
+        $config = (new \OERManager\Module())->getConfig();
+        $this->assertArrayHasKey(
+            \OERManager\Controller\Admin\GovernanceBatchController::class,
+            $config['controllers']['factories']
+        );
+        $this->assertSame(
+            '/oer-manager/batch[/:action]',
+            $config['router']['routes']['admin']['child_routes']['oer-manager-batch']['options']['route']
+        );
+    }
+
     public function testModuleIniDeclaresOmeka42Constraint(): void
     {
         $ini = parse_ini_file(self::MODULE_ROOT . '/config/module.ini', true);

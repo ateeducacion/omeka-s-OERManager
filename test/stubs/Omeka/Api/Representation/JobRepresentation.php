@@ -9,6 +9,11 @@ class JobRepresentation extends AbstractResourceEntityRepresentation
         return "completed";
     }
 
+    public function jobClass()
+    {
+        return '';
+    }
+
     public function log()
     {
         return "";

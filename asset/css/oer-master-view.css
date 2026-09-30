@@ -1116,14 +1116,16 @@
  * edición, no una lista de metadatos. Como `#sidebar` lo declara cada vista y
  * no el layout, esto no toca ninguna otra pantalla de Omeka.
  */
-#oer-detail-sidebar {
+#oer-detail-sidebar,
+#oer-batch-sidebar {
     width: clamp(26rem, 40vw, 44rem);
 }
 
 /* Superponerse obliga a lo que antes hacía el hueco de la compensación: separar
    el panel de lo que ahora queda debajo. La sombra cae a la izquierda, del lado
    del riel de estado. */
-#oer-detail-sidebar.active {
+#oer-detail-sidebar.active,
+#oer-batch-sidebar.active {
     left: auto;
     right: 0;
     box-shadow: -12px 0 28px rgba(43, 50, 64, 0.16);
@@ -1160,7 +1162,9 @@ body.oer-master-view.sidebar-open footer {
    anchura propia ni la del contenido tienen sentido ahí. */
 @media screen and (max-width: 640px) {
     #oer-detail-sidebar,
-    #oer-detail-sidebar.active {
+    #oer-detail-sidebar.active,
+    #oer-batch-sidebar,
+    #oer-batch-sidebar.active {
         width: 100%;
         right: auto;
     }
@@ -1599,3 +1603,16 @@ body.oer-master-view.sidebar-open footer {
 #oer-master-view-table tr.oer-row-open > td {
     background: var(--oer-select);
 }
+
+/* Lote de licencia y autoría (TASK-028 slice 4). */
+.oer-select-matching-strip {
+    margin: 0 0 .5em;
+    padding: .4em .75em;
+    background: var(--oer-surface, #f6f6f6);
+}
+.oer-batch-governance .oer-batch-field-toggle { display: block; margin-top: .75em; font-weight: bold; }
+.oer-batch-governance .oer-batch-field-toggle + .oer-governance-notice { margin: .25em 0 0 1.5em; }
+.oer-batch-governance .oer-batch-mode-help { display: block; margin-left: 1.5em; font-weight: normal; font-size: .9em; }
+.oer-batch-governance .oer-batch-preview table { width: 100%; }
+.oer-batch-governance .oer-batch-overwrite { color: var(--oer-warn, #955c0d); }
+.oer-batch-governance progress { width: 100%; }

@@ -110,13 +110,29 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     <span class="oer-selection-count" data-singular="<?php echo $escape($translate('%s REA seleccionado')); /* @translate */ ?>" data-plural="<?php echo $escape($translate('%s REA seleccionados')); /* @translate */ ?>"></span>
     <button type="button" class="button oer-batch-set-public" data-is-public="1"><?php echo $translate('Hacer público'); /* @translate */ ?></button>
     <button type="button" class="button oer-batch-set-public" data-is-public="0"><?php echo $translate('Hacer privado'); /* @translate */ ?></button>
+    <?php if (!empty($canBatchGovernance)): ?>
+    <a href="#" class="button oer-batch-governance-open sidebar-content"
+       data-sidebar-selector="#oer-batch-sidebar"
+       data-sidebar-content-url="<?php echo $escape($this->url('admin/oer-manager-batch', ['action' => 'form'])); ?>"><?php echo $translate('Licencia y autoría…'); /* @translate */ ?></a>
+    <?php endif; ?>
     <button type="button" class="oer-selection-clear"><?php echo $translate('Deseleccionar'); /* @translate */ ?></button>
 </div>
+
+<p class="oer-select-matching-strip" hidden
+   data-page-all="<?php echo $escape($translate('Los %1$s REA de esta página están seleccionados.')); /* @translate */ ?>"
+   data-select-matching="<?php echo $escape($translate('Seleccionar los %1$s que coinciden con el filtro para licencia y autoría')); /* @translate */ ?>"
+   data-matching-all="<?php echo $escape($translate('Los %1$s REA que coinciden con el filtro están seleccionados para licencia y autoría; la visibilidad sigue actuando solo sobre las filas marcadas.')); /* @translate */ ?>"
+   data-clear="<?php echo $escape($translate('Deshacer selección')); /* @translate */ ?>">
+    <span class="oer-select-matching-text"></span>
+    <button type="button" class="oer-select-matching-action"></button>
+</p>
 
 <?php
 $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexController', 'recatalog-apply');
 ?>
 <table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack"
+    data-total-results="<?php echo (int) ($totalResults ?? 0); ?>"
+    data-can-batch-governance="<?php echo !empty($canBatchGovernance) ? '1' : '0'; ?>"
     data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>"
     data-csrf-token="<?php echo $escape($csrfToken); ?>"
     data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
@@ -196,6 +212,13 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     <?php echo $this->hyperlink('', '#', [
         'class' => 'sidebar-close o-icon-close',
         'title' => $translate('Cerrar el detalle'),
+    ]); ?>
+    <div class="sidebar-content"></div>
+</div>
+<div id="oer-batch-sidebar" class="sidebar">
+    <?php echo $this->hyperlink('', '#', [
+        'class' => 'sidebar-close o-icon-close',
+        'title' => $translate('Cerrar'),
     ]); ?>
     <div class="sidebar-content"></div>
 </div>

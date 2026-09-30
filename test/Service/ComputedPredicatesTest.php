@@ -6,6 +6,9 @@ namespace OERManager\Test\Service;
 
 use OERManager\Service\ComputedPredicates;
 use OERManager\Service\Governance\AlignmentStatusValue;
+use OERManager\Service\IntegrityChecker;
+use OERManager\Service\IntegrityResult;
+use Omeka\Api\Representation\ItemRepresentation;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -87,5 +90,33 @@ final class ComputedPredicatesTest extends TestCase
         $this->assertSame('complete', AlignmentStatusValue::COMPLETE);
         $this->assertSame('partial', AlignmentStatusValue::PARTIAL);
         $this->assertSame('none', AlignmentStatusValue::NONE);
+    }
+
+    public function testPredicateMatchesTheRequestedIntegrityStatus(): void
+    {
+        $ok = $this->createMock(ItemRepresentation::class);
+        $warn = $this->createMock(ItemRepresentation::class);
+        $checker = $this->createMock(IntegrityChecker::class);
+        $checker->method('check')->willReturnCallback(
+            fn ($item) => new IntegrityResult($item === $warn
+                ? [['severity' => 'warning', 'code' => 'missing_license', 'field' => 'dcterms:license', 'message' => 'x']]
+                : [])
+        );
+        $predicate = ComputedPredicates::predicate(
+            [ComputedPredicates::INTEGRITY],
+            [1 => $ok, 2 => $warn],
+            ['integrity' => 'warning'],
+            $checker
+        );
+
+        $this->assertFalse($predicate(1));
+        $this->assertTrue($predicate(2));
+    }
+
+    public function testNoKeysMatchesEverything(): void
+    {
+        $predicate = ComputedPredicates::predicate([], [], [], $this->createMock(IntegrityChecker::class));
+
+        $this->assertTrue($predicate(99));
     }
 }

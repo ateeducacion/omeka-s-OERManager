@@ -314,4 +314,19 @@ final class CurationEventTest extends TestCase
 
         $this->assertSame('Gobernanza · dcterms:creator ', CurationEvent::summary($payload));
     }
+
+    public function testTypedEventCarriesAnOptionalBatchIdThatSurvivesDecode(): void
+    {
+        $terms = ['dcterms:license' => ['before' => [], 'after' => [['type' => 'uri', 'uri' => 'https://x/by/4.0/']]]];
+
+        $plain = CurationEvent::buildTyped($terms);
+        $batched = CurationEvent::buildTyped($terms, null, 'batch-42');
+
+        $this->assertArrayNotHasKey('batch', $plain);
+        $this->assertSame('batch-42', $batched['batch']);
+        $decoded = CurationEvent::decode(CurationEvent::encode($batched));
+        $this->assertSame('batch-42', $decoded['batch']);
+        $this->assertSame('governance', CurationEvent::scopeOf($decoded));
+        $this->assertSame(CurationEvent::OP_GOVERNANCE, $decoded['op']);
+    }
 }

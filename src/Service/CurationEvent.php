@@ -235,9 +235,11 @@ class CurationEvent
      * v1, where curriculum dimensions compare as sets.
      *
      * @param array<string,array{before:list<array<string,string>>,after:list<array<string,string>>}> $terms
+     * @param string|null $undoOf `dcterms:modified` of the event being reverted, if any
+     * @param string|null $batch identifier of the batch that produced the event (ADR-0020 addendum)
      * @return array<string,mixed>|null null when nothing changed
      */
-    public static function buildTyped(array $terms, ?string $undoOf = null): ?array
+    public static function buildTyped(array $terms, ?string $undoOf = null, ?string $batch = null): ?array
     {
         $changed = [];
         foreach ($terms as $term => $state) {
@@ -251,12 +253,16 @@ class CurationEvent
         if (!$changed) {
             return null;
         }
-        return [
+        $event = [
             'v' => self::VERSION_TYPED,
             'op' => null === $undoOf ? self::OP_GOVERNANCE : self::OP_UNDO,
             'undoOf' => $undoOf,
             'terms' => $changed,
         ];
+        if (null !== $batch) {
+            $event['batch'] = $batch;
+        }
+        return $event;
     }
 
     /** @param array<string,mixed> $payload */
