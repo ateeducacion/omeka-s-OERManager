@@ -26,8 +26,10 @@ $payload = ['values' => []] + $governance;
     <div class="oer-batch-fields"></div>
     <fieldset class="oer-batch-mode">
         <legend><?php echo $translate('Valores existentes'); /* @translate */ ?></legend>
-        <label><input type="radio" name="oer-batch-mode" value="fill" checked> <?php echo $translate('Rellenar solo vacíos'); /* @translate */ ?></label>
-        <label><input type="radio" name="oer-batch-mode" value="replace"> <?php echo $translate('Sustituir'); /* @translate */ ?></label>
+        <label><input type="radio" name="oer-batch-mode" value="fill" checked> <?php echo $translate('Rellenar solo vacíos'); /* @translate */ ?>
+            <span class="oer-batch-mode-help"><?php echo $translate('no cambia los REA que ya tienen valor'); /* @translate */ ?></span></label>
+        <label><input type="radio" name="oer-batch-mode" value="replace"> <?php echo $translate('Sustituir'); /* @translate */ ?>
+            <span class="oer-batch-mode-help"><?php echo $translate('reemplaza el valor existente'); /* @translate */ ?></span></label>
     </fieldset>
     <p class="oer-batch-error" hidden></p>
     <div class="oer-batch-preview" hidden></div>

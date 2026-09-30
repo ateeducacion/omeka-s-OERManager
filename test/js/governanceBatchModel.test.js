@@ -6,8 +6,22 @@ import {
     selectionAfterToggle,
     stripModel,
     previewModel,
-    resultModel
+    resultModel,
+    fieldToggles
 } from '../../asset/js/core/governanceBatchModel.js';
+
+test('each field toggle names its own field and carries only its own notice', () => {
+    const toggles = fieldToggles({ 'dcterms:publisher': 'Vocabulario de editores no configurado' });
+
+    assert.deepEqual(toggles.map(({ key, text }) => [key, text]), [
+        ['licence', 'Asignar licencia'],
+        ['creator', 'Asignar autoría'],
+        ['publisher', 'Asignar editor'],
+        ['rightsHolder', 'Asignar titular de derechos']
+    ]);
+    assert.deepEqual(toggles.map(({ notice }) => notice), [null, null, 'Vocabulario de editores no configurado', null]);
+    assert.deepEqual(fieldToggles(undefined).map(({ notice }) => notice), [null, null, null, null]);
+});
 
 test('a batch needs at least one ticked field, each with a value', () => {
     assert.deepEqual(validateBatch({}), { _: 'no-field' });

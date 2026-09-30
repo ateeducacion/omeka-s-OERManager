@@ -1611,6 +1611,8 @@ body.oer-master-view.sidebar-open footer {
     background: var(--oer-surface, #f6f6f6);
 }
 .oer-batch-governance .oer-batch-field-toggle { display: block; margin-top: .75em; font-weight: bold; }
+.oer-batch-governance .oer-batch-field-toggle + .oer-governance-notice { margin: .25em 0 0 1.5em; }
+.oer-batch-governance .oer-batch-mode-help { display: block; margin-left: 1.5em; font-weight: normal; font-size: .9em; }
 .oer-batch-governance .oer-batch-preview table { width: 100%; }
 .oer-batch-governance .oer-batch-overwrite { color: var(--oer-warn, #955c0d); }
 .oer-batch-governance progress { width: 100%; }

@@ -15,6 +15,27 @@ const KEY_TERM = {
     rightsHolder: TERMS.RIGHTS_HOLDER
 };
 
+const TOGGLE_TEXT = {
+    licence: 'Asignar licencia',
+    creator: 'Asignar autoría',
+    publisher: 'Asignar editor',
+    rightsHolder: 'Asignar titular de derechos'
+};
+
+/**
+ * One toggle per batch field, in form order. Each names its field (the field
+ * itself stays hidden until ticked) and carries its own degradation notice,
+ * so the notice shows next to the field it explains.
+ */
+export function fieldToggles(notices) {
+    return BATCH_KEYS.map((key) => ({
+        key,
+        term: KEY_TERM[key],
+        text: TOGGLE_TEXT[key],
+        notice: (notices && notices[KEY_TERM[key]]) ? String(notices[KEY_TERM[key]]) : null
+    }));
+}
+
 /** Mirrors BatchRequest: no-field, required, then GovernanceFields' own rules. */
 export function validateBatch(ticked) {
     const keys = BATCH_KEYS.filter((key) => Object.prototype.hasOwnProperty.call(ticked, key));

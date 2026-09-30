@@ -4,7 +4,8 @@ import {
     selectionAfterToggle,
     stripModel,
     previewModel,
-    resultModel
+    resultModel,
+    fieldToggles
 } from '../core/governanceBatchModel.js';
 import { TERMS } from '../core/governanceModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
@@ -120,22 +121,17 @@ function targetText() {
 
 function buildFields(root, governance) {
     const container = root.querySelector('.oer-batch-fields');
-    Object.values(governance.notices || {}).forEach((notice) => {
-        const p = document.createElement('p');
-        p.className = 'oer-governance-notice';
-        p.textContent = t(String(notice));
-        container.appendChild(p);
-    });
-    const specs = [
-        { key: 'licence', build: () => buildVocabField(TERMS.LICENCE, 'Licencia', governance, 'licence') },
-        { key: 'creator', build: () => buildAuthorsField(governance) },
-        { key: 'publisher', build: () => buildVocabField(TERMS.PUBLISHER, 'Editor', governance, 'publisher') },
-        {
-            key: 'rightsHolder',
-            build: () => buildTextField(TERMS.RIGHTS_HOLDER, 'Titular de derechos', String(governance.defaultRightsHolder || ''))
-        }
-    ];
-    specs.forEach(({ key, build }) => {
+    const intro = document.createElement('p');
+    intro.className = 'oer-batch-intro';
+    intro.textContent = t('Marca los campos que quieres cambiar; los demás no se tocan.');
+    container.appendChild(intro);
+    const builders = {
+        licence: () => buildVocabField(TERMS.LICENCE, 'Licencia', governance, 'licence'),
+        creator: () => buildAuthorsField(governance),
+        publisher: () => buildVocabField(TERMS.PUBLISHER, 'Editor', governance, 'publisher'),
+        rightsHolder: () => buildTextField(TERMS.RIGHTS_HOLDER, 'Titular de derechos', String(governance.defaultRightsHolder || ''))
+    };
+    fieldToggles(governance.notices).forEach(({ key, text, notice }) => {
         const toggle = document.createElement('label');
         toggle.className = 'oer-batch-field-toggle';
         const box = document.createElement('input');
@@ -143,14 +139,20 @@ function buildFields(root, governance) {
         box.className = 'oer-batch-assign';
         box.dataset.key = key;
         toggle.appendChild(box);
-        toggle.appendChild(document.createTextNode(` ${t('Asignar este campo')}`));
-        const field = build().el;
+        toggle.appendChild(document.createTextNode(` ${t(text)}`));
+        container.appendChild(toggle);
+        if (notice) {
+            const p = document.createElement('p');
+            p.className = 'oer-governance-notice';
+            p.textContent = t(notice);
+            container.appendChild(p);
+        }
+        const field = builders[key]().el;
         field.hidden = true;
         field.dataset.key = key;
         box.addEventListener('change', () => {
             field.hidden = !box.checked;
         });
-        container.appendChild(toggle);
         container.appendChild(field);
     });
 }
