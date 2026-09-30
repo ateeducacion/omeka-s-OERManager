@@ -18,6 +18,7 @@ use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Curation\UndoRouter;
+use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\GovernanceService;
@@ -69,6 +70,7 @@ class IndexController extends AbstractActionController
     private Acl $acl;
     private GovernanceService $governanceService;
     private UndoRouter $undoRouter;
+    private BatchJobLookup $jobLookup;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -89,7 +91,8 @@ class IndexController extends AbstractActionController
         WorkflowService $workflowService,
         Acl $acl,
         GovernanceService $governanceService,
-        UndoRouter $undoRouter
+        UndoRouter $undoRouter,
+        BatchJobLookup $jobLookup
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -110,6 +113,7 @@ class IndexController extends AbstractActionController
         $this->acl = $acl;
         $this->governanceService = $governanceService;
         $this->undoRouter = $undoRouter;
+        $this->jobLookup = $jobLookup;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -743,6 +747,24 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * El Job de propose `$jobId` si es del usuario actual; null si no existe,
+     * es de otra clase o de otro dueño. No se usa `api()->read('jobs')`: en
+     * Omeka 4.2 editor y reviewer —quienes proponen— no pueden leer jobs, ni
+     * siquiera los suyos, y site_admin lee los de todos.
+     *
+     * @return array{class:string, ownerId:?int, status:string}|null
+     */
+    private function ownAiProposeJob(int $jobId): ?array
+    {
+        $job = $this->jobLookup->find($jobId);
+        $identity = $this->identity();
+        $owned = null !== $job && null !== $identity && null !== $job['ownerId']
+            && $job['ownerId'] === (int) $identity->getId()
+            && \OERManager\Job\AiProposeJob::class === $job['class'];
+        return $owned ? $job : null;
+    }
+
+    /**
      * Polling del propose asíncrono (TASK-020): devuelve el estado vivo del Job.
      * Cruza el fichero de resultado con el estado nativo del Job para no colgar el
      * sondeo si el Job muriera sin escribir (p. ej. PhpCli mal configurado).
@@ -759,14 +781,13 @@ class IndexController extends AbstractActionController
         if ($jobId <= 0) {
             return new JsonModel(['error' => 'id']);
         }
-        // Control de acceso PRIMERO: la API de jobs acota por ACL (dueño/admin).
-        try {
-            $job = $this->api()->read('jobs', $jobId)->getContent();
-        } catch (\Exception $e) {
+        // Control de acceso PRIMERO: solo el dueño ve su propio propose.
+        $job = $this->ownAiProposeJob($jobId);
+        if (null === $job) {
             return new JsonModel(['error' => 'not_found']);
         }
 
-        $native = (string) $job->status();
+        $native = $job['status'];
         $finished = in_array($native, ['completed', 'error', 'stopped'], true);
 
         $state = $this->proposalStore->read($jobId);
@@ -805,8 +826,10 @@ class IndexController extends AbstractActionController
         if ($jobId <= 0) {
             return new JsonModel(['error' => 'id']);
         }
+        if (null === $this->ownAiProposeJob($jobId)) {
+            return new JsonModel(['error' => 'not_found']);
+        }
         try {
-            $this->api()->read('jobs', $jobId); // valida propiedad por ACL
             $this->jobDispatcher->stop($jobId);
         } catch (\Exception $e) {
             return new JsonModel(['error' => 'not_found']);
