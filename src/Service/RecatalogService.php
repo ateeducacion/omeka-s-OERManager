@@ -215,6 +215,19 @@ class RecatalogService
     }
 
     /**
+     * Every readable curation event of the item, newest first, with the same
+     * microsecond tie-break as lastEvent() (TASK-007). Raw payloads, not the
+     * projected rows of history(): the batch undo (TASK-028 slice 5a) needs
+     * the last two events and their `batch` keys.
+     *
+     * @return list<array{when:string,contributor:string,summary:string,payload:array<string,mixed>}>
+     */
+    public function events(int $itemId): array
+    {
+        return $this->eventsOf($this->api->read('items', $itemId)->getContent());
+    }
+
+    /**
      * Historial completo de curación del item, ya resuelto a títulos y listo
      * para pintar (rebanada 3a de TASK-028).
      *

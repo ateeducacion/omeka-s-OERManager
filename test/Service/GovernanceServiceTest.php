@@ -429,4 +429,30 @@ final class GovernanceServiceTest extends TestCase
         $this->assertArrayHasKey(GovernanceFields::PUBLISHER, $options['notices']);
         $this->assertSame('Consejería', $options['defaultRightsHolder']);
     }
+
+    public function testUndoEventTagsTheUndoEventOnlyWhenABatchIsGiven(): void
+    {
+        $payload = CurationEvent::buildTyped([
+            GovernanceFields::CREATOR => [
+                'before' => [['type' => 'literal', 'value' => 'Ana']],
+                'after' => [['type' => 'literal', 'value' => 'Batch Author']],
+            ],
+        ], null, 'batch-7');
+        $event = ['when' => '2026-01-01T00:00:00.000000+00:00', 'payload' => $payload];
+        $this->items[1] = $this->item(1, '', [GovernanceFields::CREATOR => [$this->value('Batch Author')]]);
+        $service = $this->makeService();
+
+        $service->undoEvent(1, $event, 'Curator', false, 'batch-9');
+        $service->undoEvent(1, $event, 'Curator');
+
+        $tagged = CurationEvent::decode(
+            $this->writes[0]['dcterms:provenance'][0]['@annotation']['dcterms:replaces'][0]['@value']
+        );
+        $plain = CurationEvent::decode(
+            $this->writes[1]['dcterms:provenance'][0]['@annotation']['dcterms:replaces'][0]['@value']
+        );
+        $this->assertSame('batch-9', $tagged['batch']);
+        $this->assertSame(CurationEvent::OP_UNDO, $tagged['op']);
+        $this->assertArrayNotHasKey('batch', $plain);
+    }
 }
