@@ -175,6 +175,13 @@ class GovernanceBatchController extends AbstractActionController
         }
         $native = $job['status'];
         $finished = in_array($native, ['completed', 'error', 'stopped'], true);
+        // A dead tracked Job (killed mid-run, Omeka leaves it in_progress
+        // forever) must not lock the sidebar polling forever either: same
+        // predicate as `undoAction`, checked before any stored state so a
+        // stale `in_progress` state cannot mask it.
+        if (!$finished && $this->jobs->hasDied($native, $job['started'])) {
+            return new JsonModel(['status' => 'error', 'code' => 'job_died']);
+        }
         if (null === $state) {
             return new JsonModel($finished
                 ? ['status' => 'error', 'code' => 'job_' . $native]
@@ -265,7 +272,8 @@ class GovernanceBatchController extends AbstractActionController
         if (GovernanceBatchJob::class !== $job['class']) {
             return new JsonModel(['error' => 'not_batch']);
         }
-        if (!in_array($job['status'], BatchJobLookup::FINISHED, true)) {
+        $finished = in_array($job['status'], BatchJobLookup::FINISHED, true);
+        if (!$finished && !$this->jobs->hasDied($job['status'], $job['started'])) {
             return new JsonModel(['error' => 'running']);
         }
         if ('running' === $this->jobs->undoState($batchJobId)['state']) {

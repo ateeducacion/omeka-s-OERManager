@@ -31,7 +31,7 @@ class BatchJobLookup
         $this->now = $now ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable();
     }
 
-    /** @return array{class:string, ownerId:?int, status:string, args:array}|null */
+    /** @return array{class:string, ownerId:?int, status:string, args:array, started:?string}|null */
     public function find(int $jobId): ?array
     {
         $job = $this->entityManager->find('Omeka\Entity\Job', $jobId);
@@ -44,26 +44,57 @@ class BatchJobLookup
             'ownerId' => null === $owner ? null : (int) $owner->getId(),
             'status' => (string) $job->getStatus(),
             'args' => (array) ($job->getArgs() ?? []),
+            'started' => self::iso($job->getStarted()),
         ];
     }
 
     /**
-     * The most recent finished governance batches, newest first: the owner's,
-     * or everyone's when $ownerId is null (a site_admin). Two bounded queries,
-     * never a catalogue scan.
+     * True when a Job is neither finished nor young enough to still
+     * plausibly be running. Omeka never marks a killed Job `stopping`: it
+     * stays `in_progress`/`stopping`/`starting` forever, so staleness is the
+     * only signal. `$started` accepts the ISO string `find()` returns or a
+     * `DateTimeInterface` straight from the entity, so callers inside and
+     * outside this class share the one staleness rule.
+     */
+    public function hasDied(?string $status, \DateTimeInterface|string|null $started): bool
+    {
+        if (in_array($status, self::FINISHED, true)) {
+            return false;
+        }
+        if (null === $started) {
+            return false;
+        }
+        $startedAt = is_string($started) ? new \DateTimeImmutable($started) : $started;
+        return ($this->now)()->getTimestamp() - $startedAt->getTimestamp() > self::STALE_AFTER;
+    }
+
+    /**
+     * The most recent finished or dead governance batches, newest first: the
+     * owner's, or everyone's when $ownerId is null (a site_admin). Queried by
+     * class (+owner) alone, newest first, bounded to `$limit * 2` rows and
+     * filtered in PHP by status — never a catalogue scan, but wide enough
+     * that a run of dead/running batches does not starve the finished ones
+     * out of a small limit.
      *
      * @return list<array<string,mixed>>
      */
     public function recent(?int $ownerId, int $limit = 20): array
     {
-        $criteria = ['class' => GovernanceBatchJob::class, 'status' => self::FINISHED];
+        $criteria = ['class' => GovernanceBatchJob::class];
         if (null !== $ownerId) {
             $criteria['owner'] = $ownerId;
         }
-        $jobs = $this->entityManager->getRepository('Omeka\Entity\Job')->findBy($criteria, ['id' => 'DESC'], $limit);
+        $jobs = $this->entityManager->getRepository('Omeka\Entity\Job')
+            ->findBy($criteria, ['id' => 'DESC'], $limit * 2);
         $undo = $this->latestUndoByBatch();
         $rows = [];
         foreach ($jobs as $job) {
+            $status = (string) $job->getStatus();
+            $started = $job->getStarted();
+            $died = $this->hasDied($status, $started);
+            if (!in_array($status, self::FINISHED, true) && !$died) {
+                continue;
+            }
             $args = (array) ($job->getArgs() ?? []);
             $owner = $job->getOwner();
             $id = (int) $job->getId();
@@ -71,14 +102,17 @@ class BatchJobLookup
                 'jobId' => $id,
                 'ownerId' => null === $owner ? null : (int) $owner->getId(),
                 'ownerName' => null === $owner ? null : (string) $owner->getName(),
-                'started' => self::iso($job->getStarted()),
+                'started' => self::iso($started),
                 'ended' => self::iso($job->getEnded()),
                 'terms' => array_values(array_map('strval', array_keys((array) ($args['raw'] ?? [])))),
                 'mode' => (string) ($args['mode'] ?? ''),
                 'planned' => count((array) ($args['ids'] ?? [])),
-                'status' => (string) $job->getStatus(),
+                'status' => $died ? 'died' : $status,
                 'undo' => $undo[$id] ?? ['state' => 'none', 'jobId' => null],
             ];
+            if (count($rows) >= $limit) {
+                break;
+            }
         }
         return $rows;
     }
@@ -114,8 +148,7 @@ class BatchJobLookup
         if (in_array($status, ['stopped', 'error'], true)) {
             return 'partial';
         }
-        $started = $job->getStarted();
-        if (null !== $started && ($this->now)()->getTimestamp() - $started->getTimestamp() > self::STALE_AFTER) {
+        if ($this->hasDied($status, $job->getStarted())) {
             return 'partial';
         }
         return 'running';

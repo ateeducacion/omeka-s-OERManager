@@ -70,7 +70,7 @@ const FAILURE_TEXT = {
 };
 
 const MODE_TEXT = { fill: 'Rellenar solo vacíos', replace: 'Sustituir' };
-const JOB_STATUS_TEXT = { completed: 'completado', stopped: 'cancelado', error: 'con error' };
+const JOB_STATUS_TEXT = { completed: 'completado', stopped: 'cancelado', error: 'con error', died: 'interrumpido' };
 const UNDO_BADGE_TEXT = { done: 'Deshecho', running: 'Deshaciendo…', partial: 'Deshecho parcialmente' };
 const REVIEW_TEXT = {
     modified_later: 'modificado después del lote',

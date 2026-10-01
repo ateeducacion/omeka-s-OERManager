@@ -143,7 +143,10 @@ final class BatchJobLookupTest extends TestCase
 
         $info = (new BatchJobLookup($em))->find(12);
 
-        $this->assertSame(['class' => 'Some\Job', 'ownerId' => 7, 'status' => 'in_progress', 'args' => []], $info);
+        $this->assertSame(
+            ['class' => 'Some\Job', 'ownerId' => 7, 'status' => 'in_progress', 'args' => [], 'started' => null],
+            $info
+        );
         $this->assertSame([['Omeka\Entity\Job', 12]], $em->asked);
     }
 
@@ -164,6 +167,28 @@ final class BatchJobLookupTest extends TestCase
         $em = $this->entityManager($this->job(self::BATCH, 7, 'completed', ['ids' => [1, 2]]));
 
         $this->assertSame(['ids' => [1, 2]], (new BatchJobLookup($em))->find(4)['args']);
+    }
+
+    public function testFindReturnsStarted(): void
+    {
+        $em = $this->entityManager($this->job(self::BATCH, 7, 'in_progress', [], 1, '2026-09-30T09:00:00+00:00'));
+        $this->assertSame('2026-09-30T09:00:00+00:00', (new BatchJobLookup($em))->find(4)['started']);
+
+        $em = $this->entityManager($this->job(self::BATCH, 7, 'in_progress', []));
+        $this->assertNull((new BatchJobLookup($em))->find(4)['started']);
+    }
+
+    public function testHasDiedIsTrueOnlyForAnUnfinishedJobStaleForOverAnHour(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-30T12:00:00+00:00');
+        $lookup = new BatchJobLookup($this->entityManager(null), static fn (): \DateTimeImmutable => $now);
+
+        $this->assertFalse($lookup->hasDied('completed', '2026-09-30T09:00:00+00:00'));
+        $this->assertFalse($lookup->hasDied('in_progress', '2026-09-30T11:30:00+00:00'));
+        $this->assertTrue($lookup->hasDied('in_progress', '2026-09-30T09:00:00+00:00'));
+        $this->assertTrue($lookup->hasDied('starting', new \DateTimeImmutable('2026-09-30T09:00:00+00:00')));
+        // The test fakes may leave `started` null; Job::prePersist always sets it in production.
+        $this->assertFalse($lookup->hasDied('in_progress', null));
     }
 
     public function testRecentListsFinishedBatchesOfTheOwnerOrOfEveryone(): void
@@ -195,6 +220,24 @@ final class BatchJobLookupTest extends TestCase
 
         $this->assertSame([14, 12, 10], array_column($lookup->recent(null), 'jobId'));
         $this->assertSame([14], array_column($lookup->recent(null, 1), 'jobId'));
+    }
+
+    public function testRecentListsADeadBatchButNotARecentlyStartedOne(): void
+    {
+        $now = new \DateTimeImmutable('2026-09-30T12:00:00+00:00');
+        $args = ['ids' => [1, 2], 'raw' => [], 'mode' => 'fill'];
+        $jobs = [
+            // Killed over an hour ago: Omeka leaves it in_progress forever (F1).
+            $this->job(self::BATCH, 3, 'in_progress', $args, 20, '2026-09-30T09:00:00+00:00'),
+            // Started 10 minutes ago: still plausibly running, not dead.
+            $this->job(self::BATCH, 3, 'in_progress', $args, 21, '2026-09-30T11:50:00+00:00'),
+        ];
+        $lookup = new BatchJobLookup($this->entityManager(null, $jobs), static fn (): \DateTimeImmutable => $now);
+
+        $rows = $lookup->recent(3);
+
+        $this->assertSame([20], array_column($rows, 'jobId'));
+        $this->assertSame('died', $rows[0]['status']);
     }
 
     public function testUndoStateComesFromTheLatestUndoJobOfEachBatch(): void
