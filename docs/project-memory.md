@@ -63,6 +63,10 @@
   **Omeka 4.2 honours `['returnScalar' => 'id']` and a list-valued `id` search parameter** on `items` (verified in the container), so id-only selections of thousands of REA need no pagination fallback.
   **Never use `api()->read('jobs')` to authorise a curator's own job.** In Omeka 4.2 editor and reviewer cannot read jobs at all, and site_admin reads everyone's; a harness run as global_admin hides both. Read the Job entity (class, owner, status) and compare the owner with the identity, as `BatchJobLookup` does. `IndexController::aiProposeStatusAction/aiProposeCancelAction` still have this defect (TASK-020 debt). Fixed on 2026-09-30 (`hotfix/ai-propose-job-ownership`): both now use `BatchJobLookup` with the same owner check.
   **Subagent execution stalled repeatedly on 2026-09-28/29** (stream watchdog, no progress for 600 s) while the server-side auto-mode classifier was intermittently unavailable; tasks 10-14 were finished inline with a final whole-branch review.
+- **TASK-028 slice 5a (batch undo): done (2026-10-01).** Spec `docs/superpowers/specs/2026-09-30-task-028-slice-5a-batch-undo-design.md`, plan `docs/superpowers/plans/2026-09-30-task-028-slice-5a-batch-undo.md`. Details, counts and deviations live in the backlog row; ADR-0020's second addendum defines the undo `batch` tag. Lessons learned during execution:
+  **An Omeka Job killed mid-run stays `in_progress` forever; any "is it running?" check needs a staleness bound (`BatchJobLookup::STALE_AFTER`).**
+  **Omeka sets `Job.started` at persist time (`Job::prePersist`), so a staleness bound on `started` also covers Jobs that never left `starting`.**
+  **Authorising who may START an action on another user's object (`undo-any-batch`) is a different question from who may POLL or STOP the resulting Job (owner only); keep them separate.**
 
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
