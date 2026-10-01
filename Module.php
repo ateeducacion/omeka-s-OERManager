@@ -143,7 +143,17 @@ class Module extends AbstractModule implements InitProviderInterface
         $acl->allow(
             ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\GovernanceBatchController::class],
-            ['form', 'preview', 'apply', 'status', 'cancel']
+            ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo']
+        );
+
+        // Deshacer un lote ajeno (TASK-028 slice 5a): solo site_admin, para
+        // cuando el autor del lote no está. `global_admin` ya lo tiene todo.
+        // El Job de deshacer corre como quien lo lanza: el ACL nativo de cada
+        // item sigue decidiendo.
+        $acl->allow(
+            ['site_admin'],
+            [Controller\Admin\GovernanceBatchController::class],
+            [Controller\Admin\GovernanceBatchController::PRIVILEGE_UNDO_ANY]
         );
     }
 

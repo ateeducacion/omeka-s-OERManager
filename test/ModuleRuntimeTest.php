@@ -35,14 +35,18 @@ class ModuleRuntimeTest extends TestCase
         $module = $this->module(['Omeka\Acl' => $acl]);
         $module->init($this->createMock(\Laminas\ModuleManager\ModuleManagerInterface::class));
         $module->onBootstrap(new \Laminas\Mvc\MvcEvent());
-        $this->assertCount(5, $calls);
+        $this->assertCount(6, $calls);
         $this->assertSame(['site_admin'], $calls[2][0]);
         $this->assertSame(['config'], $calls[2][2]);
         $this->assertContains('author', $calls[1][0]);
         // TASK-028 slice 4: lote de gobernanza, mismos roles que governance-apply.
         $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[4][0]);
         $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[4][1]);
-        $this->assertSame(['form', 'preview', 'apply', 'status', 'cancel'], $calls[4][2]);
+        $this->assertSame(['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'], $calls[4][2]);
+        // TASK-028 slice 5a: deshacer el lote de otro usuario, solo site_admin.
+        $this->assertSame(['site_admin'], $calls[5][0]);
+        $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[5][1]);
+        $this->assertSame(['undo-any-batch'], $calls[5][2]);
         $events = $this->createMock(\Laminas\EventManager\SharedEventManagerInterface::class);
         $events->expects($this->exactly(5))->method('attach');
         $module->attachListeners($events);
