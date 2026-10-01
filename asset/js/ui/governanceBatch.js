@@ -5,7 +5,12 @@ import {
     stripModel,
     previewModel,
     resultModel,
-    fieldToggles
+    fieldToggles,
+    storedJob,
+    rememberedJob,
+    recentRowModel,
+    undoResultModel,
+    UNDO_KIND
 } from '../core/governanceBatchModel.js';
 import { TERMS } from '../core/governanceModel.js';
 import { TERM_LABELS } from '../core/drawerModel.js';
@@ -43,6 +48,8 @@ const PREVIEW_ERROR_TEXT = {
     id: 'El lote ya no está disponible.',
     not_found: 'El lote ya no está disponible.',
     not_batch: 'El lote ya no está disponible.',
+    running: 'El lote todavía no ha terminado.',
+    undo_running: 'Ya se está deshaciendo este lote.',
     unexpected: 'Error inesperado. Consulta el registro.'
 };
 
@@ -51,10 +58,22 @@ const JOB_ERROR_TEXT = {
     job_error: 'El lote terminó con error. Revisa el registro de trabajos.',
     job_stopped: 'El lote se detuvo.',
     job_completed: 'El lote terminó; su resumen ya no está disponible.',
+    plan_unreadable: 'No se puede leer qué REA tocó este lote; no se ha deshecho nada.',
     unexpected: 'El lote terminó con error. Revisa el registro de trabajos.'
 };
 
 const FAILURE_TEXT = {
+    denied: 'sin permiso',
+    not_found: 'ya no existe',
+    invalid: 'valor no válido',
+    unexpected: 'error inesperado'
+};
+
+const MODE_TEXT = { fill: 'Rellenar solo vacíos', replace: 'Sustituir' };
+const JOB_STATUS_TEXT = { completed: 'completado', stopped: 'cancelado', error: 'con error' };
+const UNDO_BADGE_TEXT = { done: 'Deshecho', running: 'Deshaciendo…', partial: 'Deshecho parcialmente' };
+const REVIEW_TEXT = {
+    modified_later: 'modificado después del lote',
     denied: 'sin permiso',
     not_found: 'ya no existe',
     invalid: 'valor no válido',
@@ -78,6 +97,18 @@ function safeStorage(action) {
     } catch (error) {
         return null;
     }
+}
+
+function trackedJob() {
+    return storedJob(safeStorage((storage) => storage.getItem(JOB_KEY)));
+}
+
+function track(jobId, kind) {
+    safeStorage((storage) => storage.setItem(JOB_KEY, rememberedJob(jobId, kind)));
+}
+
+function untrack() {
+    safeStorage((storage) => storage.removeItem(JOB_KEY));
 }
 
 function post(url, pairs) {
@@ -241,7 +272,11 @@ function renderPreview(root, response, onApply) {
     box.hidden = false;
 }
 
-function renderProgress(root, state, urls, csrf) {
+function renderProgress(root, state, urls, csrf, kind = 'batch') {
+    if ('undo' === kind) {
+        renderUndoProgress(root, state, urls, csrf);
+        return;
+    }
     const box = root.querySelector('.oer-batch-progress');
     box.hidden = false;
     box.textContent = '';
@@ -284,6 +319,16 @@ function renderProgress(root, state, urls, csrf) {
         id.textContent = t('Identificador del lote: %1$s').replace('%1$s', model.batch);
         box.appendChild(id);
     }
+    if (model.batch && 'error' !== model.status) {
+        const undo = document.createElement('button');
+        undo.type = 'button';
+        undo.className = 'button oer-batch-undo-this';
+        undo.textContent = t('Deshacer este lote');
+        undo.addEventListener('click', () => confirmUndo(root, {
+            jobId: state.jobId, title: model.batch, terms: [], mode: '', planned: state.tallies ? state.tallies.total : null
+        }, urls, csrf));
+        box.appendChild(undo);
+    }
     if (model.failed.length) {
         const list = document.createElement('ul');
         model.failed.forEach(({ id, code }) => {
@@ -305,28 +350,219 @@ function renderProgress(root, state, urls, csrf) {
     box.appendChild(reload);
 }
 
-function poll(root, jobId, urls, csrf, retries = 0) {
+function renderUndoProgress(root, state, urls, csrf) {
+    const box = root.querySelector('.oer-batch-progress');
+    box.hidden = false;
+    box.textContent = '';
+    const model = undoResultModel(state);
+    if (!model.finished) {
+        const bar = document.createElement('progress');
+        bar.max = 100;
+        bar.value = model.percent;
+        const label = document.createElement('p');
+        label.textContent = state.total
+            ? t('Deshaciendo: %1$s de %2$s REA').replace('%1$s', state.done).replace('%2$s', state.total)
+            : t('Iniciando…');
+        const cancel = document.createElement('button');
+        cancel.type = 'button';
+        cancel.textContent = t('Cancelar el deshacer');
+        cancel.addEventListener('click', () => {
+            cancel.disabled = true;
+            post(urls.cancel, [['csrf', csrf], ['jobId', String(state.jobId)]]);
+        });
+        box.append(bar, label, cancel);
+        return;
+    }
+    const summary = document.createElement('p');
+    if ('error' === model.status) {
+        summary.textContent = t(JOB_ERROR_TEXT[model.code] || JOB_ERROR_TEXT.unexpected);
+        box.appendChild(summary);
+    } else {
+        const f = model.figures;
+        summary.textContent = t('%1$s deshechos · %2$s modificados después del lote · %3$s no escritos por el lote · %4$s ya deshechos · %5$s fallidos')
+            .replace('%1$s', f.undone)
+            .replace('%2$s', f.modifiedLater)
+            .replace('%3$s', f.notInBatch)
+            .replace('%4$s', f.alreadyUndone)
+            .replace('%5$s', f.failed);
+        if ('stopped' === model.status) {
+            summary.textContent = `${t('Deshacer cancelado.')} ${summary.textContent}`;
+        }
+        box.appendChild(summary);
+        if (model.review.length) {
+            const intro = document.createElement('p');
+            intro.textContent = t('Revisa a mano estos REA:');
+            const list = document.createElement('ul');
+            model.review.forEach(({ id, code }) => {
+                const li = document.createElement('li');
+                const link = document.createElement('a');
+                link.href = urls.item.replace('__ID__', String(id));
+                link.target = '_blank';
+                link.textContent = `#${id}`;
+                li.append(link, ` — ${t(REVIEW_TEXT[code] || REVIEW_TEXT.unexpected)}`);
+                list.appendChild(li);
+            });
+            box.append(intro, list);
+        }
+    }
+    const reload = document.createElement('button');
+    reload.type = 'button';
+    reload.className = 'button';
+    reload.textContent = t('Recargar la vista');
+    reload.addEventListener('click', () => window.location.reload());
+    box.appendChild(reload);
+}
+
+/** Hides the form while a Job is tracked; progress takes its place. */
+function hideForm(root) {
+    ['.oer-batch-target', '.oer-batch-fields', '.oer-batch-mode', '.oer-batch-actions', '.oer-batch-preview', '.oer-batch-recent']
+        .forEach((selector) => {
+            const el = root.querySelector(selector);
+            if (el) {
+                el.hidden = true;
+            }
+        });
+}
+
+function rowSummary(row) {
+    const parts = [];
+    if (row.terms.length) {
+        parts.push(row.terms.map((term) => t(term)).join(', '));
+    }
+    if (row.mode) {
+        parts.push(t(MODE_TEXT[row.mode]));
+    }
+    if (null !== row.planned && undefined !== row.planned) {
+        parts.push(t('%1$s REA en el plan').replace('%1$s', row.planned));
+    }
+    return parts.join(' · ');
+}
+
+function confirmUndo(root, row, urls, csrf) {
+    const box = root.querySelector('.oer-batch-undo-confirm');
+    const details = root.querySelector('.oer-batch-recent');
+    details.hidden = false;
+    details.open = true;
+    box.textContent = '';
+    box.hidden = false;
+    const text = document.createElement('p');
+    const summary = rowSummary(row);
+    text.textContent = `${t('Deshacer el lote %1$s').replace('%1$s', row.title)}${summary ? ` (${summary})` : ''}. `
+        + t('Se restaurarán los valores anteriores al lote. Los REA modificados después del lote no se tocarán y aparecerán en el resultado.');
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'button oer-batch-undo-go';
+    go.textContent = t('Deshacer lote');
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = t('Cancelar');
+    cancel.addEventListener('click', () => {
+        box.hidden = true;
+        box.textContent = '';
+    });
+    go.addEventListener('click', () => {
+        go.disabled = true;
+        post(urls.undo, [['csrf', csrf], ['batchJobId', String(row.jobId)]]).then((response) => {
+            if (response.error) {
+                go.disabled = false;
+                showErrors(root, { _: response.error });
+                return;
+            }
+            box.hidden = true;
+            track(response.jobId, 'undo');
+            hideForm(root);
+            poll(root, { jobId: response.jobId, kind: 'undo' }, urls, csrf);
+        });
+    });
+    box.append(text, go, cancel);
+}
+
+function renderRecent(root, batches, urls, csrf) {
+    const list = root.querySelector('.oer-batch-recent-list');
+    list.textContent = '';
+    if (!batches.length) {
+        const li = document.createElement('li');
+        li.textContent = t('No hay lotes que puedas deshacer.');
+        list.appendChild(li);
+        return;
+    }
+    batches.forEach((batch) => {
+        const row = recentRowModel(batch, TERM_LABELS);
+        const li = document.createElement('li');
+        li.className = 'oer-batch-recent-row';
+        const head = document.createElement('p');
+        const when = batch.started ? new Date(batch.started).toLocaleString() : '';
+        head.textContent = [row.title, when, row.owner].filter(Boolean).join(' · ');
+        const meta = document.createElement('p');
+        meta.className = 'oer-batch-recent-meta';
+        meta.textContent = [rowSummary(row), t(JOB_STATUS_TEXT[row.status] || row.status)].filter(Boolean).join(' · ');
+        li.append(head, meta);
+        if (row.badge) {
+            const badge = document.createElement('span');
+            badge.className = `oer-batch-undo-badge oer-batch-undo-${row.badge}`;
+            badge.textContent = t(UNDO_BADGE_TEXT[row.badge]);
+            li.appendChild(badge);
+        }
+        if (row.action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'button oer-batch-undo-open';
+            button.textContent = 'retry' === row.action ? t('Reintentar deshacer') : t('Deshacer lote');
+            button.addEventListener('click', () => confirmUndo(root, row, urls, csrf));
+            li.appendChild(button);
+        }
+        list.appendChild(li);
+    });
+}
+
+function mountRecent(root, urls, csrf) {
+    const details = root.querySelector('.oer-batch-recent');
+    if (!details) {
+        return;
+    }
+    let loaded = false;
+    details.addEventListener('toggle', () => {
+        if (!details.open || loaded) {
+            return;
+        }
+        loaded = true;
+        const error = root.querySelector('.oer-batch-recent-error');
+        error.hidden = true;
+        post(urls.recent, [['csrf', csrf]]).then((response) => {
+            if (response.error) {
+                loaded = false;
+                error.textContent = t(PREVIEW_ERROR_TEXT[response.error] || PREVIEW_ERROR_TEXT.unexpected);
+                error.hidden = false;
+                return;
+            }
+            renderRecent(root, response.batches || [], urls, csrf);
+        });
+    });
+}
+
+function poll(root, job, urls, csrf, retries = 0) {
     window.clearTimeout(pollTimer);
     if (!root.isConnected) {
         return;
     }
-    post(urls.status, [['csrf', csrf], ['jobId', String(jobId)]]).then((state) => {
+    post(urls.status, [['csrf', csrf], ['jobId', String(job.jobId)]]).then((state) => {
         if (state.error) {
             // A network blip must not lose a long batch's progress display.
             if ('unexpected' === state.error && retries < MAX_POLL_RETRIES) {
-                pollTimer = window.setTimeout(() => poll(root, jobId, urls, csrf, retries + 1), POLL_MS * (retries + 2));
+                pollTimer = window.setTimeout(() => poll(root, job, urls, csrf, retries + 1), POLL_MS * (retries + 2));
                 return;
             }
-            safeStorage((storage) => storage.removeItem(JOB_KEY));
+            untrack();
             showErrors(root, { _: state.error });
             return;
         }
-        renderProgress(root, { ...state, jobId }, urls, csrf);
-        if (resultModel(state).finished) {
-            safeStorage((storage) => storage.removeItem(JOB_KEY));
+        const finished = ('undo' === job.kind ? undoResultModel(state) : resultModel(state)).finished;
+        renderProgress(root, { ...state, jobId: job.jobId }, urls, csrf, job.kind);
+        if (finished) {
+            untrack();
             return;
         }
-        pollTimer = window.setTimeout(() => poll(root, jobId, urls, csrf), POLL_MS);
+        pollTimer = window.setTimeout(() => poll(root, job, urls, csrf), POLL_MS);
     });
 }
 
@@ -342,16 +578,16 @@ function mountForm(root) {
         apply: root.dataset.applyUrl,
         status: root.dataset.statusUrl,
         cancel: root.dataset.cancelUrl,
+        recent: root.dataset.recentUrl,
+        undo: root.dataset.undoUrl,
         item: root.dataset.itemUrl
     };
     const csrf = root.dataset.csrf;
 
-    const pending = safeStorage((storage) => storage.getItem(JOB_KEY));
+    const pending = trackedJob();
     if (pending) {
         onSelectionChange = null;
-        ['.oer-batch-target', '.oer-batch-fields', '.oer-batch-mode', '.oer-batch-actions'].forEach((selector) => {
-            root.querySelector(selector).hidden = true;
-        });
+        hideForm(root);
         poll(root, pending, urls, csrf);
         return;
     }
@@ -374,6 +610,7 @@ function mountForm(root) {
     };
     targetEl.textContent = targetText();
     buildFields(root, governance);
+    mountRecent(root, urls, csrf);
     ['input', 'change'].forEach((type) => {
         root.querySelector('.oer-batch-fields').addEventListener(type, invalidatePreview);
         root.querySelector('.oer-batch-mode').addEventListener(type, invalidatePreview);
@@ -413,10 +650,9 @@ function mountForm(root) {
                         showErrors(root, { _: applied.error });
                         return;
                     }
-                    safeStorage((storage) => storage.setItem(JOB_KEY, String(applied.jobId)));
-                    root.querySelector('.oer-batch-preview').hidden = true;
-                    root.querySelector('.oer-batch-actions').hidden = true;
-                    poll(root, applied.jobId, urls, csrf);
+                    track(applied.jobId, 'batch');
+                    hideForm(root);
+                    poll(root, { jobId: applied.jobId, kind: 'batch' }, urls, csrf);
                 });
             });
         });
@@ -479,7 +715,7 @@ export function initGovernanceBatch(config) {
     // Reattach: a running batch reopens its progress after a reload. Module
     // scripts run before DOMContentLoaded, while admin.js binds its sidebar
     // click handler inside a jQuery ready callback: click only after that.
-    if (safeStorage((storage) => storage.getItem(JOB_KEY))) {
+    if (trackedJob()) {
         $(() => {
             const opener = document.querySelector('.oer-batch-governance-open');
             if (opener) {
