@@ -319,7 +319,10 @@ function renderProgress(root, state, urls, csrf, kind = 'batch') {
         id.textContent = t('Identificador del lote: %1$s').replace('%1$s', model.batch);
         box.appendChild(id);
     }
-    if (model.batch && 'error' !== model.status) {
+    // D7: a failed batch can still be undone for whatever it did write
+    // before failing, so the button is offered whenever there is a batch id
+    // at all, not only on a clean finish.
+    if (model.batch) {
         const undo = document.createElement('button');
         undo.type = 'button';
         undo.className = 'button oer-batch-undo-this';
@@ -591,6 +594,11 @@ function mountForm(root) {
     if (pending) {
         onSelectionChange = null;
         hideForm(root);
+        // The recent list lives in `.oer-batch-recent`, hidden by hideForm()
+        // but still reachable through «Deshacer este lote» once the batch
+        // finishes; it must be mounted here too, not only on the fresh-form
+        // path below, or that button opens a list that never loads.
+        mountRecent(root, urls, csrf);
         poll(root, pending, urls, csrf);
         return;
     }
