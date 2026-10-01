@@ -118,14 +118,16 @@ final class BatchUndoRunnerTest extends TestCase
         $this->assertSame([[1, 't2'], [2, 't2'], [8, 't2'], [9, 't2'], [10, 't2']], $undone);
         $this->assertSame(1, $result['undone']);
         $this->assertSame(2, $result['modified_later']);
-        $this->assertSame(1, $result['already_undone']);
+        // Item 10's event says it is this batch's to undo, but another undo
+        // of the same REA already got there first ({updated: false, unchanged:
+        // true}): that is not a failure, it is the batch already undone (F6).
+        $this->assertSame(2, $result['already_undone']);
         $this->assertSame(1, $result['not_in_batch']);
         $this->assertSame([
             ['id' => 6, 'code' => 'denied'],
             ['id' => 7, 'code' => 'not_found'],
             ['id' => 8, 'code' => 'invalid'],
             ['id' => 9, 'code' => 'unexpected'],
-            ['id' => 10, 'code' => 'unexpected'],
         ], $result['failed']);
         $this->assertSame([
             ['id' => 2, 'code' => 'modified_later'],
@@ -134,7 +136,6 @@ final class BatchUndoRunnerTest extends TestCase
             ['id' => 7, 'code' => 'not_found'],
             ['id' => 8, 'code' => 'invalid'],
             ['id' => 9, 'code' => 'unexpected'],
-            ['id' => 10, 'code' => 'unexpected'],
         ], $result['review']);
         $this->assertSame(10, $result['done']);
         $this->assertFalse($result['stopped']);

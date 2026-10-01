@@ -148,6 +148,12 @@ final class BatchUndoRunner
             $tallies['undone']++;
             return $tallies;
         }
+        // Another undo of the same REA (a per-item undo, or a previous run
+        // of this same batch undo) got there first: not a failure, already
+        // undone (F6).
+        if (true === ($result['unchanged'] ?? false)) {
+            return $this->count($tallies, $id, self::ALREADY_UNDONE);
+        }
         return $this->fail($tallies, $id, 'unexpected');
     }
 
