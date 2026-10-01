@@ -455,7 +455,7 @@ function confirmUndo(root, row, urls, csrf) {
     go.textContent = t('Deshacer lote');
     const cancel = document.createElement('button');
     cancel.type = 'button';
-    cancel.textContent = t('Cancelar');
+    cancel.textContent = t('No deshacer el lote');
     cancel.addEventListener('click', () => {
         box.hidden = true;
         box.textContent = '';
@@ -507,7 +507,10 @@ function renderRecent(root, batches, urls, csrf) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'button oer-batch-undo-open';
-            button.textContent = 'retry' === row.action ? t('Reintentar deshacer') : t('Deshacer lote');
+            button.textContent = 'retry' === row.action ? t('Reintentar el deshacer del lote') : t('Deshacer lote');
+            button.setAttribute('aria-label', 'retry' === row.action
+                ? t('Reintentar el deshacer del lote %1$s').replace('%1$s', row.title)
+                : t('Deshacer el lote %1$s').replace('%1$s', row.title));
             button.addEventListener('click', () => confirmUndo(root, row, urls, csrf));
             li.appendChild(button);
         }
