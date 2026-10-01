@@ -132,3 +132,76 @@ export function resultModel(state) {
         failed: tallies.failed || []
     };
 }
+
+export const UNDO_KIND = 'governance-batch-undo';
+
+const JOB_KINDS = ['batch', 'undo'];
+
+/** What localStorage keeps for the tracked Job (slice 5a: the kind too). */
+export function rememberedJob(jobId, kind) {
+    return JSON.stringify({ jobId, kind });
+}
+
+/**
+ * The tracked Job, or null. A slice 4 tab stored the bare id: it is a batch.
+ */
+export function storedJob(raw) {
+    if (null === raw || undefined === raw || '' === raw) {
+        return null;
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (error) {
+        return null;
+    }
+    if ('number' === typeof parsed) {
+        return Number.isInteger(parsed) && parsed > 0 ? { jobId: parsed, kind: 'batch' } : null;
+    }
+    if (parsed && Number.isInteger(parsed.jobId) && parsed.jobId > 0 && JOB_KINDS.includes(parsed.kind)) {
+        return { jobId: parsed.jobId, kind: parsed.kind };
+    }
+    return null;
+}
+
+const UNDO_ACTION = { none: 'undo', partial: 'retry' };
+const UNDO_BADGE = { running: 'running', done: 'done', partial: 'partial' };
+
+/** One row of «Lotes recientes»: labels for its fields, and which action or badge it shows. */
+export function recentRowModel(batch, labels) {
+    const state = (batch.undo && batch.undo.state) || 'none';
+    return {
+        jobId: batch.jobId,
+        title: batch.batch,
+        owner: batch.owner || null,
+        terms: (batch.terms || []).map((term) => labels[term] || term),
+        mode: ['fill', 'replace'].includes(batch.mode) ? batch.mode : '',
+        planned: batch.planned,
+        status: batch.status,
+        action: UNDO_ACTION[state] || null,
+        badge: UNDO_BADGE[state] || null
+    };
+}
+
+/** Progress and outcome of a batch undo. */
+export function undoResultModel(state) {
+    if ('in_progress' === state.status) {
+        const percent = state.total > 0 ? Math.floor((state.done / state.total) * 100) : 0;
+        return { finished: false, percent, status: 'in_progress' };
+    }
+    const tallies = state.tallies || {};
+    return {
+        finished: true,
+        status: state.status,
+        code: state.code || tallies.code,
+        batch: state.batch,
+        figures: {
+            undone: tallies.undone || 0,
+            modifiedLater: tallies.modified_later || 0,
+            notInBatch: tallies.not_in_batch || 0,
+            alreadyUndone: tallies.already_undone || 0,
+            failed: (tallies.failed || []).length
+        },
+        review: tallies.review || []
+    };
+}
