@@ -1616,3 +1616,12 @@ body.oer-master-view.sidebar-open footer {
 .oer-batch-governance .oer-batch-preview table { width: 100%; }
 .oer-batch-governance .oer-batch-overwrite { color: var(--oer-warn, #955c0d); }
 .oer-batch-governance progress { width: 100%; }
+.oer-batch-governance .oer-batch-recent { margin-top: 1.5em; }
+.oer-batch-governance .oer-batch-recent summary { cursor: pointer; font-weight: bold; }
+.oer-batch-governance .oer-batch-recent-list { list-style: none; margin: .5em 0 0; padding: 0; }
+.oer-batch-governance .oer-batch-recent-row { padding: .5em 0; border-top: 1px solid var(--oer-border, #ddd); }
+.oer-batch-governance .oer-batch-recent-row p { margin: 0; }
+.oer-batch-governance .oer-batch-recent-meta { font-size: .9em; }
+.oer-batch-governance .oer-batch-undo-badge { display: inline-block; margin: .25em .5em .25em 0; font-size: .9em; }
+.oer-batch-governance .oer-batch-undo-partial { color: var(--oer-warn, #955c0d); }
+.oer-batch-governance .oer-batch-undo-confirm { margin-top: .75em; padding: .5em .75em; background: var(--oer-surface, #f6f6f6); }

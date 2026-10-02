@@ -73,7 +73,8 @@ return [
                     $container->get('Omeka\Job\Dispatcher'),
                     $container->get(Service\Ai\ProposalStore::class),
                     $container->get('Omeka\Logger'),
-                    $container->get(Service\Governance\BatchJobLookup::class)
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    $container->get('Omeka\Acl')
                 );
             },
         ],
