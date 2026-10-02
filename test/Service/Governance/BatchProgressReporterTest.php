@@ -32,4 +32,19 @@ final class BatchProgressReporterTest extends TestCase
         array_map('unlink', glob($dir . '/*'));
         rmdir($dir);
     }
+
+    public function testUndoKindTagsTheState(): void
+    {
+        $dir = sys_get_temp_dir() . '/oer_batch_state_' . bin2hex(random_bytes(6));
+        $store = new ProposalStore($dir);
+        $reporter = new BatchProgressReporter($store, static fn (): bool => false, 13, BatchProgressReporter::UNDO_KIND);
+
+        $reporter->report('undo', 1, 2);
+        $this->assertSame('governance-batch-undo', $store->read(13)['kind']);
+        $reporter->finish('completed', ['undone' => 2], 'batch-13');
+        $this->assertSame('governance-batch-undo', $store->read(13)['kind']);
+
+        array_map('unlink', glob($dir . '/*'));
+        rmdir($dir);
+    }
 }

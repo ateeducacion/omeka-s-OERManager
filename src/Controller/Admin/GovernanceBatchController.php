@@ -10,6 +10,7 @@ use Laminas\Validator\Csrf;
 use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\Job\GovernanceBatchJob;
+use OERManager\Job\GovernanceBatchUndoJob;
 use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\Governance\BatchPlan;
@@ -20,18 +21,26 @@ use OERManager\Service\Governance\BatchSelection;
 use OERManager\Service\Governance\BatchSelectionException;
 use OERManager\Service\GovernanceService;
 use Omeka\Job\Dispatcher;
+use Omeka\Permissions\Acl;
 
 /**
  * Batch assignment of licence and authorship (TASK-028 slice 4, RF-015).
  * Own controller and route, like StatsController, so the master view's
  * controller does not grow further. ACL per privilege in Module::onBootstrap,
- * same roles as `governance-apply`. Preview writes nothing; apply only
- * dispatches; the job does the writing.
+ * same roles as `governance-apply`. Preview writes nothing; apply and undo
+ * only dispatch; the Jobs do the writing.
  */
 class GovernanceBatchController extends AbstractActionController
 {
     public const CSRF_NAME = 'oer_governance_batch';
     public const ROUTE = 'admin/oer-manager-batch';
+    public const PRIVILEGE_UNDO_ANY = 'undo-any-batch';
+
+    /** Job class → the state kind its reporter writes. */
+    private const KINDS = [
+        GovernanceBatchJob::class => BatchProgressReporter::KIND,
+        GovernanceBatchUndoJob::class => BatchProgressReporter::UNDO_KIND,
+    ];
 
     public function __construct(
         private BatchSelection $selection,
@@ -40,7 +49,8 @@ class GovernanceBatchController extends AbstractActionController
         private Dispatcher $jobDispatcher,
         private ProposalStore $states,
         private LoggerInterface $logger,
-        private BatchJobLookup $jobs
+        private BatchJobLookup $jobs,
+        private Acl $acl
     ) {
     }
 
@@ -71,6 +81,8 @@ class GovernanceBatchController extends AbstractActionController
                 'apply' => $this->url()->fromRoute(self::ROUTE, ['action' => 'apply']),
                 'status' => $this->url()->fromRoute(self::ROUTE, ['action' => 'status']),
                 'cancel' => $this->url()->fromRoute(self::ROUTE, ['action' => 'cancel']),
+                'recent' => $this->url()->fromRoute(self::ROUTE, ['action' => 'recent']),
+                'undo' => $this->url()->fromRoute(self::ROUTE, ['action' => 'undo']),
                 // Failed ids in the result link to their item; `__ID__` is replaced client-side.
                 'item' => $this->url()->fromRoute('admin/id', [
                     'controller' => 'item',
@@ -163,6 +175,13 @@ class GovernanceBatchController extends AbstractActionController
         }
         $native = $job['status'];
         $finished = in_array($native, ['completed', 'error', 'stopped'], true);
+        // A dead tracked Job (killed mid-run, Omeka leaves it in_progress
+        // forever) must not lock the sidebar polling forever either: same
+        // predicate as `undoAction`, checked before any stored state so a
+        // stale `in_progress` state cannot mask it.
+        if (!$finished && $this->jobs->hasDied($native, $job['started'])) {
+            return new JsonModel(['status' => 'error', 'code' => 'job_died']);
+        }
         if (null === $state) {
             return new JsonModel($finished
                 ? ['status' => 'error', 'code' => 'job_' . $native]
@@ -190,13 +209,100 @@ class GovernanceBatchController extends AbstractActionController
     }
 
     /**
+     * The most recent finished batches the user may undo (slice 5a): their
+     * own, or everyone's with `undo-any-batch`. `owner` names the author only
+     * for someone else's batch.
+     */
+    public function recentAction()
+    {
+        if ($refusal = $this->guard()) {
+            return $refusal;
+        }
+        $identity = $this->identity();
+        if (null === $identity) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+        $me = (int) $identity->getId();
+        $all = (bool) $this->acl->userIsAllowed(self::class, self::PRIVILEGE_UNDO_ANY);
+        try {
+            $rows = $this->jobs->recent($all ? null : $me);
+        } catch (\Throwable $e) {
+            $this->logger->err('OERManager governance batch recent: ' . $e->getMessage());
+            return new JsonModel(['error' => 'unexpected']);
+        }
+        $batches = array_map(static fn (array $row): array => [
+            'jobId' => $row['jobId'],
+            'batch' => 'batch-' . $row['jobId'],
+            'owner' => $row['ownerId'] === $me ? null : $row['ownerName'],
+            'started' => $row['started'],
+            'ended' => $row['ended'],
+            'terms' => $row['terms'],
+            'mode' => $row['mode'],
+            'planned' => $row['planned'],
+            'status' => $row['status'],
+            'undo' => $row['undo'],
+        ], $rows);
+        return new JsonModel(['batches' => $batches]);
+    }
+
+    /**
+     * Starts the undo of a finished batch (slice 5a). Only its owner, or a user
+     * with `undo-any-batch`; anyone else is told `not_found`. The ids are not
+     * posted: the undo Job reads them from the batch's own args.
+     */
+    public function undoAction()
+    {
+        if ($refusal = $this->guard()) {
+            return $refusal;
+        }
+        $batchJobId = (int) $this->params()->fromPost('batchJobId');
+        if ($batchJobId <= 0) {
+            return new JsonModel(['error' => 'id']);
+        }
+        $identity = $this->identity();
+        $job = $this->jobs->find($batchJobId);
+        if (
+            null === $job
+            || null === $identity
+            || ($job['ownerId'] !== (int) $identity->getId()
+                && !$this->acl->userIsAllowed(self::class, self::PRIVILEGE_UNDO_ANY))
+        ) {
+            return new JsonModel(['error' => 'not_found']);
+        }
+        if (GovernanceBatchJob::class !== $job['class']) {
+            return new JsonModel(['error' => 'not_batch']);
+        }
+        $finished = in_array($job['status'], BatchJobLookup::FINISHED, true);
+        if (!$finished && !$this->jobs->hasDied($job['status'], $job['started'])) {
+            return new JsonModel(['error' => 'running']);
+        }
+        if ('running' === $this->jobs->undoState($batchJobId)['state']) {
+            return new JsonModel(['error' => 'undo_running']);
+        }
+        $this->states->sweepOld(86400);
+        try {
+            $undo = $this->jobDispatcher->dispatch(GovernanceBatchUndoJob::class, [
+                'batchJobId' => $batchJobId,
+                'contributor' => (string) $identity->getName(),
+            ]);
+        } catch (\Exception $e) {
+            $this->logger->err('OERManager governance batch undo dispatch: ' . $e->getMessage());
+            return new JsonModel(['error' => 'dispatch']);
+        }
+        return new JsonModel(['jobId' => (int) $undo->getId()]);
+    }
+
+    /**
      * The posted job, only if it is a governance batch owned by the current
      * user, and its stored state. Read from the Job entity, not the API: in
      * Omeka 4.2 `api()->read('jobs')` is denied to editor and reviewer — the
      * curators this is for — and granted to site_admin for every user's job.
      * The class is checked, not only the state's `kind`: a job with no state
      * yet must never be served or stopped as a batch. Another user's batch is
-     * answered as `not_found`, so its existence is not disclosed.
+     * answered as `not_found`, so its existence is not disclosed. Serves the
+     * batch and its undo (slice 5a), each only to the Job's own owner:
+     * `undo-any-batch` lets a site_admin start an undo of someone else's
+     * batch, and the undo Job so started is theirs.
      *
      * @return array{0:?array{id:int, class:string, ownerId:?int, status:string}, 1:?array, 2:?JsonModel}
      */
@@ -211,11 +317,12 @@ class GovernanceBatchController extends AbstractActionController
         if (null === $job || null === $identity || $job['ownerId'] !== (int) $identity->getId()) {
             return [null, null, new JsonModel(['error' => 'not_found'])];
         }
-        if (GovernanceBatchJob::class !== $job['class']) {
+        $kind = self::KINDS[$job['class']] ?? null;
+        if (null === $kind) {
             return [null, null, new JsonModel(['error' => 'not_batch'])];
         }
         $state = $this->states->read($jobId);
-        if (null !== $state && BatchProgressReporter::KIND !== ($state['kind'] ?? null)) {
+        if (null !== $state && $kind !== ($state['kind'] ?? null)) {
             return [null, null, new JsonModel(['error' => 'not_batch'])];
         }
         return [['id' => $jobId] + $job, $state, null];

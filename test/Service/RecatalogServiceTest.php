@@ -196,4 +196,21 @@ final class RecatalogServiceTest extends TestCase
         $this->assertNull($this->service->lastEvent(1));
         $this->assertSame('no-event', $this->service->undo(1, 'Curator')['error']);
     }
+
+    public function testEventsListsEveryReadableEventNewestFirst(): void
+    {
+        $payload = CurationEvent::build(['lrmi:teaches' => ['before' => [99], 'after' => [2], 'why' => []]]);
+        $this->items[1] = $this->item(1, '', ['dcterms:provenance' => [
+            $this->value('Plain'),
+            $this->event($payload, '2026-01-01'),
+            $this->event($payload, '2026-03-01'),
+            $this->event($payload, '2026-02-01'),
+        ]]);
+
+        $events = $this->service->events(1);
+
+        $this->assertSame(['2026-03-01', '2026-02-01', '2026-01-01'], array_column($events, 'when'));
+        $this->assertSame($payload, $events[0]['payload']);
+        $this->assertSame([], $this->service->events(2));
+    }
 }
