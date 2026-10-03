@@ -119,4 +119,40 @@ class ColumnsTest extends TestCase
         $this->assertStringContainsString('valor literal', $html);
         $this->assertStringContainsString('Sin materia', $html);
     }
+
+    public function testSubjectsArePillsTintedByNameAndNeverTheStatesOrOrphans(): void
+    {
+        $view = new PhpRenderer();
+        $column = new Curricular();
+        $course = $this->item([], '1 ESO', 2);
+        $subject = $this->item(['lrmi:educationalLevel' => [$this->value($course)]], 'Matemáticas', 3);
+        $values = [
+            'schema:about' => [$this->value($subject)],
+            'lrmi:educationalLevel' => [$this->value($course)],
+            'lrmi:teaches' => [$this->value($course)],
+            'lrmi:assesses' => [$this->value($course)],
+        ];
+        $html = $column->renderContent($view, $this->item($values), []);
+        $tint = \OERManager\Service\Governance\SubjectTint::indexFor('Matemáticas');
+
+        $this->assertStringContainsString('oer-curricular-pill oer-tint-' . $tint, $html);
+        // Un anclaje correcto sigue sin llevar ninguna marca de estado (ADR-0014 regla 3).
+        $this->assertStringNotContainsString('oer-anchor-flag', $html);
+
+        // Literal: es un estado, así que no lleva tinte decorativo; el glifo sigue fuera de la píldora.
+        $values['schema:about'] = [$this->value(null, 'Matemáticas')];
+        $html = $column->renderContent($view, $this->item($values), []);
+        $this->assertStringContainsString('oer-curricular-pill oer-tint-none', $html);
+        $this->assertStringNotContainsString('oer-tint-' . $tint, $html);
+        $this->assertStringContainsString('oer-anchor-flag', $html);
+
+        // Los cursos huérfanos no son una píldora: conservan su tinta de aviso.
+        $orphan = $this->item([
+            'schema:about' => [],
+            'lrmi:educationalLevel' => [$this->value($course)],
+        ]);
+        $html = (string) $column->renderContent($view, $orphan, []);
+        $this->assertStringContainsString('oer-curricular-orphan', $html);
+        $this->assertStringNotContainsString('oer-curricular-pill', $html);
+    }
 }

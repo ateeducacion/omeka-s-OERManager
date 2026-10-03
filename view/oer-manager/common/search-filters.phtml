@@ -42,6 +42,10 @@ foreach (\OERManager\Module::SEARCH_FILTER_LABELS as $key => $label) {
     $keyByLabel[$translate($label)] = $key;
 }
 
+// El core ya pinta el chip de colección («In item set»); aquí solo se le
+// enseña a quitarse.
+$keyByLabel[$translate('In item set')] = 'item_set_id';
+
 // (2) y (3): valor legible => clave/valor a retirar, dentro de su grupo.
 $missingKeyByValue = [];
 foreach (\OERManager\Module::MISSING_FILTER_LABELS as $key => $label) {

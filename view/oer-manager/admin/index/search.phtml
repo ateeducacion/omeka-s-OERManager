@@ -47,6 +47,11 @@ $curricular = [
     </div>
 
     <?php foreach ($curricular as $key => $label): ?>
+    <?php
+    // `search-terms` entiende dimensiones del currículo, no las claves del
+    // filtro: sin esta traducción responde [] y no sale ninguna sugerencia.
+    $dimension = \OERManager\Service\MasterViewQuery::SEARCHABLE_FILTER_DIMENSIONS[$key] ?? $key;
+    ?>
     <div class="field">
         <div class="field-meta">
             <label><?php echo $escape($label); ?></label>
@@ -56,7 +61,7 @@ $curricular = [
             // Un solo valor por dimensión: el filtro acota por un ancestro.
             $current = (string) ($query[$key] ?? '');
             ?>
-            <div class="oer-recatalog-dim" data-term="<?php echo $escape($key); ?>"
+            <div class="oer-recatalog-dim" data-term="<?php echo $escape($dimension); ?>"
                  data-dirty="0" data-helper="0">
                 <div class="chosen-container chosen-container-multi" style="width:100%">
                     <ul class="chosen-choices">
@@ -78,10 +83,26 @@ $curricular = [
             </div>
             <input type="hidden" name="<?php echo $escape($key); ?>"
                    value="<?php echo $escape($current); ?>"
-                   class="oer-term-value" data-for="<?php echo $escape($key); ?>">
+                   class="oer-term-value" data-for="<?php echo $escape($dimension); ?>">
         </div>
     </div>
     <?php endforeach; ?>
+
+    <?php if ($itemSets): ?>
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-item-set"><?php echo $translate('Colección'); ?></label>
+        </div>
+        <div class="inputs">
+            <select id="oer-search-item-set" name="item_set_id">
+                <option value=""><?php echo $translate('Colección (todas)'); ?></option>
+                <?php foreach ($itemSets as $itemSetId => $itemSetTitle): ?>
+                <option value="<?php echo (int) $itemSetId; ?>" <?php echo (string) ($query['item_set_id'] ?? '') === (string) $itemSetId ? 'selected' : ''; ?>><?php echo $escape($itemSetTitle); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <div class="field">
         <div class="field-meta">

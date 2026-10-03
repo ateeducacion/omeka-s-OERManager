@@ -6,6 +6,7 @@ use Laminas\View\Renderer\PhpRenderer;
 use OERManager\Service\Governance\AlignmentStatusValue;
 use OERManager\Service\Governance\CurricularPairs;
 use OERManager\Service\Governance\CurricularSummary;
+use OERManager\Service\Governance\SubjectTint;
 use Omeka\Api\Representation\AbstractEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\ColumnType\ColumnTypeInterface;
@@ -87,7 +88,11 @@ class Curricular implements ColumnTypeInterface
             if ('' !== $courses) {
                 $line .= '<span class="oer-curricular-stage">' . $escape($courses) . '</span>';
             }
-            $lines[] = '<span class="oer-curricular-group">' . $line . '</span>';
+            // Píldora compuesta (ADR-0014, addendum 2026-10-03). Un literal es un
+            // estado, no una materia enlazada: va sin tinte decorativo.
+            $tint = $group['isLiteral'] ? 'none' : (string) SubjectTint::indexFor($group['subject']);
+            $lines[] = '<span class="oer-curricular-group oer-curricular-pill oer-tint-' . $tint . '">'
+                . $line . '</span>';
         }
 
         if ([] !== $summary['orphanCourses']) {
