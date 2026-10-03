@@ -73,7 +73,7 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     // Los filtros avanzados viajan ocultos: sin esto, filtrar por título desde la
     // barra rápida borraría en silencio lo que el curador acotó en la otra
     // pantalla. Se quitan desde su chip.
-    foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence'] as $advanced):
+    foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence', 'item_set_id'] as $advanced):
         if ('' === (string) ($query[$advanced] ?? '')) {
             continue;
         }

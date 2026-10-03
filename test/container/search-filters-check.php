@@ -125,6 +125,24 @@ check(
     implode(' | ', $urlByChip)
 );
 
+// TASK-045: el chip de colección lo pinta el core («In item set»); el partial
+// del módulo solo tiene que enseñarle a quitarse, conservando el resto.
+$withSet = $view->partial('oer-manager/common/search-filters', [
+    'filters' => [$view->translate('In item set') => ['Primaria'], 'Visibilidad' => ['Público']],
+    'query' => ['item_set_id' => '3', 'visibility' => 'public', 'page' => 2],
+]);
+preg_match(
+    '/<span class="filter-value">\\s*Primaria\\s*<a[^>]*href="([^"]*)"/s',
+    $withSet,
+    $setMatch
+);
+$setUrl = urldecode(html_entity_decode($setMatch[1] ?? ''));
+check(
+    'quitar el chip de colección retira item_set_id y conserva el resto',
+    '' !== $setUrl && !str_contains($setUrl, 'item_set_id') && str_contains($setUrl, 'visibility=public'),
+    $setUrl
+);
+
 // Un filtro de otro módulo, que este partial no sabe deshacer, debe seguir
 // mostrándose (sin aspa) en vez de desaparecer.
 $foreign = $view->partial('oer-manager/common/search-filters', [

@@ -28,6 +28,31 @@ class MasterViewQuery
         'resource_type' => 'lrmi:learningResourceType',
     ];
 
+    /**
+     * Tope de colecciones que se examinan para ofrecer el filtro: cada una cuesta
+     * una consulta de una fila, así que el coste está acotado por esta cifra y no
+     * por el tamaño del catálogo (~3000 REA).
+     */
+    public const MAX_ITEM_SETS = 200;
+
+    /** Filtros que apuntan a un item-término del currículo, y su property (ADR-0004). */
+    public const RESOURCE_FILTERS = [
+        'stage' => 'lrmi:educationalLevel',
+        'subject' => 'schema:about',
+        'project' => 'schema:isPartOf',
+        'axis' => 'dcterms:relation',
+    ];
+
+    /**
+     * Filtros de RESOURCE_FILTERS con autocompletado, y la dimensión que entiende
+     * `search-terms`. `project` queda fuera: el endpoint no tiene dimensión para él.
+     */
+    public const SEARCHABLE_FILTER_DIMENSIONS = [
+        'stage' => 'lrmi:educationalLevel',
+        'subject' => 'schema:about',
+        'axis' => 'dcterms:relation',
+    ];
+
     private ApiManager $api;
     private bool $classIdResolved = false;
     private ?int $learningResourceClassId = null;
@@ -65,19 +90,18 @@ class MasterViewQuery
             ];
         }
 
+        $itemSetId = (int) ($query['item_set_id'] ?? 0);
+        if ($itemSetId > 0) {
+            $params['item_set_id'] = $itemSetId;
+        }
+
         if ('' !== ($query['visibility'] ?? '')) {
             $params['is_public'] = 'public' === $query['visibility'];
         }
 
         // Filtros que apuntan a un item-término del currículo (resource:item,
         // ADR-0004): el valor esperado es el id de ese item.
-        $resourceFilters = [
-            'stage' => 'lrmi:educationalLevel',
-            'subject' => 'schema:about',
-            'project' => 'schema:isPartOf',
-            'axis' => 'dcterms:relation',
-        ];
-        foreach ($resourceFilters as $param => $term) {
+        foreach (self::RESOURCE_FILTERS as $param => $term) {
             if (!empty($query[$param])) {
                 $params['property'][] = [
                     'property' => $term,
@@ -130,6 +154,39 @@ class MasterViewQuery
         $this->addAlignmentFilter($params, $query['alignment'] ?? '');
 
         return $params;
+    }
+
+    /**
+     * Colecciones que contienen al menos un REA, para el selector de la búsqueda
+     * avanzada (RF-018). Una consulta de una fila por colección, con tope.
+     *
+     * @return array<int,string> id => título
+     */
+    public function learningResourceItemSets(): array
+    {
+        $classId = $this->resolveLearningResourceClassId();
+        if (null === $classId) {
+            return [];
+        }
+
+        $sets = $this->api->search('item_sets', [
+            'sort_by' => 'title',
+            'sort_order' => 'asc',
+            'limit' => self::MAX_ITEM_SETS,
+        ])->getContent();
+
+        $offered = [];
+        foreach ($sets as $set) {
+            $probe = $this->api->search('items', [
+                'item_set_id' => $set->id(),
+                'resource_class_id' => $classId,
+                'limit' => 1,
+            ]);
+            if ($probe->getTotalResults() > 0) {
+                $offered[$set->id()] = (string) $set->displayTitle();
+            }
+        }
+        return $offered;
     }
 
     /**

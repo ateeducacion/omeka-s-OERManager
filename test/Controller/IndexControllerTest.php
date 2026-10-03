@@ -109,6 +109,7 @@ class IndexControllerTest extends TestCase
         $this->dependencies['integrityChecker']->method('check')
             ->willReturnCallback(fn () => new IntegrityResult($this->issues));
         $this->dependencies['masterViewQuery']->method('buildSearchParams')->willReturn([]);
+        $this->dependencies['masterViewQuery']->method('learningResourceItemSets')->willReturn([3 => 'Primaria']);
         $this->dependencies['resourceTypeVocab']->method('values')->willReturn([]);
         $this->dependencies['mediaSource']->method('filesFor')->willReturn([]);
         $this->dependencies['mediaSource']->method('imagesFor')->willReturn([]);
@@ -275,6 +276,7 @@ class IndexControllerTest extends TestCase
             ['stage' => 'Course', 'subject' => 'Course'],
             $this->controller->searchAction()->getVariable('resourceFilterTitles')
         );
+        $this->assertSame([3 => 'Primaria'], $this->controller->searchAction()->getVariable('itemSets'));
         $this->missingItem = true;
         $this->assertSame([], $this->controller->searchAction()->getVariable('resourceFilterTitles'));
     }
