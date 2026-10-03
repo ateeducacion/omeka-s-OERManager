@@ -27,11 +27,7 @@ final class WorkflowService
     public function statusOf(ItemRepresentation $item): ?string
     {
         $value = $item->value(WorkflowStatus::STATUS_TERM);
-        if (null === $value) {
-            return null;
-        }
-        $status = trim((string) $value->value());
-        return '' === $status ? null : $status;
+        return null === $value ? null : WorkflowStatus::normalize((string) $value->value());
     }
 
     /**

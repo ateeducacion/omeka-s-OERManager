@@ -36,7 +36,8 @@ test('contrastRatio es simétrico', () => {
 
 // ADR-0014: la tríada de estado es exigible a WCAG AA. Los valores se eligieron
 // por criterio en la rebanada 1 y NO se habían medido nunca.
-for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted']) {
+// --oer-accent: color de la insignia «Propuesto» en la tabla (RF-017).
+for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted', '--oer-accent']) {
   for (const background of BACKGROUNDS) {
     test(`${token} cumple AA sobre ${background}`, () => {
       const ratio = contrastRatio(tokens[token], background);

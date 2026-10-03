@@ -412,23 +412,28 @@
     gap: 8px;
 }
 
-/* La acción de editar deja de ocupar un renglón propio bajo cada título. */
+/* La acción de editar deja de ocupar un renglón propio bajo cada título.
+   Siempre visibles, también con puntero (RF-017): lo que vive aquí —la
+   insignia del flujo— tiene que verse al barrer la tabla, no al pasar por
+   encima de cada fila. */
 #oer-master-view-table .oer-title-cell .actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
     flex-shrink: 0;
     line-height: 20px;
 }
 
-@media (hover: hover) {
-    #oer-master-view-table .oer-title-cell .actions {
-        opacity: 0;
-        transition: opacity 120ms ease;
-    }
+/* Insignia del flujo (forma en oer-workflow-badge.css). «Propuesto» espera al
+   curador: es el estado que reclama su acción, y por eso lleva el acento
+   (ADR-0014 regla 2). «Rechazado» espera al autor, no al curador: va apagado. */
+#oer-master-view-table .oer-workflow-badge[data-status="proposed"] {
+    color: var(--oer-accent);
+}
 
-    #oer-master-view-table tr:hover .oer-title-cell .actions,
-    #oer-master-view-table .oer-title-cell:focus-within .actions {
-        opacity: 1;
-    }
+#oer-master-view-table .oer-workflow-badge[data-status="rejected"] {
+    color: var(--oer-muted);
 }
 
 /* ==========================================================================
@@ -914,12 +919,6 @@
 
     #oer-master-view-table td {
         padding-left: 12px;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    #oer-master-view-table .oer-title-cell .actions {
-        transition: none;
     }
 }
 

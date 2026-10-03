@@ -19,6 +19,32 @@ final class WorkflowStatus
     public const PROPOSED = 'Propuesto';
     public const REJECTED = 'Rechazado';
 
+    /**
+     * Literal crudo de `curation:status` → estado. Vacío o en blanco es
+     * Borrador (null). Única regla de lectura: la usan el servicio y la fila
+     * de la vista maestra, que lee el valor de la representación que ya tiene
+     * (RF-017, sin consulta extra por fila).
+     */
+    public static function normalize(?string $raw): ?string
+    {
+        $status = trim((string) $raw);
+        return '' === $status ? null : $status;
+    }
+
+    /**
+     * Insignia que lleva un REA (RF-017, TASK-044): `proposed`, `rejected` o
+     * null. Borrador, publicado y cualquier literal desconocido no llevan
+     * ninguna — igualdad exacta, como el resto de la máquina de estados.
+     */
+    public static function badge(?string $status): ?string
+    {
+        return match ($status) {
+            self::PROPOSED => 'proposed',
+            self::REJECTED => 'rejected',
+            default => null,
+        };
+    }
+
     /** Borrador (ausente) o ya rechazado: el autor puede (re)proponer. */
     public static function canPropose(?string $status): bool
     {

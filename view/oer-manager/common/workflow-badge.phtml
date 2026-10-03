@@ -1,0 +1,37 @@
+<?php
+/**
+ * Insignia del flujo autor→curador (RF-017, TASK-044). La pintan la fila de
+ * la vista maestra y la página nativa del item, así que la marca vive en un
+ * solo sitio.
+ *
+ * Forma y texto, no solo color (ADR-0014 regla 3): cada estado tiene su glifo
+ * y su trazo de borde. El glifo es decorativo; el rótulo visible es el nombre
+ * accesible. Sin estado conocido no se pinta nada.
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var string|null $badge `proposed`, `rejected` o null (WorkflowStatus::badge())
+ */
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+
+$badges = [
+    'proposed' => [
+        'glyph' => '●',
+        'label' => $translate('Propuesto'),
+        'title' => $translate('Propuesto para curación: pendiente de validar'),
+    ],
+    'rejected' => [
+        'glyph' => '✗',
+        'label' => $translate('Rechazado'),
+        'title' => $translate('Propuesta rechazada: vuelve a su autor'),
+    ],
+];
+if (!isset($badge, $badges[$badge])) {
+    return;
+}
+$current = $badges[$badge];
+?>
+<span class="oer-workflow-badge" data-status="<?php echo $escape($badge); ?>" title="<?php echo $escape($current['title']); ?>">
+    <span class="oer-workflow-badge-glyph" aria-hidden="true"><?php echo $current['glyph']; ?></span>
+    <?php echo $escape($current['label']); ?>
+</span>

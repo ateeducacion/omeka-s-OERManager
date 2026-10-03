@@ -21,6 +21,24 @@ final class WorkflowStatusTest extends TestCase
         $this->assertSame('Rechazado', WorkflowStatus::REJECTED);
     }
 
+    public function testNormalizeTrataVacioComoBorrador(): void
+    {
+        $this->assertNull(WorkflowStatus::normalize(null));
+        $this->assertNull(WorkflowStatus::normalize(''));
+        $this->assertNull(WorkflowStatus::normalize("  \t"));
+        $this->assertSame('Propuesto', WorkflowStatus::normalize(' Propuesto '));
+    }
+
+    /** RF-017: insignia exactamente para Propuesto y Rechazado. */
+    public function testBadgeSoloParaPropuestoYRechazado(): void
+    {
+        $this->assertSame('proposed', WorkflowStatus::badge(WorkflowStatus::PROPOSED));
+        $this->assertSame('rejected', WorkflowStatus::badge(WorkflowStatus::REJECTED));
+        $this->assertNull(WorkflowStatus::badge(null));
+        $this->assertNull(WorkflowStatus::badge('propuesto'));
+        $this->assertNull(WorkflowStatus::badge('Publicado'));
+    }
+
     public function testProponerDesdeBorradorOAusente(): void
     {
         $this->assertTrue(WorkflowStatus::canPropose(null));
