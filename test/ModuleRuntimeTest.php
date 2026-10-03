@@ -158,5 +158,33 @@ class ModuleRuntimeTest extends TestCase
         ob_start();
         $module->addWorkflowActions($event);
         $this->assertSame('oer-manager/common/workflow-actions', ob_get_clean());
+        $this->assertSame([], $view->stylesheets);
+    }
+
+    /**
+     * RF-017: el autor de un REA ya propuesto no tiene ninguna acción, pero
+     * tiene que ver la insignia; y el rechazado lleva la suya.
+     */
+    public function testWorkflowBadgeRendersEvenWithoutActions(): void
+    {
+        $acl = $this->createMock(\Omeka\Permissions\Acl::class);
+        $acl->method('userIsAllowed')->willReturn(false);
+        $module = $this->module([
+            'Omeka\Acl' => $acl,
+            WorkflowService::class => new WorkflowService($this->createMock(Manager::class)),
+        ]);
+        foreach (['Propuesto' => 'proposed', ' Rechazado ' => 'rejected'] as $raw => $badge) {
+            $value = $this->createMock(\Omeka\Api\Representation\ValueRepresentation::class);
+            $value->method('value')->willReturn($raw);
+            $item = $this->createMock(ItemRepresentation::class);
+            $item->method('resourceClass')->willReturn(new ResourceClassRepresentation());
+            $item->method('userIsAllowed')->willReturn(false);
+            $item->method('value')->willReturn($value);
+            $view = new \Laminas\View\Renderer\PhpRenderer();
+            ob_start();
+            $module->addWorkflowActions((new Event())->setTarget($view)->setParam('resource', $item));
+            $this->assertSame('oer-manager/common/workflow-badge[' . $badge . ']', ob_get_clean());
+            $this->assertSame(['OERManager/css/oer-workflow-badge.css'], $view->stylesheets);
+        }
     }
 }

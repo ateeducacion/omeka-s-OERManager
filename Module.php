@@ -322,8 +322,9 @@ class Module extends AbstractModule implements InitProviderInterface
     }
 
     /**
-     * Botón de propuesta/rechazo/publicación (RF-016). Solo se pinta para
-     * items `lrmi:LearningResource` — el flujo no aplica a nada más.
+     * Insignia de estado (RF-017) y botón de propuesta/rechazo/publicación
+     * (RF-016). Solo se pinta para items `lrmi:LearningResource` — el flujo
+     * no aplica a nada más.
      * `view.show.page_actions` no captura el retorno del listener (ver la
      * nota de Task 5 del plan): hay que hacer `echo` directamente.
      */
@@ -357,6 +358,20 @@ class Module extends AbstractModule implements InitProviderInterface
         $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
         $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
 
+        /** @var \Laminas\View\Renderer\PhpRenderer $view */
+        $view = $event->getTarget();
+
+        // Insignia Propuesto/Rechazado (RF-017, TASK-044). Va antes del
+        // corte por permisos: el autor de un REA ya propuesto no tiene
+        // ninguna acción, y es justo quien tiene que ver que espera
+        // validación. La vista maestra está cerrada a `author`; esta página
+        // es la suya.
+        $badge = Service\Workflow\WorkflowStatus::badge($status);
+        if (null !== $badge) {
+            $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
+            echo $view->partial('oer-manager/common/workflow-badge', ['badge' => $badge]);
+        }
+
         if (!$canPropose && !$canReject && !$canPublish) {
             return;
         }
@@ -367,8 +382,6 @@ class Module extends AbstractModule implements InitProviderInterface
             'timeout' => 3600,
         ]);
 
-        /** @var \Laminas\View\Renderer\PhpRenderer $view */
-        $view = $event->getTarget();
         echo $view->partial('oer-manager/common/workflow-actions', [
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),
