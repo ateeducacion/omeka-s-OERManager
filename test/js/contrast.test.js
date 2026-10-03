@@ -48,3 +48,39 @@ for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted', '--oe
     });
   }
 }
+
+// ADR-0014, addendum 2026-10-03 (TASK-046): los tintes de las píldoras
+// curriculares son decorativos, pero la materia se lee SOBRE ellos y el texto
+// de cursos sobre blanco, así que ambos tienen que cumplir AA (NFR-006).
+const tintTokens = Object.keys(tokens).filter((name) => /^--oer-tint-\d+$/.test(name));
+
+test('la paleta de tintes tiene los 8 tonos que asigna SubjectTint', () => {
+  assert.equal(tintTokens.length, 8);
+});
+
+for (const token of tintTokens) {
+  test(`la tinta del módulo cumple AA sobre ${token}`, () => {
+    const ratio = contrastRatio(tokens['--oer-ink'], tokens[token]);
+    assert.ok(ratio >= AA, `--oer-ink sobre ${token} (${tokens[token]}) da ${ratio.toFixed(2)}:1`);
+  });
+}
+
+// Los tintes no pueden confundirse con un estado (ADR-0014 regla 2): ni rojo ni ámbar.
+function hue(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) {
+    return null;
+  }
+  const d = max - min;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+for (const token of tintTokens) {
+  test(`${token} no usa el matiz de los estados rojo ni ámbar`, () => {
+    const h = hue(tokens[token]);
+    assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
+  });
+}

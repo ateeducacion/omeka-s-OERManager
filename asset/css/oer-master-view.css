@@ -28,6 +28,29 @@
     --oer-rail-ok: #a9cdbc;
     --oer-rail-warn: #e8b25f;
     --oer-rail-bad: #d47b7b;
+
+    /*
+     * Tintes decorativos de las píldoras de materia (ADR-0014, addendum
+     * 2026-10-03). Ocho, asignados por SubjectTint::indexFor(). Ninguno usa el
+     * matiz de los estados (rojo, ámbar): agrupan, no avisan. La tinta del
+     * módulo sobre cada uno cumple AA (test/js/contrast.test.js).
+     */
+    --oer-tint-1: #d2e3f4;
+    --oer-tint-2: #d2f4ef;
+    --oer-tint-3: #d2f4dd;
+    --oer-tint-4: #e0d2f4;
+    --oer-tint-5: #f4d2f4;
+    --oer-tint-6: #d2edf4;
+    --oer-tint-7: #d2d5f4;
+    --oer-tint-8: #e6f4d2;
+    --oer-tint-1-edge: #97b8d8;
+    --oer-tint-2-edge: #97d8cf;
+    --oer-tint-3-edge: #97d8ad;
+    --oer-tint-4-edge: #b297d8;
+    --oer-tint-5-edge: #d897d8;
+    --oer-tint-6-edge: #97cbd8;
+    --oer-tint-7-edge: #979dd8;
+    --oer-tint-8-edge: #bdd897;
 }
 
 .oer-visually-hidden {
@@ -1013,6 +1036,115 @@
 .oer-anchor-none::before {
     content: "\2717";
     color: var(--oer-bad);
+}
+
+/*
+ * Píldora compuesta (ADR-0014, addendum 2026-10-03): la materia en su tinte y,
+ * a su lado, los cursos en la mitad blanca. El borde lleva el tono del tinte
+ * para que la mitad blanca siga leyéndose como parte de la misma píldora.
+ * Un nombre largo hace salto de línea dentro de su mitad; nunca se trunca.
+ */
+.oer-curricular-pill {
+    display: flex;
+    align-items: stretch;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid var(--oer-rule);
+    border-radius: 0.8em;
+    overflow: hidden;
+    background-color: #fff;
+}
+
+.oer-curricular-pill .oer-curricular-subject {
+    display: block;
+    flex: 1 1 auto;
+    min-width: min-content;
+    padding: 0.1em 0.6em;
+    color: var(--oer-ink);
+    overflow-wrap: break-word;
+}
+
+.oer-curricular-pill .oer-curricular-stage {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 0.1em 0.6em;
+    align-self: center;
+}
+
+.oer-curricular-pill.oer-tint-none .oer-curricular-subject {
+    background-color: transparent;
+    font-style: italic;
+}
+
+@media print {
+    .oer-curricular-pill .oer-curricular-subject {
+        border-right: 1px solid var(--oer-rule);
+    }
+}
+
+.oer-curricular-pill.oer-tint-1 {
+    border-color: var(--oer-tint-1-edge);
+}
+
+.oer-curricular-pill.oer-tint-1 .oer-curricular-subject {
+    background-color: var(--oer-tint-1);
+}
+
+.oer-curricular-pill.oer-tint-2 {
+    border-color: var(--oer-tint-2-edge);
+}
+
+.oer-curricular-pill.oer-tint-2 .oer-curricular-subject {
+    background-color: var(--oer-tint-2);
+}
+
+.oer-curricular-pill.oer-tint-3 {
+    border-color: var(--oer-tint-3-edge);
+}
+
+.oer-curricular-pill.oer-tint-3 .oer-curricular-subject {
+    background-color: var(--oer-tint-3);
+}
+
+.oer-curricular-pill.oer-tint-4 {
+    border-color: var(--oer-tint-4-edge);
+}
+
+.oer-curricular-pill.oer-tint-4 .oer-curricular-subject {
+    background-color: var(--oer-tint-4);
+}
+
+.oer-curricular-pill.oer-tint-5 {
+    border-color: var(--oer-tint-5-edge);
+}
+
+.oer-curricular-pill.oer-tint-5 .oer-curricular-subject {
+    background-color: var(--oer-tint-5);
+}
+
+.oer-curricular-pill.oer-tint-6 {
+    border-color: var(--oer-tint-6-edge);
+}
+
+.oer-curricular-pill.oer-tint-6 .oer-curricular-subject {
+    background-color: var(--oer-tint-6);
+}
+
+.oer-curricular-pill.oer-tint-7 {
+    border-color: var(--oer-tint-7-edge);
+}
+
+.oer-curricular-pill.oer-tint-7 .oer-curricular-subject {
+    background-color: var(--oer-tint-7);
+}
+
+.oer-curricular-pill.oer-tint-8 {
+    border-color: var(--oer-tint-8-edge);
+}
+
+.oer-curricular-pill.oer-tint-8 .oer-curricular-subject {
+    background-color: var(--oer-tint-8);
 }
 
 /*
