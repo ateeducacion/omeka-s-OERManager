@@ -84,3 +84,24 @@ for (const token of tintTokens) {
     assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
   });
 }
+
+// TASK-047 (spec D4): escala de calor de Estadísticas. Tinta sobre los niveles
+// claros, blanco sobre los oscuros, siempre AA; y nunca rojo ni ámbar.
+const heatTokens = Object.keys(tokens).filter((name) => /^--oer-heat-\d+$/.test(name));
+
+test('la escala de calor tiene los 5 niveles que asigna heatLevel()', () => {
+  assert.equal(heatTokens.length, 5);
+});
+
+for (const token of heatTokens) {
+  const level = Number(token.match(/(\d+)$/)[1]);
+  const text = level <= 3 ? tokens['--oer-ink'] : '#ffffff';
+  test(`el texto de la celda cumple AA sobre ${token}`, () => {
+    const ratio = contrastRatio(text, tokens[token]);
+    assert.ok(ratio >= AA, `${text} sobre ${token} (${tokens[token]}) da ${ratio.toFixed(2)}:1`);
+  });
+  test(`${token} no usa el matiz de los estados rojo ni ámbar`, () => {
+    const h = hue(tokens[token]);
+    assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
+  });
+}

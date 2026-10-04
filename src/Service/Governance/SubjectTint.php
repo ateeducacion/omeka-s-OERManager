@@ -29,7 +29,7 @@ final class SubjectTint
         return (crc32(self::normalise($subject)) % self::PALETTE_SIZE) + 1;
     }
 
-    private static function normalise(string $subject): string
+    public static function normalise(string $subject): string
     {
         if (class_exists(\Normalizer::class)) {
             $subject = \Normalizer::normalize($subject, \Normalizer::FORM_D) ?: $subject;

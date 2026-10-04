@@ -1,9 +1,18 @@
 <?php
 /**
+ * Statistics as a decision dashboard (RF-007, RF-019, TASK-006, TASK-047).
+ * Order (spec D1): year filter → coverage heatmap → compact count grid →
+ * free 2-dimension cross. Every CSV link carries the year filter; the JS adds
+ * the stage/course filters so each CSV matches what is on screen.
+ *
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var list<string> $dimensions
  * @var array{ok:int,warning:int,error:int,total:int,okPercent:float} $completeness
  * @var bool $truncated
+ * @var ?int $year
+ * @var list<array{year:int,count:int}> $years
+ * @var int $total
+ * @var bool $hasUniverse
  * @var array $statsData
  */
 
@@ -13,12 +22,24 @@ $this->headLink()->appendStylesheet($this->assetUrl('css/oer-stats.css', 'OERMan
 $this->headScript()->appendFile($this->assetUrl('js/statsMain.js', 'OERManager'), 'module');
 
 $dimensionLabels = [
-    'etapa' => $this->translate('Etapa'),
+    'etapa' => $this->translate('Curso'),
     'materia' => $this->translate('Materia'),
     'eje' => $this->translate('Eje temático'),
     'proyecto' => $this->translate('Proyecto'),
     'licencia' => $this->translate('Licencia'),
 ];
+$yearQuery = null !== $year ? ['year' => $year] : [];
+$exportUrl = function (array $query) use ($yearQuery): string {
+    return $this->url('admin/oer-manager-stats', ['action' => 'export'], ['query' => $query + $yearQuery]);
+};
+$allYears = array_sum(array_column($years, 'count'));
+$i18n = [
+    'subject' => $this->translate('Materia'),
+    'notApplicable' => $this->translate('No existe en este curso'),
+    'gap' => $this->translate('Sin REA'),
+    'rea' => $this->translate('REA'),
+];
+$jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
 ?>
 
 <?php echo $this->pageTitle($this->translate('Estadísticas')); ?>
@@ -31,57 +52,125 @@ $dimensionLabels = [
 </div>
 <?php endif; ?>
 
-<script id="oer-stats-data" type="application/json"><?php echo json_encode($statsData, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG); ?></script>
+<script id="oer-stats-data" type="application/json"><?php echo json_encode($statsData, $jsonFlags); ?></script>
+<script id="oer-stats-i18n" type="application/json"><?php echo json_encode($i18n, $jsonFlags); ?></script>
+
+<form class="oer-stats-toolbar" method="get" action="<?php echo $this->escapeHtmlAttr($this->url('admin/oer-manager-stats')); ?>">
+    <label for="oer-stats-year"><?php echo $this->translate('Año de alta en el catálogo'); ?></label>
+    <select id="oer-stats-year" name="year">
+        <option value=""><?php echo $this->escapeHtml(sprintf($this->translate('Todos los años (%d)'), $allYears)); ?></option>
+        <?php foreach ($years as $entry): ?>
+        <option value="<?php echo (int) $entry['year']; ?>" <?php echo $entry['year'] === $year ? 'selected' : ''; ?>>
+            <?php echo (int) $entry['year']; ?> (<?php echo (int) $entry['count']; ?>)
+        </option>
+        <?php endforeach; ?>
+    </select>
+    <button type="submit" class="oer-stats-apply"><?php echo $this->translate('Aplicar'); ?></button>
+    <span class="oer-stats-scope"><?php echo $this->escapeHtml(sprintf($this->translate('%d REA en estas estadísticas'), $total)); ?></span>
+    <span class="oer-stats-hint"><?php echo $this->translate('Fecha de alta del REA en el catálogo (o:created), no la de su producción.'); ?></span>
+</form>
+
+<section class="oer-stats-section oer-stats-coverage">
+    <div class="oer-stats-heading">
+        <h2><?php echo $this->translate('Cobertura curricular: materia × curso'); ?></h2>
+        <label for="oer-stats-heat-stage"><?php echo $this->translate('Etapa'); ?></label>
+        <select id="oer-stats-heat-stage">
+            <option value=""><?php echo $this->translate('Todas las etapas'); ?></option>
+        </select>
+        <a id="oer-stats-heat-export" href="<?php echo $this->escapeHtmlAttr($exportUrl(['type' => 'coverage'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+    </div>
+    <p class="oer-stats-legend">
+        <span class="oer-heat-legend oer-heat-na">·</span> <?php echo $this->translate('la materia no existe en ese curso'); ?>
+        <span class="oer-heat-legend oer-heat-gap">0</span> <?php echo $this->translate('existe y no tiene REA'); ?>
+        <span class="oer-heat-legend oer-heat-1">1</span><span class="oer-heat-legend oer-heat-3">…</span><span class="oer-heat-legend oer-heat-5">n</span>
+        <?php echo $this->translate('REA enlazados a la materia de ese curso'); ?>
+    </p>
+    <?php if (!$hasUniverse): ?>
+    <p class="oer-stats-note"><?php echo $this->translate('No se distinguen los huecos: falta configurar el tipo de las asignaturas del currículo, así que solo se muestran las materias que usa algún REA.'); ?></p>
+    <?php endif; ?>
+    <?php if (($statsData['coverage']['unplaced'] ?? 0) > 0): ?>
+    <p class="oer-stats-note"><?php echo $this->escapeHtml(sprintf(
+        $this->translate('%d enlaces a materias sin curso conocido no aparecen en el mapa (sí en el conteo de Materia).'),
+        $statsData['coverage']['unplaced']
+    )); ?></p>
+    <?php endif; ?>
+    <div class="oer-heatmap-scroll" data-oer-stats-chart="coverage" tabindex="0"></div>
+</section>
 
 <section class="oer-stats-section">
     <h2><?php echo $this->translate('Conteo por dimensión'); ?></h2>
     <div class="oer-stats-grid">
-        <?php foreach ($dimensions as $dimension): ?>
         <div class="oer-stats-card">
-            <h3><?php echo $dimensionLabels[$dimension]; ?></h3>
-            <div data-oer-stats-chart="<?php echo $this->escapeHtmlAttr($dimension); ?>"></div>
-            <a href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export'], ['query' => ['dimension' => $dimension]]); ?>">
-                <?php echo $this->translate('Exportar CSV'); ?>
-            </a>
+            <div class="oer-stats-card-head">
+                <h3><?php echo $this->translate('Etapa y curso'); ?></h3>
+                <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => 'etapa'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+            </div>
+            <div class="oer-stats-card-body" data-oer-stats-chart="etapa"></div>
+        </div>
+        <div class="oer-stats-card oer-stats-card-tall">
+            <div class="oer-stats-card-head">
+                <h3><?php echo $this->translate('Materia'); ?></h3>
+                <a id="oer-stats-subject-export" href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => 'materia'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+            </div>
+            <div class="oer-stats-filters">
+                <label for="oer-stats-subject-stage"><?php echo $this->translate('Etapa'); ?></label>
+                <select id="oer-stats-subject-stage">
+                    <option value=""><?php echo $this->translate('Todas'); ?></option>
+                </select>
+                <label for="oer-stats-subject-course"><?php echo $this->translate('Curso'); ?></label>
+                <select id="oer-stats-subject-course">
+                    <option value=""><?php echo $this->translate('Todos'); ?></option>
+                </select>
+            </div>
+            <div class="oer-stats-card-body" data-oer-stats-chart="materia"></div>
+        </div>
+        <?php foreach (['eje', 'proyecto', 'licencia'] as $dimension): ?>
+        <div class="oer-stats-card">
+            <div class="oer-stats-card-head">
+                <h3><?php echo $dimensionLabels[$dimension]; ?></h3>
+                <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => $dimension])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+            </div>
+            <div class="oer-stats-card-body" data-oer-stats-chart="<?php echo $this->escapeHtmlAttr($dimension); ?>"></div>
         </div>
         <?php endforeach; ?>
+        <div class="oer-stats-card">
+            <div class="oer-stats-card-head">
+                <h3><?php echo $this->translate('Completitud'); ?></h3>
+                <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['type' => 'completeness'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+            </div>
+            <p>
+                <?php echo $this->escapeHtml(sprintf(
+                    $this->translate('%s%% de los REA sin incidencias de integridad (%d de %d).'),
+                    $completeness['okPercent'],
+                    $completeness['ok'],
+                    $completeness['total']
+                )); ?>
+            </p>
+            <div data-oer-stats-chart="completeness"></div>
+        </div>
     </div>
 </section>
 
 <section class="oer-stats-section">
-    <h2><?php echo $this->translate('Cruce de 2 dimensiones'); ?></h2>
-    <label for="oer-stats-cross-a"><?php echo $this->translate('Dimensión A'); ?></label>
-    <select id="oer-stats-cross-a">
-        <?php foreach ($dimensions as $dimension): ?>
-        <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'materia' === $dimension ? 'selected' : ''; ?>>
-            <?php echo $dimensionLabels[$dimension]; ?>
-        </option>
-        <?php endforeach; ?>
-    </select>
-    <label for="oer-stats-cross-b"><?php echo $this->translate('Dimensión B'); ?></label>
-    <select id="oer-stats-cross-b">
-        <?php foreach ($dimensions as $dimension): ?>
-        <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'etapa' === $dimension ? 'selected' : ''; ?>>
-            <?php echo $dimensionLabels[$dimension]; ?>
-        </option>
-        <?php endforeach; ?>
-    </select>
-    <a id="oer-stats-cross-export" href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export']); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
-    <div data-oer-stats-chart="cross"></div>
-</section>
-
-<section class="oer-stats-section">
-    <h2><?php echo $this->translate('Completitud'); ?></h2>
-    <p>
-        <?php echo sprintf(
-            $this->translate('%s%% de los REA sin incidencias de integridad (%d de %d).'),
-            $completeness['okPercent'],
-            $completeness['ok'],
-            $completeness['total']
-        ); ?>
-    </p>
-    <div data-oer-stats-chart="completeness"></div>
-    <a href="<?php echo $this->url('admin/oer-manager-stats', ['action' => 'export'], ['query' => ['type' => 'completeness']]); ?>">
-        <?php echo $this->translate('Exportar CSV'); ?>
-    </a>
+    <div class="oer-stats-heading">
+        <h2><?php echo $this->translate('Cruce de 2 dimensiones'); ?></h2>
+        <label for="oer-stats-cross-a"><?php echo $this->translate('Dimensión A'); ?></label>
+        <select id="oer-stats-cross-a">
+            <?php foreach ($dimensions as $dimension): ?>
+            <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'materia' === $dimension ? 'selected' : ''; ?>>
+                <?php echo $dimensionLabels[$dimension]; ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+        <label for="oer-stats-cross-b"><?php echo $this->translate('Dimensión B'); ?></label>
+        <select id="oer-stats-cross-b">
+            <?php foreach ($dimensions as $dimension): ?>
+            <option value="<?php echo $this->escapeHtmlAttr($dimension); ?>" <?php echo 'licencia' === $dimension ? 'selected' : ''; ?>>
+                <?php echo $dimensionLabels[$dimension]; ?>
+            </option>
+            <?php endforeach; ?>
+        </select>
+        <a id="oer-stats-cross-export" href="<?php echo $this->escapeHtmlAttr($exportUrl([])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+    </div>
+    <div class="oer-heatmap-scroll" data-oer-stats-chart="cross" tabindex="0"></div>
 </section>

@@ -1,38 +1,29 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderBarChart, renderCrossTable, renderCompletenessBar } from '../../../asset/js/stats/charts.js';
+import { renderCrossTable, renderCompletenessBar } from '../../../asset/js/stats/charts.js';
 
-test('renderBarChart pinta una barra por fila con su etiqueta y conteo', () => {
-    const svg = renderBarChart([{ label: 'Matemáticas', count: 3 }, { label: 'Lengua', count: 1 }]);
-    assert.match(svg, /<svg/);
-    assert.match(svg, /Matemáticas/);
-    assert.match(svg, />3</);
-    assert.match(svg, /Lengua/);
-});
+const cross = { rows: ['Matemáticas · 1º ESO'], columns: ['CC BY', 'CC BY-SA'], cells: [[2, 0]] };
 
-test('renderBarChart con lista vacía no lanza y da un SVG vacío de barras', () => {
-    const svg = renderBarChart([]);
-    assert.match(svg, /<svg/);
-    assert.doesNotMatch(svg, /<rect/);
-});
-
-test('renderBarChart escapa el HTML de la etiqueta', () => {
-    const svg = renderBarChart([{ label: '<script>', count: 1 }]);
-    assert.doesNotMatch(svg, /<script>/);
-    assert.match(svg, /&lt;script&gt;/);
-});
-
-test('renderCrossTable pinta una tabla con las celdas del cruce', () => {
-    const html = renderCrossTable({ Matemáticas: { '1º ESO': 2, '2º ESO': 1 } });
+test('renderCrossTable pinta una tabla con las celdas del cruce en el orden recibido', () => {
+    const html = renderCrossTable(cross);
     assert.match(html, /<table/);
-    assert.match(html, /Matemáticas/);
-    assert.match(html, /1º ESO/);
-    assert.match(html, />2</);
+    assert.match(html, /Matemáticas · 1º ESO/);
+    assert.ok(html.indexOf('CC BY<') < html.indexOf('CC BY-SA<'));
+    assert.match(html, /class="oer-heat-5">2</);
+    assert.match(html, /class="oer-heat-zero">0</);
+});
+
+test('renderCrossTable no usa colores en línea (escala por tokens, TASK-047 D4)', () => {
+    assert.doesNotMatch(renderCrossTable(cross), /style=/);
 });
 
 test('renderCrossTable con tabla vacía no lanza', () => {
-    const html = renderCrossTable({});
-    assert.match(html, /<table/);
+    assert.match(renderCrossTable({ rows: [], columns: [], cells: [] }), /<table/);
+});
+
+test('renderCrossTable escapa las etiquetas', () => {
+    const html = renderCrossTable({ rows: ['<b>'], columns: ['x'], cells: [[1]] });
+    assert.doesNotMatch(html, /<b>/);
 });
 
 test('renderCompletenessBar pinta los 3 segmentos', () => {

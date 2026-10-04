@@ -12,6 +12,10 @@ abstract class AbstractResourceEntityRepresentation extends AbstractEntityRepres
     {
         return [];
     }
+    public function created()
+    {
+        return null;
+    }
     public function resourceClass()
     {
         return null;
