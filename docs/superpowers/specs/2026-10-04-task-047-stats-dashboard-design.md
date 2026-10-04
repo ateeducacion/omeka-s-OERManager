@@ -1,7 +1,7 @@
 # TASK-047 — Statistics as a decision dashboard (design)
 
-> **Status:** in progress (2026-10-04). Slice §5 under implementation; the other recommended views are
-> pending tasks (§4). Requirement: RF-019 (`propuesto`). Builds on TASK-006
+> **Status:** slice §5 implemented (2026-10-04), **pending a check in a logged-in browser**; the other
+> recommended views are pending tasks (§4). Verification record in §10. Requirement: RF-019 (`propuesto`). Builds on TASK-006
 > ([spec](2026-08-27-task-006-estadisticas-design.md)), ADR-0004, ADR-0009, ADR-0014, NFR-004, NFR-006.
 
 ## 1. The owner's request and success criteria
@@ -152,8 +152,17 @@ Per page view, with *N* REA and the curriculum's ≈ 250 upper-level terms:
 - Memory: Doctrine keeps the loaded entities for the request; paging bounds the PHP arrays, not the
   identity map. The container's `memory_limit` is 512M.
 
+**Measured on the container catalogue (20 REA, 2026-10-04, SQL logger):** one `index` call took 142 ms
+and 710 SQL statements; peak memory grew 14 MB; the embedded JSON is 54 KB. Breakdown: reading the REA
+pages 5, extracting the facts **436** (≈ 22 per REA: one values load plus the hydration of every linked
+resource, including the saberes and criterios the statistics never read — inherent to
+`ValueRepresentation`, already the cost of TASK-006), integrity 1, curriculum outline **268** (≈ one values
+load per stage/course/subject node: constant in N, grows with the curriculum). So the per-REA term is the
+risk at 3000+: shared linked terms hydrate once, so it is sub-linear, but its real size is unknown.
+
 **Honesty note:** the container catalogue holds 20 REA, so the scale is **bounded by design, not
-measured**. TASK-052 measures it with a disposable fixture and decides on caching (none today, C7) or a
+measured**. The candidate remedy, if TASK-052 needs one, is to read only the four property rows the
+statistics use per page of REA instead of hydrating representations, keeping the API's visibility rules. TASK-052 measures it with a disposable fixture and decides on caching (none today, C7) or a
 direct aggregate query only if the measurement asks for it.
 
 ## 7. Test plan
@@ -183,3 +192,18 @@ direct aggregate query only if the measurement asks for it.
 
 PDF export, drill-down from a cell to the master view (TASK-006 §8 still applies), caching (TASK-052),
 dark mode, and the views of §4 marked defer or reject.
+
+## 10. Verification record (2026-10-04)
+
+- Host: `make lint` clean; `make test` 638 tests, 2079 assertions; `make test-js` 152 tests, all green
+  (new: 6 pure PHP classes with 30 tests, `StatsControllerTest` and `ApiProjectionTest` extended, JS
+  heatmap/grouped-count tests, five heat-level contrast checks).
+- Container, read-only (`test/container/stats-check.php`): 28 OK, 0 FAIL. On the real curriculum: stages
+  Infantil → Primaria → ESO → Bachillerato by `schema:position`; the 18 courses in level order; 230
+  subject items, 126 names, 24 repeated names, a repeated name is told apart by its course; heatmap
+  126 × 18 with 192 gap cells; the Materia CSV filtered to ESO holds only ESO; the coverage CSV equals the
+  existing cells; a year with no REA exports nothing; with a year, total and completeness match it.
+- Visual: headless Chrome on a static page built from the real CSS, the real JS and the page JSON of
+  the container catalogue (1280 and 1440 px wide). Not the logged-in admin: the host chrome, its font
+  stack and the sticky headers inside the admin layout are still to be checked there.
+- Not verified: behaviour and timing at 3000+ REA (TASK-052).
