@@ -32,12 +32,37 @@ final class ApiProjectionTest extends TestCase
             }
             $this->assertSame(7, $query['resource_class_id']);
             $this->assertSame(1, $query['page']);
-            return $this->response([$item], $query['per_page'] + 1);
+            // TASK-047: truncation is past STATS_CAP, not past one page.
+            return $this->response([$item], CatalogSnapshot::STATS_CAP + 1);
         });
         $snapshot = new CatalogSnapshot($api);
         $this->assertSame(['items' => [$item], 'truncated' => true], $snapshot->fetch());
         $snapshot->fetch();
         $this->assertSame(['resource_classes', 'items', 'items'], $calls);
+    }
+
+    public function testCatalogSnapshotPagesThroughTheWholeCatalogue(): void
+    {
+        $api = $this->createMock(Manager::class);
+        $pages = [];
+        $api->method('search')->willReturnCallback(function ($resource, $query) use (&$pages) {
+            if ($resource === 'resource_classes') {
+                return $this->response([$this->item(7)]);
+            }
+            $pages[] = $query['page'];
+            $this->assertSame(CatalogSnapshot::CHUNK, $query['per_page']);
+            $this->assertSame('id', $query['sort_by']);
+            $size = $query['page'] < 3 ? CatalogSnapshot::CHUNK : 7;
+            $items = array_map(fn (int $i) => $this->item($i), range(1, $size));
+            return $this->response($items, 2 * CatalogSnapshot::CHUNK + 7);
+        });
+        $sizes = [];
+        $result = (new CatalogSnapshot($api))->walk(function (array $items) use (&$sizes): void {
+            $sizes[] = count($items);
+        });
+        $this->assertSame([1, 2, 3], $pages);
+        $this->assertSame([CatalogSnapshot::CHUNK, CatalogSnapshot::CHUNK, 7], $sizes);
+        $this->assertSame(['total' => 2 * CatalogSnapshot::CHUNK + 7, 'truncated' => false], $result);
     }
 
     public function testMissingClassNeverFetchesAllItems(): void

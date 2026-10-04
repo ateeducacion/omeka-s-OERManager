@@ -51,6 +51,18 @@
     --oer-tint-6-edge: #97cbd8;
     --oer-tint-7-edge: #979dd8;
     --oer-tint-8-edge: #bdd897;
+
+    /*
+     * Escala de calor de Estadísticas (TASK-047, spec D4): un solo matiz
+     * azul, lejos del rojo de acción y del ámbar de aviso. El número se pinta
+     * siempre, así que el color es redundante (ADR-0014 regla 3). Niveles 1-3
+     * llevan la tinta del módulo, 4-5 blanco; ambos AA en contrast.test.js.
+     */
+    --oer-heat-1: #e4eef8;
+    --oer-heat-2: #c6daee;
+    --oer-heat-3: #9dbde0;
+    --oer-heat-4: #3d6c9c;
+    --oer-heat-5: #234870;
 }
 
 .oer-visually-hidden {
