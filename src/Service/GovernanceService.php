@@ -147,9 +147,17 @@ class GovernanceService
         ];
     }
 
-    /** @return array<string,mixed> */
-    public function undoEvent(int $itemId, array $event, string $contributor, bool $force = false): array
-    {
+    /**
+     * @param string|null $batch batch undo tag (slice 5a); per-item undo passes none
+     * @return array<string,mixed>
+     */
+    public function undoEvent(
+        int $itemId,
+        array $event,
+        string $contributor,
+        bool $force = false,
+        ?string $batch = null
+    ): array {
         $item = $this->api->read('items', $itemId)->getContent();
         $current = $this->currentValues($item);
         if (!$force) {
@@ -170,7 +178,7 @@ class GovernanceService
                 $values
             );
         }
-        $result = $this->apply($itemId, $restore, $contributor, $event['when']);
+        $result = $this->apply($itemId, $restore, $contributor, $event['when'], false, $batch);
         $result['undoneAt'] = $event['when'];
         return $result;
     }

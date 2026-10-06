@@ -9,6 +9,8 @@
  * @var array $query
  * @var array $resourceTypeValues términos del CustomVocab, o [] si degrada (D1)
  */
+use OERManager\Service\Workflow\WorkflowStatus;
+
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 /** @var bool $isTruncated */
@@ -21,6 +23,7 @@ $drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details
 // disparador con su id, que es lo que el sidebar del core pide y descarga.
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
 // TASK-028: única entrada, módulos ES (asset/js/main.js).
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
 ?>
@@ -70,7 +73,7 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     // Los filtros avanzados viajan ocultos: sin esto, filtrar por título desde la
     // barra rápida borraría en silencio lo que el curador acotó en la otra
     // pantalla. Se quitan desde su chip.
-    foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence'] as $advanced):
+    foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence', 'item_set_id'] as $advanced):
         if ('' === (string) ($query[$advanced] ?? '')) {
             continue;
         }
@@ -181,7 +184,17 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
                        data-sidebar-content-url="<?php echo $escape($drawerDetailsUrl . '?id=' . $item->id()); ?>">
                         <?php echo $escape('' === $title ? $translate('(sin título)') : $title); ?>
                     </a>
+                    <?php
+                    // RF-017: la insignia sale del valor que la representación
+                    // de la fila ya trae cargado; ninguna consulta por fila.
+                    $workflowBadge = WorkflowStatus::badge(WorkflowStatus::normalize(
+                        $item->value(WorkflowStatus::STATUS_TERM)?->value()
+                    ));
+                    ?>
                     <ul class="actions">
+                        <?php if (null !== $workflowBadge): ?>
+                        <li><?php echo $this->partial('oer-manager/common/workflow-badge', ['badge' => $workflowBadge]); ?></li>
+                        <?php endif; ?>
                         <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
                     </ul>
                 </div>

@@ -109,3 +109,13 @@ effect on replay: `undoEvent()` restores `before` exactly as for an individual e
 event it writes carries no batch id. The key exists now, before any batch undo, because it cannot be
 added to events already written; a later slice can find every event of a batch by it. `decode()`
 already accepts it (it validates only `v` and `terms`). Owner decision in the slice 4 design session.
+
+## Addendum (2026-09-30, TASK-028 slice 5a): batch-undo events are tagged too
+
+An undo written by the batch undo carries `"batch": "batch-<undoJobId>"`, the id of the
+`GovernanceBatchUndoJob` that wrote it, so a mass reversal is identifiable in an item's history.
+A per-item undo still carries no tag. Replay is unchanged: `undoEvent()` restores `before`, and an
+undo of a batch-undo event (a per-item redo) is an ordinary untagged undo. The batch undo finds a
+batch's REA from the original Job's `ids` arg, never by scanning the catalogue. It undoes an REA
+only while the batch's event is still its last event and its values are unchanged (owner decision
+D2 of the slice 5a design); everything else is skipped and reported.

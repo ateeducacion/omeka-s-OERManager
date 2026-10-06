@@ -35,14 +35,18 @@ class ModuleRuntimeTest extends TestCase
         $module = $this->module(['Omeka\Acl' => $acl]);
         $module->init($this->createMock(\Laminas\ModuleManager\ModuleManagerInterface::class));
         $module->onBootstrap(new \Laminas\Mvc\MvcEvent());
-        $this->assertCount(5, $calls);
+        $this->assertCount(6, $calls);
         $this->assertSame(['site_admin'], $calls[2][0]);
         $this->assertSame(['config'], $calls[2][2]);
         $this->assertContains('author', $calls[1][0]);
         // TASK-028 slice 4: lote de gobernanza, mismos roles que governance-apply.
         $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[4][0]);
         $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[4][1]);
-        $this->assertSame(['form', 'preview', 'apply', 'status', 'cancel'], $calls[4][2]);
+        $this->assertSame(['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'], $calls[4][2]);
+        // TASK-028 slice 5a: deshacer el lote de otro usuario, solo site_admin.
+        $this->assertSame(['site_admin'], $calls[5][0]);
+        $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[5][1]);
+        $this->assertSame(['undo-any-batch'], $calls[5][2]);
         $events = $this->createMock(\Laminas\EventManager\SharedEventManagerInterface::class);
         $events->expects($this->exactly(5))->method('attach');
         $module->attachListeners($events);
@@ -154,5 +158,33 @@ class ModuleRuntimeTest extends TestCase
         ob_start();
         $module->addWorkflowActions($event);
         $this->assertSame('oer-manager/common/workflow-actions', ob_get_clean());
+        $this->assertSame([], $view->stylesheets);
+    }
+
+    /**
+     * RF-017: el autor de un REA ya propuesto no tiene ninguna acción, pero
+     * tiene que ver la insignia; y el rechazado lleva la suya.
+     */
+    public function testWorkflowBadgeRendersEvenWithoutActions(): void
+    {
+        $acl = $this->createMock(\Omeka\Permissions\Acl::class);
+        $acl->method('userIsAllowed')->willReturn(false);
+        $module = $this->module([
+            'Omeka\Acl' => $acl,
+            WorkflowService::class => new WorkflowService($this->createMock(Manager::class)),
+        ]);
+        foreach (['Propuesto' => 'proposed', ' Rechazado ' => 'rejected'] as $raw => $badge) {
+            $value = $this->createMock(\Omeka\Api\Representation\ValueRepresentation::class);
+            $value->method('value')->willReturn($raw);
+            $item = $this->createMock(ItemRepresentation::class);
+            $item->method('resourceClass')->willReturn(new ResourceClassRepresentation());
+            $item->method('userIsAllowed')->willReturn(false);
+            $item->method('value')->willReturn($value);
+            $view = new \Laminas\View\Renderer\PhpRenderer();
+            ob_start();
+            $module->addWorkflowActions((new Event())->setTarget($view)->setParam('resource', $item));
+            $this->assertSame('oer-manager/common/workflow-badge[' . $badge . ']', ob_get_clean());
+            $this->assertSame(['OERManager/css/oer-workflow-badge.css'], $view->stylesheets);
+        }
     }
 }

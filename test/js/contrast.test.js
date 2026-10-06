@@ -36,7 +36,8 @@ test('contrastRatio es simétrico', () => {
 
 // ADR-0014: la tríada de estado es exigible a WCAG AA. Los valores se eligieron
 // por criterio en la rebanada 1 y NO se habían medido nunca.
-for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted']) {
+// --oer-accent: color de la insignia «Propuesto» en la tabla (RF-017).
+for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted', '--oer-accent']) {
   for (const background of BACKGROUNDS) {
     test(`${token} cumple AA sobre ${background}`, () => {
       const ratio = contrastRatio(tokens[token], background);
@@ -46,4 +47,61 @@ for (const token of ['--oer-ok', '--oer-warn', '--oer-bad', '--oer-muted']) {
       );
     });
   }
+}
+
+// ADR-0014, addendum 2026-10-03 (TASK-046): los tintes de las píldoras
+// curriculares son decorativos, pero la materia se lee SOBRE ellos y el texto
+// de cursos sobre blanco, así que ambos tienen que cumplir AA (NFR-006).
+const tintTokens = Object.keys(tokens).filter((name) => /^--oer-tint-\d+$/.test(name));
+
+test('la paleta de tintes tiene los 8 tonos que asigna SubjectTint', () => {
+  assert.equal(tintTokens.length, 8);
+});
+
+for (const token of tintTokens) {
+  test(`la tinta del módulo cumple AA sobre ${token}`, () => {
+    const ratio = contrastRatio(tokens['--oer-ink'], tokens[token]);
+    assert.ok(ratio >= AA, `--oer-ink sobre ${token} (${tokens[token]}) da ${ratio.toFixed(2)}:1`);
+  });
+}
+
+// Los tintes no pueden confundirse con un estado (ADR-0014 regla 2): ni rojo ni ámbar.
+function hue(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === min) {
+    return null;
+  }
+  const d = max - min;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
+for (const token of tintTokens) {
+  test(`${token} no usa el matiz de los estados rojo ni ámbar`, () => {
+    const h = hue(tokens[token]);
+    assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
+  });
+}
+
+// TASK-047 (spec D4): escala de calor de Estadísticas. Tinta sobre los niveles
+// claros, blanco sobre los oscuros, siempre AA; y nunca rojo ni ámbar.
+const heatTokens = Object.keys(tokens).filter((name) => /^--oer-heat-\d+$/.test(name));
+
+test('la escala de calor tiene los 5 niveles que asigna heatLevel()', () => {
+  assert.equal(heatTokens.length, 5);
+});
+
+for (const token of heatTokens) {
+  const level = Number(token.match(/(\d+)$/)[1]);
+  const text = level <= 3 ? tokens['--oer-ink'] : '#ffffff';
+  test(`el texto de la celda cumple AA sobre ${token}`, () => {
+    const ratio = contrastRatio(text, tokens[token]);
+    assert.ok(ratio >= AA, `${text} sobre ${token} (${tokens[token]}) da ${ratio.toFixed(2)}:1`);
+  });
+  test(`${token} no usa el matiz de los estados rojo ni ámbar`, () => {
+    const h = hue(tokens[token]);
+    assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
+  });
 }

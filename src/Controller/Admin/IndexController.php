@@ -253,6 +253,7 @@ class IndexController extends AbstractActionController
         $view->setTemplate('oer-manager/admin/index/search');
         $view->setVariable('query', $query);
         $view->setVariable('resourceFilterTitles', $titles);
+        $view->setVariable('itemSets', $this->masterViewQuery->learningResourceItemSets());
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
         return $view;
     }

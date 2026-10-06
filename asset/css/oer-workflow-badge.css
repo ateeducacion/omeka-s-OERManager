@@ -1,0 +1,40 @@
+/**
+ * Insignia del flujo autor→curador (RF-017, TASK-044).
+ *
+ * Solo forma: la vista maestra y la página nativa del item la cargan las dos,
+ * y esta hoja no declara color. Hereda el del anfitrión; la vista maestra lo
+ * fija con sus tokens (oer-master-view.css), que se declaran una sola vez
+ * (ADR-0014 regla 1).
+ *
+ * Los dos estados se distinguen sin color (ADR-0014 regla 3): rótulo, glifo
+ * (● / ✗) y trazo del borde — continuo para «Propuesto», discontinuo para
+ * «Rechazado».
+ */
+.oer-workflow-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    border: 1px solid currentColor;
+    border-radius: 9px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.oer-workflow-badge[data-status="rejected"] {
+    border-style: dashed;
+}
+
+.oer-workflow-badge-glyph {
+    font-size: 9px;
+    line-height: 1;
+}
+
+/* En #page-actions (alto fijo del core) la insignia acompaña a los botones. */
+#page-actions .oer-workflow-badge {
+    margin-right: 6px;
+    line-height: 22px;
+}

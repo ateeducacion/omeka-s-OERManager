@@ -30,6 +30,12 @@ final class GovernanceBatchControllerTest extends TestCase
     private bool $jobMissing = false;
     private string $jobClass = \OERManager\Job\GovernanceBatchJob::class;
     private ?int $jobOwner = 3;
+    private bool $undoAny = false;
+    private array $recentRows = [];
+    private array $undoStates = [];
+    private ?array $recentOwnerAsked = [];
+    private ?string $jobStarted = null;
+    private bool $jobDied = false;
 
     protected function setUp(): void
     {
@@ -45,7 +51,21 @@ final class GovernanceBatchControllerTest extends TestCase
             'class' => $this->jobClass,
             'ownerId' => $this->jobOwner,
             'status' => $this->jobStatus,
+            'args' => [],
+            'started' => $this->jobStarted,
         ]);
+        $jobs->method('recent')->willReturnCallback(function (?int $ownerId) {
+            $this->recentOwnerAsked = [$ownerId];
+            return $this->recentRows;
+        });
+        $jobs->method('undoState')->willReturnCallback(
+            fn (int $id) => $this->undoStates[$id] ?? ['state' => 'none', 'jobId' => null]
+        );
+        $jobs->method('hasDied')->willReturnCallback(fn (?string $status, $started) => $this->jobDied);
+        $acl = $this->createMock(\Omeka\Permissions\Acl::class);
+        $acl->method('userIsAllowed')->willReturnCallback(
+            fn ($resource, $privilege) => GovernanceBatchController::PRIVILEGE_UNDO_ANY === $privilege ? $this->undoAny : true
+        );
         $this->controller = new GovernanceBatchController(
             $this->selection,
             $this->plans,
@@ -53,7 +73,8 @@ final class GovernanceBatchControllerTest extends TestCase
             $this->dispatcher,
             $this->states,
             $this->createMock(\Laminas\Log\LoggerInterface::class),
-            $jobs
+            $jobs,
+            $acl
         );
         $this->params = new class {
             public array $post = ['csrf' => 'valid'];
@@ -120,7 +141,7 @@ final class GovernanceBatchControllerTest extends TestCase
 
     public function testPostActionsRejectGetAndInvalidCsrf(): void
     {
-        foreach (['preview', 'apply', 'status', 'cancel'] as $action) {
+        foreach (['preview', 'apply', 'status', 'cancel', 'recent', 'undo'] as $action) {
             $this->request->post = false;
             $this->assertSame('method', $this->data($action)['error']);
             $this->request->post = true;
@@ -138,6 +159,8 @@ final class GovernanceBatchControllerTest extends TestCase
         $this->assertSame('oer-manager/admin/governance-batch/form', $view->getTemplate());
         $this->assertSame('valid', $view->getVariable('csrf'));
         $this->assertSame('admin/oer-manager-batch/preview', $view->getVariable('urls')['preview']);
+        $this->assertSame('admin/oer-manager-batch/recent', $view->getVariable('urls')['recent']);
+        $this->assertSame('admin/oer-manager-batch/undo', $view->getVariable('urls')['undo']);
     }
 
     public function testPreviewCountsAndReturnsAOneShotToken(): void
@@ -256,5 +279,140 @@ final class GovernanceBatchControllerTest extends TestCase
         $this->dispatcher->expects($this->once())->method('stop')->with(5);
 
         $this->assertTrue($this->data('cancel')['stopped']);
+    }
+
+    public function testRecentScopesToTheOwnerUnlessAllowedToUndoAny(): void
+    {
+        $this->recentRows = [
+            ['jobId' => 10, 'ownerId' => 3, 'ownerName' => 'Curator', 'started' => null, 'ended' => null,
+                'terms' => ['dcterms:license'], 'mode' => 'fill', 'planned' => 2, 'status' => 'completed',
+                'undo' => ['state' => 'none', 'jobId' => null]],
+            ['jobId' => 12, 'ownerId' => 9, 'ownerName' => 'Other', 'started' => null, 'ended' => null,
+                'terms' => [], 'mode' => 'replace', 'planned' => 5, 'status' => 'stopped',
+                'undo' => ['state' => 'done', 'jobId' => 20]],
+        ];
+
+        $batches = $this->data('recent')['batches'];
+        $this->assertSame([3], $this->recentOwnerAsked);
+        $this->assertSame('batch-10', $batches[0]['batch']);
+        $this->assertNull($batches[0]['owner']);
+        $this->assertSame('Other', $batches[1]['owner']);
+        $this->assertArrayNotHasKey('ownerId', $batches[0]);
+
+        $this->undoAny = true;
+        $this->data('recent');
+        $this->assertSame([null], $this->recentOwnerAsked);
+    }
+
+    public function testUndoRefusalsAreCodes(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'batchJobId' => 0];
+        $this->assertSame('id', $this->data('undo')['error']);
+
+        $this->params->post['batchJobId'] = 10;
+        $this->jobMissing = true;
+        $this->assertSame('not_found', $this->data('undo')['error']);
+        $this->jobMissing = false;
+
+        $this->jobOwner = 99;
+        $this->assertSame('not_found', $this->data('undo')['error']);
+        $this->jobOwner = 3;
+
+        $this->jobClass = \OERManager\Job\GovernanceBatchUndoJob::class;
+        $this->assertSame('not_batch', $this->data('undo')['error']);
+        $this->jobClass = \OERManager\Job\GovernanceBatchJob::class;
+
+        $this->jobStatus = 'in_progress';
+        $this->assertSame('running', $this->data('undo')['error']);
+        $this->jobStatus = 'completed';
+
+        $this->undoStates[10] = ['state' => 'running', 'jobId' => 20];
+        $this->assertSame('undo_running', $this->data('undo')['error']);
+    }
+
+    public function testUndoDispatchesForTheOwnerOrAnyoneAllowedToUndoAny(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'batchJobId' => 10];
+        $this->jobStatus = 'completed';
+        $this->dispatcher->expects($this->exactly(2))->method('dispatch')
+            ->with(\OERManager\Job\GovernanceBatchUndoJob::class, ['batchJobId' => 10, 'contributor' => 'Curator'])
+            ->willReturn(new \Omeka\Entity\Job());
+
+        $this->assertSame(1, $this->data('undo')['jobId']);
+
+        $this->jobOwner = 99;
+        $this->undoAny = true;
+        $this->undoStates[10] = ['state' => 'partial', 'jobId' => 20];
+        $this->assertSame(1, $this->data('undo')['jobId']);
+    }
+
+    public function testUndoOfADeadBatchDispatchesButALiveOneAnswersRunning(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'batchJobId' => 10];
+        $this->jobStatus = 'in_progress';
+        $this->jobStarted = '2026-09-30T09:00:00+00:00';
+
+        $this->jobDied = false;
+        $this->assertSame('running', $this->data('undo')['error']);
+
+        $this->jobDied = true;
+        $this->dispatcher->expects($this->once())->method('dispatch')
+            ->with(\OERManager\Job\GovernanceBatchUndoJob::class, ['batchJobId' => 10, 'contributor' => 'Curator'])
+            ->willReturn(new \Omeka\Entity\Job());
+        $this->assertSame(1, $this->data('undo')['jobId']);
+    }
+
+    public function testUndoDispatchFailureIsSanitised(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'batchJobId' => 10];
+        $this->jobStatus = 'completed';
+        $this->dispatcher->method('dispatch')->willThrowException(new \RuntimeException('secret'));
+
+        $this->assertSame('dispatch', $this->data('undo')['error']);
+    }
+
+    public function testStatusAndCancelServeAnUndoJobToItsOwnerOnly(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'jobId' => 5];
+        $this->jobClass = \OERManager\Job\GovernanceBatchUndoJob::class;
+        $this->states->write(5, ['kind' => 'governance-batch', 'status' => 'in_progress']);
+        $this->assertSame('not_batch', $this->data('status')['error']);
+
+        $this->states->write(5, ['kind' => 'governance-batch-undo', 'status' => 'in_progress', 'done' => 1, 'total' => 4]);
+        $this->assertSame(1, $this->data('status')['done']);
+
+        $this->dispatcher->expects($this->once())->method('stop')->with(5);
+        $this->assertTrue($this->data('cancel')['stopped']);
+
+        $this->jobOwner = 99;
+        $this->undoAny = true;
+        $this->assertSame('not_found', $this->data('status')['error']);
+        // F3: undoAny lets this user start an undo of someone else's batch, but
+        // it does not make the undo Job theirs to cancel; dispatcher->stop must
+        // never be called for it (the `expects($this->once())` above already
+        // used its one allowed call).
+        $this->assertSame('not_found', $this->data('cancel')['error']);
+    }
+
+    public function testStatusOfADeadTrackedJobEndsPollingWithJobDiedForBatchAndUndo(): void
+    {
+        $this->params->post = ['csrf' => 'valid', 'jobId' => 5];
+        $this->jobStatus = 'in_progress';
+        $this->jobStarted = '2026-09-30T09:00:00+00:00';
+        $this->states->write(5, ['kind' => 'governance-batch', 'status' => 'in_progress', 'done' => 1, 'total' => 4]);
+
+        $this->jobDied = false;
+        $this->assertSame(1, $this->data('status')['done']);
+
+        $this->jobDied = true;
+        $result = $this->data('status');
+        $this->assertSame('error', $result['status']);
+        $this->assertSame('job_died', $result['code']);
+
+        $this->jobClass = \OERManager\Job\GovernanceBatchUndoJob::class;
+        $this->states->write(5, ['kind' => 'governance-batch-undo', 'status' => 'in_progress', 'done' => 1, 'total' => 4]);
+        $undoResult = $this->data('status');
+        $this->assertSame('error', $undoResult['status']);
+        $this->assertSame('job_died', $undoResult['code']);
     }
 }

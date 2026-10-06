@@ -28,6 +28,41 @@
     --oer-rail-ok: #a9cdbc;
     --oer-rail-warn: #e8b25f;
     --oer-rail-bad: #d47b7b;
+
+    /*
+     * Tintes decorativos de las píldoras de materia (ADR-0014, addendum
+     * 2026-10-03). Ocho, asignados por SubjectTint::indexFor(). Ninguno usa el
+     * matiz de los estados (rojo, ámbar): agrupan, no avisan. La tinta del
+     * módulo sobre cada uno cumple AA (test/js/contrast.test.js).
+     */
+    --oer-tint-1: #d2e3f4;
+    --oer-tint-2: #d2f4ef;
+    --oer-tint-3: #d2f4dd;
+    --oer-tint-4: #e0d2f4;
+    --oer-tint-5: #f4d2f4;
+    --oer-tint-6: #d2edf4;
+    --oer-tint-7: #d2d5f4;
+    --oer-tint-8: #e6f4d2;
+    --oer-tint-1-edge: #97b8d8;
+    --oer-tint-2-edge: #97d8cf;
+    --oer-tint-3-edge: #97d8ad;
+    --oer-tint-4-edge: #b297d8;
+    --oer-tint-5-edge: #d897d8;
+    --oer-tint-6-edge: #97cbd8;
+    --oer-tint-7-edge: #979dd8;
+    --oer-tint-8-edge: #bdd897;
+
+    /*
+     * Escala de calor de Estadísticas (TASK-047, spec D4): un solo matiz
+     * azul, lejos del rojo de acción y del ámbar de aviso. El número se pinta
+     * siempre, así que el color es redundante (ADR-0014 regla 3). Niveles 1-3
+     * llevan la tinta del módulo, 4-5 blanco; ambos AA en contrast.test.js.
+     */
+    --oer-heat-1: #e4eef8;
+    --oer-heat-2: #c6daee;
+    --oer-heat-3: #9dbde0;
+    --oer-heat-4: #3d6c9c;
+    --oer-heat-5: #234870;
 }
 
 .oer-visually-hidden {
@@ -412,23 +447,28 @@
     gap: 8px;
 }
 
-/* La acción de editar deja de ocupar un renglón propio bajo cada título. */
+/* La acción de editar deja de ocupar un renglón propio bajo cada título.
+   Siempre visibles, también con puntero (RF-017): lo que vive aquí —la
+   insignia del flujo— tiene que verse al barrer la tabla, no al pasar por
+   encima de cada fila. */
 #oer-master-view-table .oer-title-cell .actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
     flex-shrink: 0;
     line-height: 20px;
 }
 
-@media (hover: hover) {
-    #oer-master-view-table .oer-title-cell .actions {
-        opacity: 0;
-        transition: opacity 120ms ease;
-    }
+/* Insignia del flujo (forma en oer-workflow-badge.css). «Propuesto» espera al
+   curador: es el estado que reclama su acción, y por eso lleva el acento
+   (ADR-0014 regla 2). «Rechazado» espera al autor, no al curador: va apagado. */
+#oer-master-view-table .oer-workflow-badge[data-status="proposed"] {
+    color: var(--oer-accent);
+}
 
-    #oer-master-view-table tr:hover .oer-title-cell .actions,
-    #oer-master-view-table .oer-title-cell:focus-within .actions {
-        opacity: 1;
-    }
+#oer-master-view-table .oer-workflow-badge[data-status="rejected"] {
+    color: var(--oer-muted);
 }
 
 /* ==========================================================================
@@ -917,12 +957,6 @@
     }
 }
 
-@media (prefers-reduced-motion: reduce) {
-    #oer-master-view-table .oer-title-cell .actions {
-        transition: none;
-    }
-}
-
 /* --- Celdas de gobernanza (TASK-028 rebanada 2) --- */
 
 /*
@@ -1014,6 +1048,115 @@
 .oer-anchor-none::before {
     content: "\2717";
     color: var(--oer-bad);
+}
+
+/*
+ * Píldora compuesta (ADR-0014, addendum 2026-10-03): la materia en su tinte y,
+ * a su lado, los cursos en la mitad blanca. El borde lleva el tono del tinte
+ * para que la mitad blanca siga leyéndose como parte de la misma píldora.
+ * Un nombre largo hace salto de línea dentro de su mitad; nunca se trunca.
+ */
+.oer-curricular-pill {
+    display: flex;
+    align-items: stretch;
+    width: fit-content;
+    max-width: 100%;
+    border: 1px solid var(--oer-rule);
+    border-radius: 0.8em;
+    overflow: hidden;
+    background-color: #fff;
+}
+
+.oer-curricular-pill .oer-curricular-subject {
+    display: block;
+    flex: 1 1 auto;
+    min-width: min-content;
+    padding: 0.1em 0.6em;
+    color: var(--oer-ink);
+    overflow-wrap: break-word;
+}
+
+.oer-curricular-pill .oer-curricular-stage {
+    display: block;
+    flex: 0 1 auto;
+    min-width: 0;
+    padding: 0.1em 0.6em;
+    align-self: center;
+}
+
+.oer-curricular-pill.oer-tint-none .oer-curricular-subject {
+    background-color: transparent;
+    font-style: italic;
+}
+
+@media print {
+    .oer-curricular-pill .oer-curricular-subject {
+        border-right: 1px solid var(--oer-rule);
+    }
+}
+
+.oer-curricular-pill.oer-tint-1 {
+    border-color: var(--oer-tint-1-edge);
+}
+
+.oer-curricular-pill.oer-tint-1 .oer-curricular-subject {
+    background-color: var(--oer-tint-1);
+}
+
+.oer-curricular-pill.oer-tint-2 {
+    border-color: var(--oer-tint-2-edge);
+}
+
+.oer-curricular-pill.oer-tint-2 .oer-curricular-subject {
+    background-color: var(--oer-tint-2);
+}
+
+.oer-curricular-pill.oer-tint-3 {
+    border-color: var(--oer-tint-3-edge);
+}
+
+.oer-curricular-pill.oer-tint-3 .oer-curricular-subject {
+    background-color: var(--oer-tint-3);
+}
+
+.oer-curricular-pill.oer-tint-4 {
+    border-color: var(--oer-tint-4-edge);
+}
+
+.oer-curricular-pill.oer-tint-4 .oer-curricular-subject {
+    background-color: var(--oer-tint-4);
+}
+
+.oer-curricular-pill.oer-tint-5 {
+    border-color: var(--oer-tint-5-edge);
+}
+
+.oer-curricular-pill.oer-tint-5 .oer-curricular-subject {
+    background-color: var(--oer-tint-5);
+}
+
+.oer-curricular-pill.oer-tint-6 {
+    border-color: var(--oer-tint-6-edge);
+}
+
+.oer-curricular-pill.oer-tint-6 .oer-curricular-subject {
+    background-color: var(--oer-tint-6);
+}
+
+.oer-curricular-pill.oer-tint-7 {
+    border-color: var(--oer-tint-7-edge);
+}
+
+.oer-curricular-pill.oer-tint-7 .oer-curricular-subject {
+    background-color: var(--oer-tint-7);
+}
+
+.oer-curricular-pill.oer-tint-8 {
+    border-color: var(--oer-tint-8-edge);
+}
+
+.oer-curricular-pill.oer-tint-8 .oer-curricular-subject {
+    background-color: var(--oer-tint-8);
 }
 
 /*
@@ -1616,3 +1759,12 @@ body.oer-master-view.sidebar-open footer {
 .oer-batch-governance .oer-batch-preview table { width: 100%; }
 .oer-batch-governance .oer-batch-overwrite { color: var(--oer-warn, #955c0d); }
 .oer-batch-governance progress { width: 100%; }
+.oer-batch-governance .oer-batch-recent { margin-top: 1.5em; }
+.oer-batch-governance .oer-batch-recent summary { cursor: pointer; font-weight: bold; }
+.oer-batch-governance .oer-batch-recent-list { list-style: none; margin: .5em 0 0; padding: 0; }
+.oer-batch-governance .oer-batch-recent-row { padding: .5em 0; border-top: 1px solid var(--oer-border, #ddd); }
+.oer-batch-governance .oer-batch-recent-row p { margin: 0; }
+.oer-batch-governance .oer-batch-recent-meta { font-size: .9em; }
+.oer-batch-governance .oer-batch-undo-badge { display: inline-block; margin: .25em .5em .25em 0; font-size: .9em; }
+.oer-batch-governance .oer-batch-undo-partial { color: var(--oer-warn, #955c0d); }
+.oer-batch-governance .oer-batch-undo-confirm { margin-top: .75em; padding: .5em .75em; background: var(--oer-surface, #f6f6f6); }

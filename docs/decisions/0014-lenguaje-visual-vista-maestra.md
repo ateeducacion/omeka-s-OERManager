@@ -86,6 +86,27 @@ Composición concreta de cada pantalla, anchuras, qué columnas existen y en qu�
 - `docs/superpowers/specs/2026-07-27-campos-ui-design.md` §4 (columnas de la v2, origen de las cinco codificaciones de estado nuevas).
 - Decisión del propietario sobre escala de producción y sobre la columna de alineamiento, 2026-07-29 (ver ADR-0013 §Afinado).
 
+## Addendum (2026-10-03, TASK-046): decorative tint for curricular pills
+
+**Owner decision (2026-10-03):** the «Anclaje curricular» cell shows each subject→courses pair as a
+**compound pill** — the subject in a soft tint, its abbreviated courses in a white half of the same pill
+(option B of the TASK-046 design proposal, <https://claude.ai/artifact/UneygiVNrjdNWAQY16eLeJ>). This adds
+a use of colour the decision above did not foresee: colour as a **grouping aid** that carries no state.
+It is admitted under these limits, so rules 2 and 3 keep holding:
+
+1. **No state hue.** The tints never use the red of rule 2 nor the amber of the warning ink; they are
+   light, low-chroma fills under the module's ink, with text contrast ≥ 4.5:1 (NFR-006).
+2. **The text carries the meaning.** A tint only helps the eye group identical subjects down a column;
+   the subject name is always printed. Two subjects may share a tint (a small fixed palette, assigned
+   stably per subject — the exact palette and assignment rule are fixed in TASK-046's spec); nothing
+   may be read from the colour alone.
+3. **States keep their shape and stay outside the pills.** ⚠ incomplete, ✗ unanchored, ⚠ literal and the
+   «Sin materia» orphan courses remain shape-coded marks (rule 3), never a pill tint.
+4. **A correct anchor still adds no mark.** The pills show content, not a status; the ✓ removed on
+   2026-08-10 does not come back.
+
+The pending WCAG AA measurement of this ADR now also covers the pill tints, and is part of TASK-046.
+
 ---
 
 *Registro append-only: los ADR no se borran ni se reescriben. Para cambiar una decisión, crear un ADR nuevo y marcar este como «Reemplazado por ADR-NNNN». Numeración correlativa de cuatro dígitos; no se reutiliza.*

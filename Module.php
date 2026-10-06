@@ -143,7 +143,17 @@ class Module extends AbstractModule implements InitProviderInterface
         $acl->allow(
             ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\GovernanceBatchController::class],
-            ['form', 'preview', 'apply', 'status', 'cancel']
+            ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo']
+        );
+
+        // Deshacer un lote ajeno (TASK-028 slice 5a): solo site_admin, para
+        // cuando el autor del lote no está. `global_admin` ya lo tiene todo.
+        // El Job de deshacer corre como quien lo lanza: el ACL nativo de cada
+        // item sigue decidiendo.
+        $acl->allow(
+            ['site_admin'],
+            [Controller\Admin\GovernanceBatchController::class],
+            [Controller\Admin\GovernanceBatchController::PRIVILEGE_UNDO_ANY]
         );
     }
 
@@ -312,8 +322,9 @@ class Module extends AbstractModule implements InitProviderInterface
     }
 
     /**
-     * Botón de propuesta/rechazo/publicación (RF-016). Solo se pinta para
-     * items `lrmi:LearningResource` — el flujo no aplica a nada más.
+     * Insignia de estado (RF-017) y botón de propuesta/rechazo/publicación
+     * (RF-016). Solo se pinta para items `lrmi:LearningResource` — el flujo
+     * no aplica a nada más.
      * `view.show.page_actions` no captura el retorno del listener (ver la
      * nota de Task 5 del plan): hay que hacer `echo` directamente.
      */
@@ -347,6 +358,20 @@ class Module extends AbstractModule implements InitProviderInterface
         $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
         $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
 
+        /** @var \Laminas\View\Renderer\PhpRenderer $view */
+        $view = $event->getTarget();
+
+        // Insignia Propuesto/Rechazado (RF-017, TASK-044). Va antes del
+        // corte por permisos: el autor de un REA ya propuesto no tiene
+        // ninguna acción, y es justo quien tiene que ver que espera
+        // validación. La vista maestra está cerrada a `author`; esta página
+        // es la suya.
+        $badge = Service\Workflow\WorkflowStatus::badge($status);
+        if (null !== $badge) {
+            $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
+            echo $view->partial('oer-manager/common/workflow-badge', ['badge' => $badge]);
+        }
+
         if (!$canPropose && !$canReject && !$canPublish) {
             return;
         }
@@ -357,8 +382,6 @@ class Module extends AbstractModule implements InitProviderInterface
             'timeout' => 3600,
         ]);
 
-        /** @var \Laminas\View\Renderer\PhpRenderer $view */
-        $view = $event->getTarget();
         echo $view->partial('oer-manager/common/workflow-actions', [
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),

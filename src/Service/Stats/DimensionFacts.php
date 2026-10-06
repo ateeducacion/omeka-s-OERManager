@@ -32,7 +32,7 @@ final class DimensionFacts
 
     /**
      * @param ItemRepresentation[] $items
-     * @return array<int, array{etapa:int[],materia:int[],eje:int[],proyecto:int[],licencia:?string}>
+     * @return array<int, array{etapa:int[],materia:int[],eje:int[],proyecto:int[],licencia:?string,year:?int}>
      */
     public function extract(array $items): array
     {
@@ -60,9 +60,21 @@ final class DimensionFacts
             if ('' === $row['licencia']) {
                 $row['licencia'] = null;
             }
+            $row['year'] = self::yearOf($item);
             $facts[(int) $item->id()] = $row;
         }
         return $facts;
+    }
+
+    /**
+     * Creation year for the year filter (TASK-047, spec D6): the native
+     * `o:created`, present on every item. `dcterms:created` is on 0 of the 20
+     * container REA, so it is not read. Note it is the catalogue entry date.
+     */
+    private static function yearOf(ItemRepresentation $item): ?int
+    {
+        $created = $item->created();
+        return $created instanceof \DateTimeInterface ? (int) $created->format('Y') : null;
     }
 
     /**

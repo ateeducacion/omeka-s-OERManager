@@ -62,7 +62,7 @@ return [
                     $container->get(Service\Stats\CompletenessAggregator::class),
                     $container->get(Service\Stats\CsvExport::class),
                     $container->get(Service\IntegrityChecker::class),
-                    $container->get('Omeka\ApiManager')
+                    $container->get(Service\Stats\CurriculumOutline::class)
                 );
             },
             Controller\Admin\GovernanceBatchController::class => function ($container) {
@@ -73,7 +73,8 @@ return [
                     $container->get('Omeka\Job\Dispatcher'),
                     $container->get(Service\Ai\ProposalStore::class),
                     $container->get('Omeka\Logger'),
-                    $container->get(Service\Governance\BatchJobLookup::class)
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    $container->get('Omeka\Acl')
                 );
             },
         ],
@@ -111,6 +112,13 @@ return [
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {
                 return new Service\Stats\CatalogSnapshot($container->get('Omeka\ApiManager'));
+            },
+            // TASK-047: stages, courses and subjects of the curriculum, read-only.
+            Service\Stats\CurriculumOutline::class => function ($container) {
+                return new Service\Stats\CurriculumOutline(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
             },
             // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
             // CustomVocab: no se declara en module.ini; si no está, degrada.
