@@ -16,7 +16,7 @@ Project requirements and decisions are maintained in [docs](docs/).
 Install the locked dependencies with `composer install`, then run `make lint`,
 `make test`, and `make test-js`.
 
-After `composer install`, `docker compose up` starts Omeka S on http://localhost:8080
+After `composer install`, `make up` (or `docker compose up`) starts Omeka S on http://localhost:8080
 (admin `admin@example.com` / `PLEASE_CHANGEME`) with this repository mounted as `modules/OERManager`.
 
 With PCOV installed, generate the complete PHP coverage report and enforce the
