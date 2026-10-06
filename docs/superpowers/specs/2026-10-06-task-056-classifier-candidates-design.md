@@ -2,7 +2,7 @@
 
 Approved in conversation with the owner on 2026-10-06, section by section (approach B). Evidence:
 [analysis of four eXeLearning REA](2026-10-06-ai-cataloguer-elpx-analysis.md) §3 and the TASK-057 baseline.
-Refines [ADR-0010](../../decisions/0010-anclaje-bottom-up.md) (an addendum is part of this task); does not
+Refines [ADR-0010](../../decisions/0010-anclaje-curricular-bottom-up.md) (an addendum is part of this task); does not
 change the RDF mapping (ADR-0004) nor the graph (ADR-0009).
 
 ## 1. Problem and success criteria
