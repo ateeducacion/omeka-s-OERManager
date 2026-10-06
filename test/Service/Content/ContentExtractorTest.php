@@ -436,6 +436,287 @@ final class ContentExtractorTest extends TestCase
         $this->assertStringNotContainsString('!important', $content->text());
     }
 
+    // --- Paquetes eXeLearning (TASK-053, issue #59) ---
+
+    public function testElpxContentXmlIsExtractedWithoutRenderedDuplicate(): void
+    {
+        $elpx = $this->tempZip('curso.elpx', [
+            'content.xml' => self::odeXml(
+                [
+                    'pp_title' => 'La fotosíntesis en las plantas',
+                    'PP_DESCRIPTION' => 'Unidad sobre la nutrición vegetal para Biología.',
+                    'pp_lang' => 'es',
+                    'pp_extraHeadContent' => '<meta name="generator" content="eXeLearning">',
+                ],
+                [self::odePage('p1', '', 'Introducción', [
+                    self::odeComponent('<p>Las plantas fabrican su alimento con la luz.</p>'),
+                ])]
+            ),
+            'index.html' => '<p>RENDERED_DUPLICATE las plantas fabrican</p>',
+            'html/introduccion.html' => '<p>RENDERED_DUPLICATE otra página</p>',
+            'theme/config.xml' => '<theme><name>THEME_NOISE base theme</name></theme>',
+            'idevices/text/text.html' => '<p>IDEVICE_TEMPLATE_NOISE plantilla</p>',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $elpx]]);
+        $text = $content->text();
+        $this->assertStringContainsString('La fotosíntesis en las plantas', $text);
+        $this->assertStringContainsString('nutrición vegetal para Biología', $text);
+        $this->assertStringContainsString('Introducción', $text);
+        $this->assertStringContainsString('Las plantas fabrican su alimento con la luz.', $text);
+        $this->assertStringNotContainsString('RENDERED_DUPLICATE', $text);
+        $this->assertStringNotContainsString('THEME_NOISE', $text);
+        $this->assertStringNotContainsString('IDEVICE_TEMPLATE_NOISE', $text);
+        $this->assertStringNotContainsString('generator', $text);
+        $this->assertStringNotContainsString('CDATA', $text);
+        $this->assertContains('curso.elpx', $content->sources());
+        $this->assertArrayNotHasKey('curso.elpx', $content->skipped());
+    }
+
+    public function testElpxGameDataInEveryEncodingAndVideoJsonAreDecoded(): void
+    {
+        $plain = json_encode(['questionsGame' => [['quextion' => '¿Qué orgánulo realiza la fotosíntesis?']]]);
+        $uri = rawurlencode((string) json_encode(['wordsGame' => [['definition' => 'Pigmento verde de las hojas']]]));
+        $xor = self::exeXorEscape((string) json_encode(
+            ['questionsGame' => [['quextion' => '¿Dónde ocurre la fase luminosa?']]],
+            JSON_UNESCAPED_UNICODE
+        ));
+        $video = json_encode(['slides' => [['type' => 'text', 'text' => '<p>¿Por qué es importante el suelo?</p>']]]);
+        $elpx = $this->tempZip('juegos.elpx', ['content.xml' => self::odeXml([], [
+            self::odePage('p1', '', 'Juegos', [
+                self::odeComponent('<div class="trivial-IDevice"><div class="trivial-DataGame js-hidden">'
+                    . $plain . '</div></div>'),
+                self::odeComponent('<div class="sopa-DataGame js-hidden">' . $uri . '</div>'),
+                self::odeComponent('<div class="quext-IDevice"><div class="quext-version js-hidden">2</div>'
+                    . '<div class="quext-DataGame js-hidden">' . $xor . '</div></div>'),
+                self::odeComponent('<div class="exe-interactive-video"><script id="exe-interactive-video-contents"'
+                    . ' type="application/json">' . $video . '</script></div>'),
+            ]),
+        ])]);
+        $text = (new ContentExtractor())->extract('', [['path' => $elpx]])->text();
+        $this->assertStringContainsString('¿Qué orgánulo realiza la fotosíntesis?', $text);
+        $this->assertStringContainsString('Pigmento verde de las hojas', $text);
+        $this->assertStringContainsString('¿Dónde ocurre la fase luminosa?', $text);
+        $this->assertStringContainsString('¿Por qué es importante el suelo?', $text);
+        $this->assertStringNotContainsString('%7B', $text);
+        $this->assertStringNotContainsString('%u', $text);
+        $this->assertStringNotContainsString('questionsGame', $text);
+    }
+
+    public function testElpxSkipsHiddenContentButKeepsTeacherOnly(): void
+    {
+        $elpx = $this->tempZip('flags.elpx', ['content.xml' => self::odeXml([], [
+            self::odePage('p1', '', 'Página visible', [
+                self::odeComponent('<p>Contenido visible para el alumnado.</p>'),
+                self::odeComponent('<p>HIDDEN_IDEVICE borrador oculto.</p>', '', ['visibility' => 'false']),
+                self::odeComponent('<p>Solución comentada para el docente.</p>', '', ['teacherOnly' => 'true']),
+            ]),
+            self::odePage('p2', '', 'HIDDEN_PAGE título', [
+                self::odeComponent('<p>HIDDEN_PAGE_TEXT texto de página oculta.</p>'),
+            ], ['visibility' => 'false']),
+            self::odePage('p3', 'p2', 'HIDDEN_CHILD subpágina', [
+                self::odeComponent('<p>HIDDEN_CHILD_TEXT hija de página oculta.</p>'),
+            ]),
+            self::odePage('p4', '', 'Bloque oculto', [
+                self::odeComponent('<p>HIDDEN_BLOCK texto del bloque oculto.</p>'),
+            ], [], ['visibility' => 'false']),
+        ])]);
+        $text = (new ContentExtractor())->extract('', [['path' => $elpx]])->text();
+        $this->assertStringContainsString('Contenido visible para el alumnado.', $text);
+        $this->assertStringContainsString('Solución comentada para el docente.', $text);
+        $this->assertStringNotContainsString('HIDDEN_', $text);
+    }
+
+    public function testElpxPagesFollowTheTreeOrderAndRepeatedTextIsKeptOnce(): void
+    {
+        $elpx = $this->tempZip('orden.elpx', ['content.xml' => self::odeXml([], [
+            self::odePage('b', '', 'Segunda página', [self::odeComponent('<p>Texto repetido en dos sitios.</p>')], [], [], 1),
+            self::odePage('a', '', 'Primera página', [self::odeComponent('<p>Texto repetido en dos sitios.</p>')], [], [], 0),
+            self::odePage('a1', 'a', 'Subpágina de la primera', [], [], [], 0),
+        ])]);
+        $text = (new ContentExtractor())->extract('', [['path' => $elpx]])->text();
+        $first = strpos($text, 'Primera página');
+        $child = strpos($text, 'Subpágina de la primera');
+        $second = strpos($text, 'Segunda página');
+        $this->assertNotFalse($first);
+        $this->assertTrue($first < $child && $child < $second, $text);
+        $this->assertSame(1, substr_count($text, 'Texto repetido en dos sitios.'));
+    }
+
+    public function testElpxJsonPropertiesAreUsedOnlyWhenHtmlViewIsEmpty(): void
+    {
+        $json = (string) json_encode([
+            'ideviceId' => '20251217061742582ZHV',
+            'textTextarea' => '<p>Texto guardado solo en el estado del editor.</p>',
+        ]);
+        $dup = (string) json_encode(['textTextarea' => '<p>JSON_DUPLICATE del htmlView.</p>']);
+        $elpx = $this->tempZip('json.elpx', ['content.xml' => self::odeXml([], [
+            self::odePage('p1', '', 'Página', [
+                self::odeComponent('', $json),
+                self::odeComponent('<p>Texto del htmlView.</p>', $dup),
+            ]),
+        ])]);
+        $text = (new ContentExtractor())->extract('', [['path' => $elpx]])->text();
+        $this->assertStringContainsString('Texto guardado solo en el estado del editor.', $text);
+        $this->assertStringContainsString('Texto del htmlView.', $text);
+        $this->assertStringNotContainsString('JSON_DUPLICATE', $text);
+        $this->assertStringNotContainsString('20251217061742582ZHV', $text);
+    }
+
+    public function testZipOrScormWithOdeContentXmlTakesTheStructuredPath(): void
+    {
+        $scorm = $this->tempZip('export_scorm.zip', [
+            'imsmanifest.xml' => '<manifest><title>MANIFEST_TEXT manifiesto</title></manifest>',
+            'index.html' => '<p>RENDERED_DUPLICATE página</p>',
+            'content.xml' => self::odeXml(['pp_title' => 'Un héroe medieval'], [
+                self::odePage('p1', '', 'El Cid', [self::odeComponent('<p>Rodrigo Díaz de Vivar fue un caballero.</p>')]),
+            ]),
+            'original.elpx' => 'nested package bytes',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $scorm]]);
+        $this->assertStringContainsString('Rodrigo Díaz de Vivar fue un caballero.', $content->text());
+        $this->assertStringContainsString('Un héroe medieval', $content->text());
+        $this->assertStringNotContainsString('RENDERED_DUPLICATE', $content->text());
+        $this->assertStringNotContainsString('MANIFEST_TEXT', $content->text());
+    }
+
+    public function testExportWithBareOdeRootTakesTheStructuredPath(): void
+    {
+        // Las exportaciones reales (web, SCORM, IMS e incluso .elpx exportado)
+        // escriben `<ode>` sin espacio de nombres; solo el guardado del editor lo
+        // declara (comprobado en test/fixtures/export de eXeLearning, 2026-10-05).
+        $xml = str_replace(
+            '<ode xmlns="http://www.intef.es/xsd/ode" version="2.0">',
+            '<ode>',
+            self::odeXml(['pp_title' => 'Un héroe medieval'], [
+                self::odePage('p1', '', 'El Cid', [self::odeComponent('<p>Rodrigo Díaz de Vivar fue un caballero.</p>')]),
+            ])
+        );
+        $scorm = $this->tempZip('cid_scorm.zip', [
+            'content.xml' => $xml,
+            'html/el-cid.html' => '<p>RENDERED_DUPLICATE página</p>',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $scorm]]);
+        $this->assertStringContainsString('Título: Un héroe medieval', $content->text());
+        $this->assertStringContainsString('Rodrigo Díaz de Vivar fue un caballero.', $content->text());
+        $this->assertStringNotContainsString('RENDERED_DUPLICATE', $content->text());
+    }
+
+    public function testBareOdeRootWithoutOdeStructureKeepsTheGenericPath(): void
+    {
+        $zip = $this->tempZip('otro.zip', [
+            'content.xml' => '<ode><nota>Un documento llamado ode que no es de eXeLearning.</nota></ode>',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('Un documento llamado ode que no es de eXeLearning.', $content->text());
+    }
+
+    public function testZipWithForeignContentXmlKeepsTheGenericPath(): void
+    {
+        $zip = $this->tempZip('otro.zip', [
+            'content.xml' => '<doc><p>Un content.xml cualquiera sin espacio ODE.</p></doc>',
+            'leccion.html' => '<p>La lección se sigue leyendo como hoy.</p>',
+            'pkg/original.elpx' => 'nested package bytes',
+        ]);
+        $content = (new ContentExtractor())->extract('', [['path' => $zip]]);
+        $this->assertStringContainsString('Un content.xml cualquiera sin espacio ODE.', $content->text());
+        $this->assertStringContainsString('La lección se sigue leyendo como hoy.', $content->text());
+        $this->assertSame('nested_zip', $content->skipped()['pkg/original.elpx']);
+        $this->assertArrayNotHasKey('otro.zip', $content->skipped());
+    }
+
+    public function testElpxWithoutContentXmlFallsBackToRenderedPagesWithoutNoise(): void
+    {
+        $entries = [];
+        for ($i = 0; $i < 20; $i++) {
+            $entries["theme/icons/icon$i.svg"] = '<svg/>';
+            $entries["idevices/text/tpl$i.html"] = '<p>IDEVICE_TEMPLATE_NOISE plantilla</p>';
+            $entries["content/css/c$i.css"] = '.x{}';
+        }
+        $entries['theme/config.xml'] = '<theme>THEME_NOISE</theme>';
+        $entries['index.html'] = '<p>Portada del recurso sobre los volcanes.</p>';
+        $entries['html/tipos.html'] = '<p>Tipos de erupciones volcánicas.</p>';
+        $elpx = $this->tempZip('sin-xml.elpx', $entries);
+        $content = (new ContentExtractor(['max_zip_entries' => 5]))->extract('', [['path' => $elpx]]);
+        $this->assertStringContainsString('Portada del recurso sobre los volcanes.', $content->text());
+        $this->assertStringContainsString('Tipos de erupciones volcánicas.', $content->text());
+        $this->assertStringNotContainsString('NOISE', $content->text());
+        $this->assertSame('elpx_content_missing', $content->skipped()['sin-xml.elpx']);
+    }
+
+    public function testInvalidOrNonOdeContentXmlInElpxIsReportedAndFallsBack(): void
+    {
+        $broken = $this->tempZip('roto.elpx', [
+            'content.xml' => '<ode xmlns="http://www.intef.es/xsd/ode"><odeProperties>',
+            'index.html' => '<p>Página renderizada de respaldo.</p>',
+        ]);
+        $foreign = $this->tempZip('ajeno.elpx', ['content.xml' => '<doc>Otro formato</doc>']);
+        $content = (new ContentExtractor())->extract('', [['path' => $broken], ['path' => $foreign]]);
+        $this->assertStringContainsString('Página renderizada de respaldo.', $content->text());
+        $this->assertSame('elpx_content_invalid', $content->skipped()['roto.elpx']);
+        $this->assertSame('elpx_content_invalid', $content->skipped()['ajeno.elpx']);
+    }
+
+    public function testCorruptElpxIsSkippedWithoutFailingTheOtherMedia(): void
+    {
+        $elpx = $this->tempFile('corrupto.elpx', 'this is not a zip archive');
+        $txt = $this->tempFile('nota.txt', 'La nota acompañante sigue llegando.');
+        $content = (new ContentExtractor())->extract('meta', [['path' => $elpx], ['path' => $txt]]);
+        $this->assertSame('zip_unreadable', $content->skipped()['corrupto.elpx']);
+        $this->assertStringContainsString('La nota acompañante sigue llegando.', $content->text());
+    }
+
+    public function testElpxOnPlatformWithoutZipArchiveIsReportedAsUnsupported(): void
+    {
+        $elpx = $this->tempZip('curso.elpx', ['content.xml' => self::odeXml([], [])]);
+        $content = (new ContentExtractor(['zip_supported' => false]))->extract('', [['path' => $elpx]]);
+        $this->assertSame('zip_unsupported', $content->skipped()['curso.elpx']);
+    }
+
+    public function testElpxContentXmlDeclaringEntitiesIsRejected(): void
+    {
+        $secret = $this->tempFile('secret.txt', 'TOP_SECRET_HOST_FILE');
+        $xml = '<?xml version="1.0"?><!DOCTYPE ode [<!ENTITY ext SYSTEM "file://' . $secret . '">'
+            . '<!ENTITY lol "LOL_EXPANDED">]>'
+            . '<ode xmlns="http://www.intef.es/xsd/ode"><odeProperties><odeProperty><key>pp_title</key>'
+            . '<value>&ext; &lol;</value></odeProperty></odeProperties></ode>';
+        $elpx = $this->tempZip('xxe.elpx', ['content.xml' => $xml]);
+        $content = (new ContentExtractor())->extract('', [['path' => $elpx]]);
+        $this->assertStringNotContainsString('TOP_SECRET_HOST_FILE', $content->text());
+        $this->assertStringNotContainsString('LOL_EXPANDED', $content->text());
+        $this->assertSame('elpx_content_invalid', $content->skipped()['xxe.elpx']);
+    }
+
+    public function testElpxContentXmlObeysTheEntrySizeCap(): void
+    {
+        $elpx = $this->tempZip('enorme.elpx', ['content.xml' => self::odeXml([], [
+            self::odePage('p1', '', 'Página', [self::odeComponent('<p>' . str_repeat('Texto largo ', 200) . '</p>')]),
+        ])]);
+        $content = (new ContentExtractor(['max_entry_bytes' => 512]))->extract('', [['path' => $elpx]]);
+        $this->assertSame('entry_too_large', $content->skipped()['content.xml']);
+        $this->assertStringNotContainsString('Texto largo', $content->text());
+    }
+
+    public function testElpxResourcesWithTextAreReadAndOtherAssetsIgnored(): void
+    {
+        $entries = ['content.xml' => self::odeXml([], [
+            self::odePage('p1', '', 'Página', [self::odeComponent('<p>Texto de la página.</p>')]),
+        ])];
+        for ($i = 0; $i < 10; $i++) {
+            $entries["libs/vendor$i.js"] = 'vendor';
+            $entries["content/img/logo$i.png"] = 'png';
+            // Imágenes del autor (el Manual real lleva ~340): sin texto que leer,
+            // no deben agotar la cuota antes de llegar a la guía.
+            $entries["content/resources/img$i.png"] = 'png';
+        }
+        $entries['content/resources/guia.txt'] = 'Guía didáctica adjunta al paquete.';
+        $entries['content/resources/foto.jpg'] = 'jpg bytes';
+        $elpx = $this->tempZip('recursos.elpx', $entries);
+        $content = (new ContentExtractor(['max_zip_entries' => 3]))->extract('', [['path' => $elpx]]);
+        $this->assertStringContainsString('Guía didáctica adjunta al paquete.', $content->text());
+        $this->assertStringContainsString('Texto de la página.', $content->text());
+        $this->assertSame('unsupported:jpg', $content->skipped()['content/resources/foto.jpg']);
+    }
+
     // --- helpers ---
 
     private function tempFile(string $name, string $contents): string
@@ -456,6 +737,92 @@ final class ContentExtractorTest extends TestCase
         }
         $za->close();
         return $path;
+    }
+
+    /**
+     * `content.xml` mínimo de eXeLearning (ODE 2.0) con htmlView/jsonProperties
+     * en CDATA, como en las exportaciones reales.
+     *
+     * @param array<string,string> $properties
+     * @param string[] $pages
+     */
+    private static function odeXml(array $properties, array $pages): string
+    {
+        $props = '';
+        foreach ($properties as $key => $value) {
+            $props .= '<odeProperty><key>' . $key . '</key><value>' . htmlspecialchars($value) . '</value></odeProperty>';
+        }
+        return '<?xml version="1.0" encoding="UTF-8"?>' . "\n"
+            . '<!DOCTYPE ode SYSTEM "content.dtd">' . "\n"
+            . '<ode xmlns="http://www.intef.es/xsd/ode" version="2.0">'
+            . '<odeProperties>' . $props . '</odeProperties>'
+            . '<odeNavStructures>' . implode('', $pages) . '</odeNavStructures></ode>';
+    }
+
+    /**
+     * @param string[] $components
+     * @param array<string,string> $pageProps
+     * @param array<string,string> $blockProps
+     */
+    private static function odePage(
+        string $id,
+        string $parent,
+        string $name,
+        array $components,
+        array $pageProps = [],
+        array $blockProps = [],
+        int $order = 0
+    ): string {
+        return '<odeNavStructure><odePageId>' . $id . '</odePageId><odeParentPageId>' . $parent
+            . '</odeParentPageId><pageName>' . htmlspecialchars($name) . '</pageName>'
+            . '<odeNavStructureOrder>' . $order . '</odeNavStructureOrder>'
+            . self::odeProps('odeNavStructure', $pageProps)
+            . '<odePagStructures><odePagStructure><odeBlockId>b-' . $id . '</odeBlockId><blockName></blockName>'
+            . '<odePagStructureOrder>1</odePagStructureOrder>' . self::odeProps('odePagStructure', $blockProps)
+            . '<odeComponents>' . implode('', $components) . '</odeComponents>'
+            . '</odePagStructure></odePagStructures></odeNavStructure>';
+    }
+
+    /** @param array<string,string> $props */
+    private static function odeComponent(string $html, string $json = '', array $props = []): string
+    {
+        return '<odeComponent><odeIdeviceTypeName>text</odeIdeviceTypeName>'
+            . '<htmlView><![CDATA[' . $html . ']]></htmlView>'
+            . '<jsonProperties><![CDATA[' . $json . ']]></jsonProperties>'
+            . '<odeComponentsOrder>1</odeComponentsOrder>' . self::odeProps('odeComponents', $props)
+            . '</odeComponent>';
+    }
+
+    /** @param array<string,string> $props */
+    private static function odeProps(string $prefix, array $props): string
+    {
+        $out = '';
+        foreach ($props + ['visibility' => 'true', 'teacherOnly' => 'false'] as $key => $value) {
+            $out .= '<' . $prefix . 'Property><key>' . $key . '</key><value>' . $value . '</value></'
+                . $prefix . 'Property>';
+        }
+        return '<' . $prefix . 'Properties>' . $out . '</' . $prefix . 'Properties>';
+    }
+
+    /**
+     * Codificación ofuscada de los juegos de eXeLearning: cada unidad UTF-16
+     * XOR 146 y después `escape()` de JavaScript (%XX / %uXXXX).
+     */
+    private static function exeXorEscape(string $json): string
+    {
+        $out = '';
+        foreach (mb_str_split($json) as $char) {
+            $code = mb_ord($char) ^ 146;
+            $plain = mb_chr($code);
+            if (1 === preg_match('#^[A-Za-z0-9@*_+./-]$#', $plain)) {
+                $out .= $plain;
+            } elseif ($code < 256) {
+                $out .= sprintf('%%%02X', $code);
+            } else {
+                $out .= sprintf('%%u%04X', $code);
+            }
+        }
+        return $out;
     }
 
     /** PDF mínimo con un flujo de texto que pdfparser sabe extraer. */

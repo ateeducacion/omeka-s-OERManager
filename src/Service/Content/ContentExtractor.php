@@ -61,6 +61,27 @@ final class ContentExtractor
             'ckeditor', 'tinymce', 'node_modules', 'vendor', 'plugins',
             'samples', 'fonts', 'font', 'lib', 'libs', '.git',
         ],
+        // Ruido propio de un .elpx sin content.xml legible (TASK-053): tema,
+        // plantillas de iDevice e iconos. Solo se añade a los .elpx: en un ZIP
+        // cualquiera `css/` o `img/` pueden ser del recurso.
+        'elpx_noise_path_segments' => ['theme', 'idevices', 'css', 'img', 'custom'],
+    ];
+
+    /** Espacio de nombres de `content.xml` de eXeLearning (ODE 2.0). */
+    private const ODE_NS = 'http://www.intef.es/xsd/ode';
+
+    /** Clave XOR de los juegos ofuscados de eXeLearning (`escape()` + XOR). */
+    private const EXE_GAME_XOR_KEY = 146;
+
+    /** Propiedades del paquete que se pasan como contexto, con su etiqueta. */
+    private const ODE_PROPERTIES = [
+        'pp_title' => 'Título',
+        'pp_subtitle' => 'Subtítulo',
+        'pp_description' => 'Descripción',
+        'pp_author' => 'Autoría',
+        'pp_lang' => 'Idioma',
+        'pp_license' => 'Licencia',
+        'pp_keywords' => 'Palabras clave',
     ];
 
     /** @var array<string,mixed> */
@@ -134,7 +155,7 @@ final class ContentExtractor
         }
         return match ($ext) {
             'pdf' => $this->asPieces($this->extractPdfFile($path, $name)),
-            'zip' => $this->extractZip($path, $name),
+            'zip', 'elpx' => $this->extractZip($path, $name),
             'json' => $this->asPieces($this->extractJsonFile($path, $name)),
             'txt', 'html', 'htm', 'xml' => $this->asPieces($this->readTextFile($path, $ext)),
             default => $this->skipReturn($name, 'unsupported:' . $ext),
@@ -357,6 +378,12 @@ final class ContentExtractor
      * límites de seguridad. Devuelve una pieza de texto por entrada whitelisted
      * que aportó contenido (el reparto de presupuesto es por pieza).
      *
+     * Un paquete eXeLearning (`.elpx`, o un `.zip`/SCORM/IMS exportado con él)
+     * se reconoce por su CONTENIDO —un `content.xml` raíz en el espacio ODE—, no
+     * por la extensión (TASK-053, decisión del propietario): entonces se lee la
+     * estructura de `content.xml` en vez del HTML renderizado, que repetiría el
+     * mismo texto, y del resto del ZIP solo los recursos de `content/resources/`.
+     *
      * @return string[]
      */
     private function extractZip(string $path, string $name): array
@@ -372,13 +399,41 @@ final class ContentExtractor
             return [];
         }
 
+        $budget = ['entries' => 0, 'bytes' => 0];
+        $isElpx = 'elpx' === $this->ext($name);
+        $ode = $this->readOdeContent($za, $name, $isElpx, $budget);
+        if (null !== $ode) {
+            $pieces = array_merge(
+                $this->odePieces($ode),
+                $this->zipEntryPieces($za, $budget, [], 'content/resources/')
+            );
+        } else {
+            $noise = (array) $this->limits['noise_path_segments'];
+            if ($isElpx) {
+                $noise = array_merge($noise, (array) $this->limits['elpx_noise_path_segments']);
+            }
+            $pieces = $this->zipEntryPieces($za, $budget, $noise, null);
+        }
+        $za->close();
+
+        return $pieces;
+    }
+
+    /**
+     * Recorre las entradas del ZIP aplicando los topes. Con `$onlyPrefix` solo
+     * se consideran las entradas bajo ese prefijo; el resto se ignora sin
+     * consumir cuota (en un paquete eXeLearning ya se leyó `content.xml`).
+     *
+     * @param array{entries:int,bytes:int} $budget acumulado entre lecturas del mismo ZIP
+     * @param string[] $noise segmentos de directorio de ruido
+     * @return string[]
+     */
+    private function zipEntryPieces(\ZipArchive $za, array &$budget, array $noise, ?string $onlyPrefix): array
+    {
         $pieces = [];
-        $entries = 0;
-        $totalBytes = 0;
         $maxEntries = (int) $this->limits['max_zip_entries'];
         $maxEntryBytes = (int) $this->limits['max_entry_bytes'];
         $maxTotal = (int) $this->limits['max_zip_total_bytes'];
-        $maxRatio = (int) $this->limits['max_compression_ratio'];
         $whitelist = (array) $this->limits['whitelist'];
 
         for ($i = 0; $i < $za->numFiles; $i++) {
@@ -395,31 +450,35 @@ final class ContentExtractor
             if (str_ends_with($entryName, '/')) {
                 continue; // directorio
             }
+            if (null !== $onlyPrefix && !str_starts_with($entryName, $onlyPrefix)) {
+                continue;
+            }
             // Ruido vendor ANTES de consumir cuota: en paquetes reales (#37129)
             // ~900 entradas de editor quemaban max_zip_entries y el contenido
             // real del final del ZIP ni se llegaba a leer (TASK-022).
-            if ($this->isNoisePath($entryName)) {
+            if ($this->isNoisePath($entryName, $noise)) {
                 $this->skip($entryName, 'noise_path');
                 continue;
             }
-            if (++$entries > $maxEntries) {
+            $ext = $this->ext($entryName);
+            // En los recursos de un paquete eXeLearning lo que no es texto
+            // (imágenes, audio, vídeo: ~340 en el Manual real) no consume cuota.
+            if (null !== $onlyPrefix && !in_array($ext, $whitelist, true)) {
+                $this->skip($entryName, 'unsupported:' . $ext);
+                continue;
+            }
+            if (++$budget['entries'] > $maxEntries) {
                 $this->skip($entryName, 'too_many_entries');
                 break;
             }
 
-            $size = (int) ($stat['size'] ?? 0);
-            $comp = (int) ($stat['comp_size'] ?? 0);
-            if ($size > $maxEntryBytes) {
-                $this->skip($entryName, 'entry_too_large');
-                continue;
-            }
-            if ($comp > 0 && $size > 1024 && ($size / $comp) > $maxRatio) {
-                $this->skip($entryName, 'zip_bomb');
+            $rejection = $this->entryRejection($stat);
+            if (null !== $rejection) {
+                $this->skip($entryName, $rejection);
                 continue;
             }
 
-            $ext = $this->ext($entryName);
-            if ('zip' === $ext) {
+            if (in_array($ext, ['zip', 'elpx'], true)) {
                 $this->skip($entryName, 'nested_zip'); // sin recursión (profundidad 1)
                 continue;
             }
@@ -428,8 +487,8 @@ final class ContentExtractor
                 continue;
             }
 
-            $totalBytes += $size;
-            if ($totalBytes > $maxTotal) {
+            $budget['bytes'] += (int) ($stat['size'] ?? 0);
+            if ($budget['bytes'] > $maxTotal) {
                 $this->skip($entryName, 'zip_total_exceeded');
                 break;
             }
@@ -448,21 +507,452 @@ final class ContentExtractor
                 $pieces[] = $text;
             }
         }
-        $za->close();
 
         return $pieces;
+    }
+
+    /**
+     * Motivo por el que una entrada no se descomprime (tamaño o ratio de
+     * compresión anti zip-bomb), o null si pasa.
+     *
+     * @param array<string,mixed> $stat
+     */
+    private function entryRejection(array $stat): ?string
+    {
+        $size = (int) ($stat['size'] ?? 0);
+        $comp = (int) ($stat['comp_size'] ?? 0);
+        if ($size > (int) $this->limits['max_entry_bytes']) {
+            return 'entry_too_large';
+        }
+        if ($comp > 0 && $size > 1024 && ($size / $comp) > (int) $this->limits['max_compression_ratio']) {
+            return 'zip_bomb';
+        }
+        return null;
+    }
+
+    /**
+     * Lee y valida el `content.xml` raíz de un paquete eXeLearning. Devuelve su
+     * XPath (con el prefijo `o` registrado) o null si el ZIP no es eXeLearning.
+     * Un `.elpx` sin `content.xml` válido deja un motivo propio y cae al HTML
+     * renderizado; un `.zip` sin él sigue por la vía genérica sin motivo.
+     *
+     * Dato no confiable: se lee en memoria bajo los mismos topes que cualquier
+     * entrada y se parsea sin red, sin cargar el DTD y sin sustituir entidades
+     * (sin LIBXML_NOENT/LIBXML_DTDLOAD). Un DOCTYPE que declara entidades se
+     * rechaza: el formato real no las usa y así no hay XXE ni expansión.
+     *
+     * @param array{entries:int,bytes:int} $budget
+     */
+    private function readOdeContent(\ZipArchive $za, string $name, bool $isElpx, array &$budget): ?\DOMXPath
+    {
+        $index = $za->locateName('content.xml');
+        if (false === $index) {
+            if ($isElpx) {
+                $this->skip($name, 'elpx_content_missing');
+            }
+            return null;
+        }
+        $stat = $za->statIndex($index);
+        $rejection = false === $stat ? 'entry_unreadable' : $this->entryRejection($stat);
+        if (null !== $rejection) {
+            $this->skip('content.xml', $rejection);
+            if ($isElpx) {
+                $this->skip($name, 'elpx_content_invalid');
+            }
+            return null;
+        }
+        $bytes = $za->getFromIndex($index, (int) $this->limits['max_entry_bytes']);
+        $xpath = false === $bytes ? null : $this->parseOdeXml($bytes);
+        if (null === $xpath) {
+            if ($isElpx) {
+                $this->skip($name, 'elpx_content_invalid');
+            }
+            return null;
+        }
+        $budget['entries']++;
+        $budget['bytes'] += strlen((string) $bytes);
+        return $xpath;
+    }
+
+    /**
+     * El editor guarda `<ode xmlns="…/ode">`, pero las exportaciones reales
+     * (web, SCORM, IMS y el propio .elpx exportado) escriben `<ode>` sin
+     * espacio de nombres. Se aceptan las dos; la raíz desnuda solo si trae la
+     * estructura ODE, para que un `content.xml` ajeno siga la vía genérica.
+     */
+    private function parseOdeXml(string $bytes): ?\DOMXPath
+    {
+        $doc = $this->loadUntrustedXml($bytes);
+        $root = $doc?->documentElement;
+        if (null === $doc || null === $root || 'ode' !== $root->localName) {
+            return null;
+        }
+        if (null === $root->namespaceURI) {
+            $hasOdeStructure = false;
+            foreach ($root->childNodes as $child) {
+                if (
+                    $child instanceof \DOMElement
+                    && in_array($child->localName, ['odeProperties', 'odeNavStructures'], true)
+                ) {
+                    $hasOdeStructure = true;
+                    break;
+                }
+            }
+            if (!$hasOdeStructure) {
+                return null;
+            }
+            // Mismo documento con el espacio de nombres declarado, para que
+            // todas las consultas usen el prefijo `o`.
+            $doc = $this->loadUntrustedXml(
+                (string) preg_replace('/<ode(?=[\s>])/', '<ode xmlns="' . self::ODE_NS . '"', $bytes, 1)
+            );
+            $root = $doc?->documentElement;
+        }
+        if (null === $doc || null === $root || self::ODE_NS !== $root->namespaceURI) {
+            return null;
+        }
+        $xpath = new \DOMXPath($doc);
+        $xpath->registerNamespace('o', self::ODE_NS);
+        return $xpath;
+    }
+
+    /**
+     * Parsea XML no confiable sin red, sin cargar el DTD y sin sustituir
+     * entidades. Un DOCTYPE que declara entidades se rechaza entero.
+     */
+    private function loadUntrustedXml(string $bytes): ?\DOMDocument
+    {
+        $doc = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $loaded = $doc->loadXML($bytes, LIBXML_NONET | LIBXML_NOCDATA);
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+        if (!$loaded || ($doc->doctype instanceof \DOMDocumentType && $doc->doctype->entities->length > 0)) {
+            return null;
+        }
+        return $doc;
+    }
+
+    /**
+     * Piezas de un paquete eXeLearning: los metadatos del proyecto y una pieza
+     * por página visible, en el orden del árbol. Las páginas, bloques e
+     * iDevices con `visibility=false` se saltan (una página oculta arrastra a
+     * sus hijas); el contenido `teacherOnly` sí cuenta (decisión 2026-10-05).
+     * Los fragmentos repetidos (p. ej. instrucciones copiadas en el juego) se
+     * quedan una sola vez.
+     *
+     * @return string[]
+     */
+    private function odePieces(\DOMXPath $xp): array
+    {
+        $pieces = [];
+        $meta = $this->odeMetadata($xp);
+        if ('' !== $meta) {
+            $pieces[] = $meta;
+        }
+
+        $pages = [];
+        $children = [];
+        $position = 0;
+        foreach ($xp->query('/o:ode/o:odeNavStructures/o:odeNavStructure') ?: [] as $node) {
+            if (!$node instanceof \DOMElement) {
+                continue;
+            }
+            $id = trim($xp->evaluate('string(o:odePageId)', $node));
+            if ('' === $id || isset($pages[$id])) {
+                continue;
+            }
+            $pages[$id] = $node;
+            $parent = trim($xp->evaluate('string(o:odeParentPageId)', $node));
+            $order = (int) $xp->evaluate('string(o:odeNavStructureOrder)', $node);
+            $children[$parent][] = [$order, $position++, $id];
+        }
+        foreach ($children as &$list) {
+            usort($list, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        }
+        unset($list);
+
+        // Raíces: sin padre o con un padre que no existe. Recorrido en
+        // profundidad con lista de visitados (un ciclo no puede colgarlo).
+        $roots = [];
+        foreach ($children as $parent => $list) {
+            if ('' === $parent || !isset($pages[$parent])) {
+                $roots = array_merge($roots, $list);
+            }
+        }
+        usort($roots, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        $stack = array_reverse(array_column($roots, 2));
+        $visited = [];
+        $seen = [];
+        while ($stack) {
+            $id = array_pop($stack);
+            if (isset($visited[$id])) {
+                continue;
+            }
+            $visited[$id] = true;
+            $page = $pages[$id];
+            if ($this->odeHidden($xp, $page, 'o:odeNavStructureProperties/o:odeNavStructureProperty')) {
+                continue; // la página oculta no se lee ni se baja a sus hijas
+            }
+            foreach (array_reverse(array_column($children[$id] ?? [], 2)) as $child) {
+                $stack[] = $child;
+            }
+            $piece = $this->odePageText($xp, $page, $seen);
+            if ('' !== $piece) {
+                $pieces[] = $piece;
+            }
+        }
+        return $pieces;
+    }
+
+    private function odeMetadata(\DOMXPath $xp): string
+    {
+        $values = [];
+        foreach ($xp->query('/o:ode/o:odeProperties/o:odeProperty') ?: [] as $node) {
+            $key = strtolower(trim($xp->evaluate('string(o:key)', $node)));
+            if (isset(self::ODE_PROPERTIES[$key]) && !isset($values[$key])) {
+                $values[$key] = $this->htmlFragmentText($xp->evaluate('string(o:value)', $node));
+            }
+        }
+        // `pp_title` vale «eXeLearning» por defecto: no es un título real.
+        if ('exelearning' === strtolower($values['pp_title'] ?? '')) {
+            unset($values['pp_title']);
+        }
+        $lines = [];
+        foreach (self::ODE_PROPERTIES as $key => $label) {
+            if ('' !== ($values[$key] ?? '')) {
+                $lines[] = $label . ': ' . $values[$key];
+            }
+        }
+        return implode("\n", $lines);
+    }
+
+    /** @param array<string,bool> $seen fragmentos ya emitidos en el paquete */
+    private function odePageText(\DOMXPath $xp, \DOMElement $page, array &$seen): string
+    {
+        $lines = [];
+        $title = $this->normalizeWhitespace(trim($xp->evaluate('string(o:pageName)', $page)));
+        if ('' !== $title) {
+            $lines[] = 'Página: ' . $title;
+        }
+        $blocks = $this->odeOrdered($xp, $page, 'o:odePagStructures/o:odePagStructure', 'o:odePagStructureOrder');
+        foreach ($blocks as $block) {
+            if ($this->odeHidden($xp, $block, 'o:odePagStructureProperties/o:odePagStructureProperty')) {
+                continue;
+            }
+            $blockName = $this->normalizeWhitespace(trim($xp->evaluate('string(o:blockName)', $block)));
+            if ('' !== $blockName) {
+                $lines[] = $blockName;
+            }
+            $components = $this->odeOrdered($xp, $block, 'o:odeComponents/o:odeComponent', 'o:odeComponentsOrder');
+            foreach ($components as $component) {
+                if ($this->odeHidden($xp, $component, 'o:odeComponentsProperties/o:odeComponentsProperty')) {
+                    continue;
+                }
+                foreach ($this->odeComponentTexts($xp, $component) as $text) {
+                    $key = mb_strtolower($text);
+                    if (!isset($seen[$key])) {
+                        $seen[$key] = true;
+                        $lines[] = $text;
+                    }
+                }
+            }
+        }
+        return implode("\n", $lines);
+    }
+
+    /** @return \DOMElement[] hijos de `$query` ordenados por `$orderPath` (estable) */
+    private function odeOrdered(\DOMXPath $xp, \DOMElement $parent, string $query, string $orderPath): array
+    {
+        $items = [];
+        foreach ($xp->query($query, $parent) ?: [] as $position => $node) {
+            if ($node instanceof \DOMElement) {
+                $items[] = [(int) $xp->evaluate('string(' . $orderPath . ')', $node), $position, $node];
+            }
+        }
+        usort($items, static fn (array $a, array $b): int => [$a[0], $a[1]] <=> [$b[0], $b[1]]);
+        return array_column($items, 2);
+    }
+
+    private function odeHidden(\DOMXPath $xp, \DOMElement $node, string $propertyPath): bool
+    {
+        foreach ($xp->query($propertyPath, $node) ?: [] as $property) {
+            if ('visibility' === trim($xp->evaluate('string(o:key)', $property))) {
+                return 'false' === strtolower(trim($xp->evaluate('string(o:value)', $property)));
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Texto de un iDevice. `htmlView` es la fuente principal; `jsonProperties`
+     * suele repetirlo (`textTextarea`), así que solo se usa si el HTML no da
+     * nada.
+     *
+     * @return string[]
+     */
+    private function odeComponentTexts(\DOMXPath $xp, \DOMElement $component): array
+    {
+        $texts = [];
+        $html = $xp->evaluate('string(o:htmlView)', $component);
+        if ('' !== trim($html)) {
+            $texts = $this->odeHtmlTexts($html);
+        }
+        if (!$texts) {
+            $json = trim($xp->evaluate('string(o:jsonProperties)', $component));
+            if ('' !== $json) {
+                $texts = $this->jsonStrings($json);
+            }
+        }
+        return $texts;
+    }
+
+    /**
+     * Texto de un `htmlView`: el visible, sin scripts, estilos ni elementos
+     * `js-hidden`, más los datos de los juegos (div `*-DataGame`) y del vídeo
+     * interactivo (`script[type=application/json]`), donde viven preguntas que
+     * no están en ningún otro sitio.
+     *
+     * @return string[]
+     */
+    private function odeHtmlTexts(string $html): array
+    {
+        $doc = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $loaded = $doc->loadHTML(
+                '<?xml encoding="UTF-8"?><div>' . $html . '</div>',
+                LIBXML_NONET | LIBXML_NOERROR | LIBXML_NOWARNING
+            );
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+        if (!$loaded) {
+            return [];
+        }
+        $xp = new \DOMXPath($doc);
+
+        $data = [];
+        foreach (iterator_to_array($xp->query('//*[contains(@class, "DataGame")]') ?: []) as $node) {
+            $data = array_merge($data, $this->exeGameStrings($node->textContent));
+            $node->parentNode?->removeChild($node);
+        }
+        foreach (iterator_to_array($xp->query('//script[@type="application/json"]') ?: []) as $node) {
+            $data = array_merge($data, $this->jsonStrings(trim($node->textContent)));
+            $node->parentNode?->removeChild($node);
+        }
+        $hidden = '//script | //style | //*[contains(concat(" ", normalize-space(@class), " "), " js-hidden ")]';
+        foreach (iterator_to_array($xp->query($hidden) ?: []) as $node) {
+            $node->parentNode?->removeChild($node);
+        }
+
+        // Espacio solo en las fronteras de bloque: las etiquetas en línea
+        // (`<strong>`, `<a>`) no deben partir palabras ni separar la puntuación.
+        $bodies = $xp->query('//body');
+        $body = false === $bodies ? null : $bodies->item(0);
+        $markup = null === $body ? '' : (string) $doc->saveHTML($body);
+        $markup = preg_replace(
+            '#<(/?)(p|div|li|h[1-6]|br|tr|td|th|caption|section|article|ul|ol|table|blockquote|figcaption)\b#i',
+            ' <$1$2',
+            $markup
+        ) ?? $markup;
+        $visible = $this->normalizeText($markup, 'html');
+        return array_values(array_filter(
+            array_merge('' === $visible ? [] : [$visible], $data),
+            static fn (string $s): bool => '' !== $s
+        ));
+    }
+
+    /**
+     * Datos de un juego de eXeLearning. Tres codificaciones vistas en paquetes
+     * reales: JSON plano, `encodeURIComponent` y `escape()` de unidades XOR
+     * 146 (la mayoría de cuestionarios). Lo que no decodifica a JSON se ignora.
+     *
+     * @return string[]
+     */
+    private function exeGameStrings(string $raw): array
+    {
+        $raw = trim($raw);
+        if ('' === $raw) {
+            return [];
+        }
+        $candidates = [$raw];
+        if (str_contains($raw, '%')) {
+            $candidates[] = rawurldecode($raw);
+        }
+        $candidates[] = $this->exeXorUnescape($raw);
+        foreach ($candidates as $candidate) {
+            if (str_starts_with(ltrim($candidate), '{') || str_starts_with(ltrim($candidate), '[')) {
+                $strings = $this->jsonStrings($candidate);
+                if ($strings) {
+                    return $strings;
+                }
+            }
+        }
+        return [];
+    }
+
+    /** Inverso de `escape()` de JavaScript seguido del XOR de eXeLearning. */
+    private function exeXorUnescape(string $raw): string
+    {
+        $decoded = preg_replace_callback(
+            '/%u([0-9a-fA-F]{4})|%([0-9a-fA-F]{2})/',
+            static fn (array $m): string => (string) mb_chr((int) hexdec('' !== $m[1] ? $m[1] : $m[2]), 'UTF-8'),
+            $raw
+        ) ?? '';
+        $out = '';
+        foreach (mb_str_split($decoded, 1, 'UTF-8') as $char) {
+            $out .= (string) mb_chr(mb_ord($char, 'UTF-8') ^ self::EXE_GAME_XOR_KEY, 'UTF-8');
+        }
+        return $out;
+    }
+
+    /**
+     * Strings de contenido de un JSON, con el mismo filtro de ruido técnico y
+     * el mismo tope de nodos que un `.json` suelto, pero sin registrar motivo:
+     * un JSON interno que no aporta no es un medio saltado.
+     *
+     * @return string[]
+     */
+    private function jsonStrings(string $json): array
+    {
+        try {
+            $data = json_decode($json, true, 64, JSON_THROW_ON_ERROR);
+        } catch (\JsonException $e) {
+            return [];
+        }
+        $out = [];
+        $nodes = 0;
+        $this->collectJsonStrings($data, $out, $nodes, (int) $this->limits['max_json_nodes']);
+        return array_values(array_filter(
+            array_map(fn (string $s): string => trim($this->normalizeWhitespace($s)), $out),
+            static fn (string $s): bool => '' !== $s
+        ));
+    }
+
+    /** Texto plano de un fragmento HTML (o de texto ya plano). */
+    private function htmlFragmentText(string $value): string
+    {
+        return 1 === preg_match('/<[a-z][^>]*>/i', $value)
+            ? $this->normalizeText($value, 'html')
+            : trim($this->normalizeWhitespace($value));
     }
 
     /**
      * ¿La entrada vive bajo un directorio de ruido vendor (editores, plugins,
      * fuentes…)? Solo cuentan los segmentos de DIRECTORIO: un fichero llamado
      * `fonts.html` no es la carpeta `fonts/`.
+     *
+     * @param string[] $deny
      */
-    private function isNoisePath(string $entryName): bool
+    private function isNoisePath(string $entryName, array $deny): bool
     {
         $segments = explode('/', strtolower(str_replace('\\', '/', $entryName)));
         array_pop($segments); // el nombre de fichero no cuenta
-        $deny = (array) $this->limits['noise_path_segments'];
         foreach ($segments as $segment) {
             if (in_array($segment, $deny, true)) {
                 return true;
