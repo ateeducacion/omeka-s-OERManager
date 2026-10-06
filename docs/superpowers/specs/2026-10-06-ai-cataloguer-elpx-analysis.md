@@ -78,7 +78,7 @@ model; they come first.
 ## 4. Resulting work
 
 - **TASK-054** extraction depth (items 2.1–2.3).
-- **TASK-055 / RF-020** use the alignment declared in the package (section 1 shows it resolves exactly). Owner decisions of 2026-10-06: it guides the model, it is not proposed as-is; only knowledge and criteria; on divergence the curator is warned and decides, only when the declared codes resolve in the catalogue.
+- **TASK-055 / RF-020** use the alignment declared in the package (section 1 shows it resolves exactly). Owner decisions of 2026-10-06: it guides the model, it is not proposed as-is; only knowledge and criteria; on divergence the curator is warned and decides, only when the declared codes resolve in the catalogue; the review always shows a «Declarado en el paquete» block when present (option A).
 - **TASK-056** classifier candidate starvation and ambiguous labels (items 3.1–3.6).
 - **TASK-057** an evaluation set built from packages with a declared alignment, scored with the existing
   `EvaluationScorer`, so every change above is measured against this 0/19 baseline.
