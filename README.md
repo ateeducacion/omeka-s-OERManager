@@ -2,6 +2,11 @@
 
 [![codecov](https://codecov.io/gh/ateeducacion/omeka-s-OERManager/branch/main/graph/badge.svg)](https://codecov.io/gh/ateeducacion/omeka-s-OERManager)
 
+<a href="https://ateeducacion.github.io/omeka-s-playground/?blueprint=https%3A%2F%2Fraw.githubusercontent.com%2Fateeducacion%2Fomeka-s-OERManager%2Frefs%2Fheads%2Fmain%2Fblueprint.json">
+  <img src="https://raw.githubusercontent.com/ateeducacion/omeka-s-OERManager/refs/heads/main/.github/assets/playground-preview-button.svg" alt="Try OERManager in your browser" width="224">
+</a><br>
+<small><a href="https://ateeducacion.github.io/omeka-s-playground/?blueprint=https%3A%2F%2Fraw.githubusercontent.com%2Fateeducacion%2Fomeka-s-OERManager%2Frefs%2Fheads%2Fmain%2Fblueprint.json">Try in your browser</a></small>
+
 An Omeka S 4.2+ module for curating `lrmi:LearningResource` catalogs, checking
 metadata integrity, and reporting catalog statistics. Requires PHP 8.4 or later.
 Project requirements and decisions are maintained in [docs](docs/).

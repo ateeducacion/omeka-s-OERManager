@@ -68,6 +68,9 @@
   **An Omeka Job killed mid-run stays `in_progress` forever; any "is it running?" check needs a staleness bound (`BatchJobLookup::STALE_AFTER`).**
   **Omeka sets `Job.started` at persist time (`Job::prePersist`), so a staleness bound on `started` also covers Jobs that never left `starting`.**
   **Authorising who may START an action on another user's object (`undo-any-batch`) is a different question from who may POLL or STOP the resulting Job (owner only); keep them separate.**
+- **TASK-053 (eXeLearning packages in the AI context): implemented on 2026-10-05, container check pending.** Spec `docs/superpowers/specs/2026-10-05-task-053-elpx-extraction-design.md`; details in the backlog row. Lessons:
+  **Check a format against real files, not only its docs.** The upstream docs say `content.xml` is in the ODE namespace and DataGame payloads are `encodeURIComponent` JSON; the upstream fixtures show every export writes a bare `<ode>` and most quizzes use `escape()` + XOR 146. Detecting by namespace alone would have missed every SCORM/IMS/web export.
+  **`jsonProperties.textTextarea` repeats `htmlView`.** Read one source per iDevice or the budget is spent twice.
 
 ## Decisiones ya tomadas (no reabrir sin motivo)
 

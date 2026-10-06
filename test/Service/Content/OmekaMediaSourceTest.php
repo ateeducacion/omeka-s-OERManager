@@ -43,6 +43,17 @@ final class OmekaMediaSourceTest extends TestCase
         ], $source->filesFor(12));
     }
 
+    public function testElpxPackagesAreProvidedToTheExtractor(): void
+    {
+        // TASK-053: antes un .elpx se quedaba fuera aquí, sin motivo de salto.
+        $source = $this->source([
+            $this->media('pkg.elpx', 'ELPX', 'application/zip', 'curso.elpx'),
+        ]);
+        self::assertSame([
+            ['path' => $this->path, 'mediaType' => 'application/zip', 'name' => 'curso.elpx', 'size' => 13],
+        ], $source->filesFor(12));
+    }
+
     public function testImagesUseTheirOwnWhitelistAndSourceFallback(): void
     {
         $source = $this->source([

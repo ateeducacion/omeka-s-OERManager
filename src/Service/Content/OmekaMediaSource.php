@@ -16,7 +16,7 @@ use Omeka\File\Store\StoreInterface;
 final class OmekaMediaSource implements MediaSourceInterface
 {
     /** Extensiones que el extractor sabe tratar (resto se omite ya aquí). */
-    private const WHITELIST = ['txt', 'html', 'htm', 'xml', 'pdf', 'zip', 'json'];
+    private const WHITELIST = ['txt', 'html', 'htm', 'xml', 'pdf', 'zip', 'elpx', 'json'];
 
     /** Extensiones de imagen candidatas a visión (ADR-0011). */
     private const IMAGE_WHITELIST = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
