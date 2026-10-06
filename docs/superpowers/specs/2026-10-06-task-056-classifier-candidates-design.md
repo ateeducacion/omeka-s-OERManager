@@ -73,3 +73,29 @@ ADR-0010 addendum (TASK-056, 2026-10-06), append-only: the inclusive stage bias 
 it displaced the right candidates, 0/57); the plausible-courses step bounds the search without fixing the
 course; fair split of the cap. Backlog: TASK-056 row with the measured result, new TASK-058 for the axes;
 traceability and project memory on closing.
+
+## 7. Result (2026-10-06)
+
+Implemented as designed, plus one refinement found by tracing a run: the course guidance carries the LOMLOE
+cycle → course equivalence (RD 95/2022, RD 157/2022) and the stage guidance the EI/EP abbreviations, because
+the model read «2.º Ciclo de EP» as 2º and 3º Primaria.
+
+Evaluation set, `--runs=3`, same `.elpx` extractor (TASK-053) before and after, `openai/gpt-4o-mini`:
+
+| | Before | After v1 | After v2 (with cycles) |
+| --- | --- | --- | --- |
+| Course F1 (macro) | 0.00 | 0.21 | **0.44** |
+| Subject F1 | 0.00 | 0.13 | 0.22 |
+| Declared leaves hit | 0/37 | 3/29 | **9/57** |
+| Failed runs (provider) | 3 | 5 | 0 |
+
+Per REA (after v2): «La vivienda inteligente» 4º ESO and 3/3 leaves in 3/3 runs; «Geometría canaria» right
+course (with 3º) in 2/3 runs; «Timanfaya volcánica» right course (with 4º–5º Infantil) in 2/3 runs;
+«Código gomero» still 2º–3º Primaria.
+
+**Against §1:** course F1 > 0 in 3/4 REA — met; declared leaves > 0 in 1/4 — **not met**. Once the right
+course is among the candidates, the fine step does not pick the declared leaves (Geometría: 4º Primaria
+reached, `PMAT04SBIV.1.1` not chosen; criteria over-selected, 18 of 38 in one trace). That is the fine leaf
+selection, outside this task's scope (reachability), and needs its own measure: whether the declared leaves
+were among the candidates.
+
