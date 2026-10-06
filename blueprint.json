@@ -1,10 +1,6 @@
 {
-  "$schema": "https://ateeducacion.github.io/omeka-s-playground/assets/blueprints/blueprint-schema.json",
-  "debug": {
-    "enabled": true
-  },
-  "landingPage": "/admin",
-  "siteOptions": {
+  "$schema": "https://omeka-s-contrib.github.io/omeka-s-blueprints/schema/v0/blueprint-schema.json",
+  "install": {
     "title": "OER Manager Playground",
     "locale": "es",
     "timezone": "Atlantic/Canary"
@@ -31,18 +27,23 @@
     {
       "name": "OERManager",
       "state": "activate",
-      "source": {
-        "type": "url",
-        "url": "https://github.com/ateeducacion/omeka-s-OERManager/archive/refs/heads/main.zip"
-      }
+      "source": "https://github.com/ateeducacion/omeka-s-OERManager/archive/refs/heads/main.zip"
     }
   ],
-  "site": {
-    "title": "OER Manager Playground",
-    "slug": "oer-manager",
-    "theme": "default",
-    "summary": "Instalacion para probar el modulo OERManager en Omeka-S Playground. El modulo consume un grafo curricular (DefinedTermSets, ADR-0006) y vocabularios LRMI que un playground limpio no incluye: este preview demuestra la instalacion/activacion del modulo, no la catalogacion curricular completa.",
-    "isPublic": true,
-    "setAsDefault": true
+  "sites": [
+    {
+      "title": "OER Manager Playground",
+      "slug": "oer-manager",
+      "theme": "default",
+      "summary": "Instalacion para probar el modulo OERManager en Omeka-S Playground. El modulo consume un grafo curricular (DefinedTermSets, ADR-0006) y vocabularios LRMI que un playground limpio no incluye: este preview demuestra la instalacion/activacion del modulo, no la catalogacion curricular completa.",
+      "isPublic": true,
+      "setAsDefault": true
+    }
+  ],
+  "x-playground": {
+    "debug": {
+      "enabled": true
+    },
+    "landingPage": "/admin"
   }
 }
