@@ -91,6 +91,8 @@ final class CurricularClassifierTest extends TestCase
         $this->make($this->resolver(), $llm)->classify(new ItemContext('recurso de ecuaciones', ''));
 
         $this->assertStringContainsString('INCLUSIVO', $llm->calls[0]['messages'][0]['content']); // Etapa
+        // TASK-056: inclusiveness only when the stage is not stated; a quoted stage wins.
+        $this->assertStringContainsString('indica la etapa', $llm->calls[0]['messages'][0]['content']);
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[1]['messages'][0]['content']); // Materia
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[2]['messages'][0]['content']); // Saberes
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[3]['messages'][0]['content']); // Criterios
@@ -386,5 +388,143 @@ final class CurricularClassifierTest extends TestCase
         // Curso/materia derivados solo de los criterios (fallback).
         $this->assertSame([12, 99], $result['lrmi:educationalLevel']);
         $this->assertSame([22, 23], $result['schema:about']);
+    }
+
+    // --- TASK-056: plausible courses, fair cap and labelled candidates --------
+
+    /** Two subjects, one with two courses: the course step has something to choose. */
+    private function coursedResolver(): FakeTermResolver
+    {
+        $r = $this->resolver();
+        $r->families = [1 => [
+            ['name' => 'Matemáticas', 'courses' => [['id' => 12, 'title' => '3º ESO'], ['id' => 10, 'title' => '1º ESO']]],
+            ['name' => 'Tecnología', 'courses' => [['id' => 13, 'title' => '4º ESO']]],
+        ]];
+        return $r;
+    }
+
+    /** @return array<int,array<string,mixed>> */
+    private function leaves(int $from, int $count, int $courseId, string $courseTitle, string $block = ''): array
+    {
+        $out = [];
+        for ($id = $from; $id < $from + $count; $id++) {
+            $out[] = ['id' => $id, 'title' => 'C' . $id, 'description' => 'Saber ' . $id, 'block' => $block,
+                'courseId' => $courseId, 'courseTitle' => $courseTitle, 'subjectId' => $courseId + 100];
+        }
+        return $out;
+    }
+
+    public function testSubjectCandidatesShowTheirCourses(): void
+    {
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}', '{"selected":[2]}', '{"selected":[]}',
+            '{"selected":[]}']);
+        $this->make($this->coursedResolver(), $llm)->classify(new ItemContext('ecuaciones, 3º ESO', ''));
+
+        $subjects = $llm->calls[1]['messages'][0]['content'];
+        $this->assertStringContainsString('Matemáticas (1º, 3º ESO)', $subjects);
+        $this->assertStringContainsString('Tecnología (4º ESO)', $subjects);
+    }
+
+    public function testCourseStepBoundsTheLeavesToTheChosenCourses(): void
+    {
+        $resolver = $this->coursedResolver();
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}',   // Etapa: ESO
+            '{"selected":[1]}',   // Materia: Matemáticas
+            '{"selected":[2]}',   // Curso: 3º ESO (ordered: 1º ESO, 3º ESO)
+            '{"selected":[1]}',   // Saberes: only 3º ESO left → id 31
+            '{"selected":[]}',    // Criterios
+        ]);
+        $result = $this->make($resolver, $llm)->classify(new ItemContext('ecuaciones, 3º ESO', ''));
+
+        $courses = $llm->calls[2]['messages'][0]['content'];
+        $this->assertStringContainsString('1. 1º ESO', $courses);
+        $this->assertStringContainsString('2. 3º ESO', $courses);
+        $leafCalls = array_values(array_filter($resolver->calls, static fn (array $c): bool => isset($c['leaves'])));
+        $this->assertSame([12], $leafCalls[0]['courses']);
+        $this->assertSame([31], $result['lrmi:teaches']);
+        $this->assertSame([12], $result['lrmi:educationalLevel']);
+    }
+
+    public function testCourseStepFallsBackToEveryCourseWhenNoneIsChosen(): void
+    {
+        $resolver = $this->coursedResolver();
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}', '{"selected":[]}', '{"selected":[]}',
+            '{"selected":[]}']);
+        $this->make($resolver, $llm)->classify(new ItemContext('números', ''));
+
+        $leafCalls = array_values(array_filter($resolver->calls, static fn (array $c): bool => isset($c['leaves'])));
+        $this->assertSame([10, 12], $leafCalls[0]['courses']);
+        $this->assertSame(2, $this->stepByLabel($llm, 'Saberes básicos')['candidates']);
+    }
+
+    public function testCourseStepIsSkippedWhenThereIsOnlyOneCourse(): void
+    {
+        $resolver = $this->coursedResolver();
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[2]}', '{"selected":[]}', '{"selected":[]}']);
+        $classifier = $this->make($resolver, $llm);
+        $classifier->classify(new ItemContext('automatismos, 4º ESO', ''));
+
+        // Etapa, Materia (Tecnología, one course) and the leaf steps: no course call.
+        $this->assertNotContains('Curso', array_column($classifier->getTrace(), 'step'));
+        $leafCalls = array_values(array_filter($resolver->calls, static fn (array $c): bool => isset($c['leaves'])));
+        $this->assertSame([13], $leafCalls[0]['courses']);
+    }
+
+    public function testTheLeafCapIsSplitFairlyAcrossSubjectsAndCourses(): void
+    {
+        // Before TASK-056 the first 200 leaves won: Lengua never reached the model.
+        $resolver = $this->resolver();
+        $resolver->leaves = [
+            'lrmi:teaches|Matemáticas' => $this->leaves(1000, 250, 10, '1º ESO'),
+            'lrmi:teaches|Lengua' => $this->leaves(2000, 3, 11, '2º ESO'),
+        ];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1,2]}', '{"selected":[]}']);
+        $classifier = $this->make($resolver, $llm);
+        $classifier->classify(new ItemContext('x', ''));
+
+        $step = $this->stepByLabel($llm, 'Saberes básicos');
+        $this->assertSame(200, $step['candidates']);
+        foreach ([2000, 2001, 2002] as $id) {
+            $this->assertStringContainsString('Saber ' . $id, $step['content']);
+        }
+        $cut = array_values(array_filter($classifier->getTrace(), static fn (array $t): bool => 'leaf_cap' === ($t['step'] ?? '')));
+        $this->assertSame(['step' => 'leaf_cap', 'dimension' => 'lrmi:teaches', 'available' => 253, 'kept' => 200], $cut[0]);
+    }
+
+    public function testBlocksCarryTheirSubjectAndCourseAndStayApartPerSubject(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->families = [1 => [['name' => 'Matemáticas'], ['name' => 'Tecnología']]];
+        $resolver->leaves = [
+            'lrmi:teaches|Matemáticas' => $this->leaves(1000, 20, 10, '1º ESO', 'I. Proyectos'),
+            'lrmi:teaches|Tecnología' => $this->leaves(2000, 20, 13, '4º ESO', 'I. Proyectos'),
+        ];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1,2]}', '{"selected":[2]}', '{"selected":[]}']);
+        $this->make($resolver, $llm)->classify(new ItemContext('x', ''));
+
+        $blocks = $llm->calls[2]['messages'][0]['content'];
+        $this->assertStringContainsString('1. [Matemáticas · 1º ESO] I. Proyectos', $blocks);
+        $this->assertStringContainsString('2. [Tecnología · 4º ESO] I. Proyectos', $blocks);
+        $step = $this->stepByLabel($llm, 'Saberes básicos');
+        $this->assertSame(20, $step['candidates']);
+        $this->assertStringContainsString('Saber 2000', $step['content']);
+        $this->assertStringNotContainsString('Saber 1000', $step['content']);
+    }
+
+    /**
+     * Prompt and candidate count of the call whose label is $label.
+     *
+     * @return array{candidates:int,content:string}
+     */
+    private function stepByLabel(FakeLlmClient $llm, string $label): array
+    {
+        foreach ($llm->calls as $call) {
+            $content = $call['messages'][0]['content'];
+            if (str_contains($content, 'Dimensión: ' . $label)) {
+                return ['candidates' => preg_match_all('/^\d+\. /m', $content), 'content' => $content];
+            }
+        }
+        $this->fail('No call for ' . $label);
     }
 }

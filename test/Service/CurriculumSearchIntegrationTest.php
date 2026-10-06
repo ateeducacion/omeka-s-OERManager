@@ -125,7 +125,59 @@ final class CurriculumSearchIntegrationTest extends TestCase
         $math = $this->item(1, 'Math 1', ['schema:about' => [$this->value('Math')]]);
         $this->api->method('search')->willReturn($this->response([$math, $math, $this->item(2, ' Science '),
             $this->item(3)]));
-        $this->assertSame([['name' => 'Math'], ['name' => 'Science']], $this->search->searchSubjectFamilies(9));
+        $this->assertSame(
+            [['name' => 'Math', 'courses' => []], ['name' => 'Science', 'courses' => []]],
+            $this->search->searchSubjectFamilies(9)
+        );
+    }
+
+    /**
+     * TASK-056: a subject is one item per course (ADR-0009), so the family
+     * carries the courses of its items, read from the edges the item already
+     * has. «Tecnología» of 4º ESO must not look like «Tecnología e Ingeniería I».
+     */
+    public function testFamiliesCarryTheCoursesOfTheirItems(): void
+    {
+        $this->settings->method('get')->willReturn('Subject');
+        $third = $this->item(10, '3º ESO');
+        $fourth = $this->item(11, '4º ESO');
+        $math3 = $this->item(1, 'Math', ['lrmi:educationalLevel' => [$this->value('', $third, 'resource:item')]]);
+        $math4 = $this->item(2, 'Math', ['schema:inDefinedTermSet' => [$this->value('', $fourth, 'resource:item')]]);
+        $math4bis = $this->item(3, 'Math', ['lrmi:educationalLevel' => [$this->value('', $fourth, 'resource:item')]]);
+        $this->api->method('search')->willReturn($this->response([$math3, $math4, $math4bis]));
+
+        $this->assertSame(
+            [['name' => 'Math', 'courses' => [['id' => 10, 'title' => '3º ESO'], ['id' => 11, 'title' => '4º ESO']]]],
+            $this->search->searchSubjectFamilies(9)
+        );
+    }
+
+    /**
+     * TASK-056: leaves can be bound to the chosen courses in the query itself,
+     * one query per course (the adapter cannot group AND/OR), merged by id.
+     */
+    public function testLeavesCanBeBoundToCourses(): void
+    {
+        $this->settings->method('get')->willReturn('Knowledge');
+        $queries = [];
+        $shared = $this->item(8, 'Shared');
+        $this->api->method('search')->willReturnCallback(function ($resource, $query) use (&$queries, $shared) {
+            $queries[] = $query;
+            $course = end($query['property'])['text'];
+            return $this->response('10' === $course ? [$shared, $this->item(9, 'Third')] : [$shared]);
+        });
+
+        $result = $this->search->searchLeaves('lrmi:teaches', 5, 'Math', 300, [10, 11]);
+
+        $this->assertSame([8, 9], array_column($result, 'id'));
+        $this->assertCount(2, $queries);
+        foreach ([10, 11] as $i => $courseId) {
+            $this->assertSame(
+                ['property' => 'lrmi:educationalAlignment', 'type' => 'res', 'text' => (string) $courseId,
+                    'joiner' => 'and'],
+                end($queries[$i]['property'])
+            );
+        }
     }
 
     public function testLeavesResolveMatchingSubjectAndCourseWithFallback(): void

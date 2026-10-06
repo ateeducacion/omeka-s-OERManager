@@ -2,6 +2,7 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Governance\CurricularPairs;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Settings\Settings;
 
@@ -233,17 +234,26 @@ class CurriculumSearch
             'page' => 1,
             'per_page' => $limit,
         ];
-        $names = [];
+        // Una Asignatura es un item por curso (ADR-0009): la familia lleva los
+        // cursos de sus items, leídos de las aristas que ya tiene cada uno, sin
+        // consulta extra (TASK-056). Sin ellos «Tecnología» de 4º ESO no se
+        // distinguía de «Tecnología e Ingeniería I» de 1º Bachillerato.
+        $families = [];
         foreach ($this->api->search('items', $query)->getContent() as $item) {
             $name = $this->firstLiteralValue($item, 'schema:about');
             if ('' === $name) {
                 $name = trim((string) $item->displayTitle());
             }
-            if ('' !== $name) {
-                $names[$name] = true;
+            if ('' === $name) {
+                continue;
+            }
+            $families[$name] ??= ['name' => $name, 'courses' => []];
+            $course = $this->courseOf($item);
+            if ($course['id'] > 0 && !in_array($course, $families[$name]['courses'], true)) {
+                $families[$name]['courses'][] = $course;
             }
         }
-        return array_map(static fn (string $n): array => ['name' => $n], array_keys($names));
+        return array_values($families);
     }
 
     /**
@@ -252,13 +262,15 @@ class CurriculumSearch
      * etapa + nombre de materia (schema:about) + tipo; nunca carga el árbol
      * completo (NFR-004).
      *
+     * @param int[] $courseIds acota a esos cursos (TASK-056); vacío = todos
      * @return array<int,array{id:int,title:string,description:string,block:string,courseId:int,courseTitle:string,subjectId:int}>
      */
     public function searchLeaves(
         string $dimension,
         int $etapaId,
         string $subjectName,
-        int $limit = self::RESULT_LIMIT
+        int $limit = self::RESULT_LIMIT,
+        array $courseIds = []
     ): array {
         if (!isset(self::TYPE_SETTINGS[$dimension]) || $etapaId <= 0 || '' === trim($subjectName)) {
             return [];
@@ -281,8 +293,28 @@ class CurriculumSearch
             'page' => 1,
             'per_page' => $limit,
         ];
+        // Acotación por curso (TASK-056): una consulta por curso, porque el
+        // adaptador no agrupa condiciones Y/O; se unen por id.
+        $queries = [$query];
+        $courseIds = self::normalizeContextIds($courseIds);
+        if ($courseIds) {
+            $queries = array_map(static function (int $courseId) use ($query): array {
+                $query['property'][] = [
+                    'property' => 'lrmi:educationalAlignment', 'type' => 'res', 'text' => (string) $courseId,
+                    'joiner' => 'and',
+                ];
+                return $query;
+            }, $courseIds);
+        }
+        $items = [];
+        foreach ($queries as $one) {
+            foreach ($this->api->search('items', $one)->getContent() as $item) {
+                $items[(int) $item->id()] ??= $item;
+            }
+        }
+
         $results = [];
-        foreach ($this->api->search('items', $query)->getContent() as $item) {
+        foreach ($items as $item) {
             $course = $this->firstResourceRef($item, 'lrmi:educationalAlignment');
             $results[] = [
                 'id' => (int) $item->id(),
@@ -383,6 +415,23 @@ class CurriculumSearch
     }
 
     /** @return array{id:int,title:string} */
+    /**
+     * Curso de una Asignatura por la primera arista que lo declare
+     * (CurricularPairs::COURSE_TERMS, el mismo juego que la celda curricular).
+     *
+     * @return array{id:int,title:string}
+     */
+    private function courseOf($item): array
+    {
+        foreach (CurricularPairs::COURSE_TERMS as $term) {
+            $course = $this->firstResourceRef($item, $term);
+            if ($course['id'] > 0) {
+                return $course;
+            }
+        }
+        return ['id' => 0, 'title' => ''];
+    }
+
     private function firstResourceRef($item, string $term): array
     {
         foreach ($item->value($term, ['all' => true, 'default' => []]) as $v) {
