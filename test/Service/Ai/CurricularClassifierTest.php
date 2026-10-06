@@ -93,6 +93,7 @@ final class CurricularClassifierTest extends TestCase
         $this->assertStringContainsString('INCLUSIVO', $llm->calls[0]['messages'][0]['content']); // Etapa
         // TASK-056: inclusiveness only when the stage is not stated; a quoted stage wins.
         $this->assertStringContainsString('indica la etapa', $llm->calls[0]['messages'][0]['content']);
+        $this->assertStringContainsString('EP = Educación Primaria', $llm->calls[0]['messages'][0]['content']);
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[1]['messages'][0]['content']); // Materia
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[2]['messages'][0]['content']); // Saberes
         $this->assertStringNotContainsString('INCLUSIVO', $llm->calls[3]['messages'][0]['content']); // Criterios
@@ -438,6 +439,10 @@ final class CurricularClassifierTest extends TestCase
         $result = $this->make($resolver, $llm)->classify(new ItemContext('ecuaciones, 3º ESO', ''));
 
         $courses = $llm->calls[2]['messages'][0]['content'];
+        // «2º ciclo de EP» is 3º–4º Primaria, not 2º–3º: the model mixed cycle and
+        // course numbers until it was told the LOMLOE equivalence (2026-10-06).
+        $this->assertStringContainsString('segundo ciclo de Educación Primaria = 3º y 4º', $courses);
+        $this->assertStringContainsString('segundo ciclo de Educación Infantil = 4º, 5º y 6º', $courses);
         $this->assertStringContainsString('1. 1º ESO', $courses);
         $this->assertStringContainsString('2. 3º ESO', $courses);
         $leafCalls = array_values(array_filter($resolver->calls, static fn (array $c): bool => isset($c['leaves'])));

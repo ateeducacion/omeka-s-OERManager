@@ -39,6 +39,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      */
     private const ETAPA_GUIDANCE = 'Si el contenido indica la etapa o el curso de forma explícita (por ejemplo '
         . '«4º ESO», «2º ciclo de Educación Primaria», «Educación Infantil»), elige SOLO esa etapa. '
+        . 'Abreviaturas: EI = Educación Infantil, EP = Educación Primaria. '
         . 'Solo si el contenido no indica la etapa, sé INCLUSIVO: si el recurso podría encajar en varias '
         . 'etapas, selecciónalas todas, porque los saberes y criterios de una etapa no elegida no podrán '
         . 'proponerse después.';
@@ -46,8 +47,17 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     /**
      * Guía del paso de cursos plausibles (Fase A.3, TASK-056). Acota la búsqueda
      * de hojas; el curso escrito se sigue derivando de las hojas elegidas.
+     *
+     * Lleva la equivalencia ciclo → cursos de la LOMLOE (RD 95/2022 Infantil,
+     * RD 157/2022 Primaria): medido el 2026-10-06, el modelo leía «2.º ciclo de
+     * EP» como 2º y 3º de Primaria en vez de 3º y 4º. Es conocimiento del
+     * currículo para interpretar el texto, no detección por reglas.
      */
     private const COURSE_GUIDANCE = 'Si el contenido indica el curso o el ciclo, elige esos cursos. '
+        . 'Equivalencias de ciclos: primer ciclo de Educación Infantil = 1º, 2º y 3º Infantil (0, 1 y 2 años); '
+        . 'segundo ciclo de Educación Infantil = 4º, 5º y 6º Infantil (3, 4 y 5 años); '
+        . 'primer ciclo de Educación Primaria = 1º y 2º; segundo ciclo de Educación Primaria = 3º y 4º; '
+        . 'tercer ciclo de Educación Primaria = 5º y 6º. EI = Educación Infantil, EP = Educación Primaria. '
         . 'Añade un curso vecino solo si hay duda real; si el contenido no da ninguna pista de curso, '
         . 'elige todos los que encajen con su nivel de dificultad.';
 
