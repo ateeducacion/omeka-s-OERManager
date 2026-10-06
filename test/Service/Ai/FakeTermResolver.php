@@ -15,7 +15,7 @@ final class FakeTermResolver implements TermResolverInterface
 {
     /** @var array<string,array<int,array<string,mixed>>> */
     public array $byDimension;
-    /** @var array<int,array<int,array{name:string}>> */
+    /** @var array<int,array<int,array{name:string,courses?:list<array{id:int,title:string}>}>> */
     public array $families = [];
     /** @var array<string,array<int,array<string,mixed>>> */
     public array $leaves = [];
@@ -40,9 +40,16 @@ final class FakeTermResolver implements TermResolverInterface
         return $this->families[$etapaId] ?? [];
     }
 
-    public function listLeaves(string $dimension, int $etapaId, string $subjectName): array
+    public function listLeaves(string $dimension, int $etapaId, string $subjectName, array $courseIds = []): array
     {
-        $this->calls[] = ['leaves' => $dimension, 'etapa' => $etapaId, 'subject' => $subjectName];
-        return $this->leaves["{$dimension}|{$subjectName}"] ?? $this->leaves[$dimension] ?? [];
+        $this->calls[] = ['leaves' => $dimension, 'etapa' => $etapaId, 'subject' => $subjectName, 'courses' => $courseIds];
+        $leaves = $this->leaves["{$dimension}|{$subjectName}"] ?? $this->leaves[$dimension] ?? [];
+        if (!$courseIds) {
+            return $leaves;
+        }
+        return array_values(array_filter(
+            $leaves,
+            static fn (array $leaf): bool => in_array((int) ($leaf['courseId'] ?? 0), $courseIds, true)
+        ));
     }
 }
