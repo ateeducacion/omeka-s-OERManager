@@ -32,7 +32,7 @@ final class CurricularPairs
      * Aristas por las que una Asignatura declara su curso, en orden de
      * preferencia. Mismo juego que `RecatalogService::QUALIFIER_TERMS`.
      */
-    private const COURSE_TERMS = [
+    public const COURSE_TERMS = [
         'lrmi:educationalLevel',
         'lrmi:educationalAlignment',
         'schema:inDefinedTermSet',
