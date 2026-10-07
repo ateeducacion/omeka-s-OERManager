@@ -19,6 +19,9 @@ Install the locked dependencies with `composer install`, then run `make lint`,
 After `composer install`, `make up` (or `docker compose up`) starts Omeka S on http://localhost:8080
 (admin `admin@example.com` / `password`, editor `editor@example.com` / `password`) with this repository mounted as
 `modules/OERManager`, configured from `blueprint.json` (the same file as the Omeka S Playground).
+The blueprint also imports the LRMI and schema.org vocabularies the module reads, in both
+environments. It does not create the curricular graph (DefinedTermSets and their terms) or the
+`curation` vocabulary of the Access module.
 
 With PCOV installed, generate the complete PHP coverage report and enforce the
 same 90% line threshold used by CI:

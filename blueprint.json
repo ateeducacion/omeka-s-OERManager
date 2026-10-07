@@ -30,12 +30,30 @@
       "source": "https://github.com/ateeducacion/omeka-s-OERManager/archive/refs/heads/main.zip"
     }
   ],
+  "vocabularies": [
+    {
+      "prefix": "lrmi",
+      "namespaceUri": "http://purl.org/dcx/lrmi-terms/",
+      "label": "LRMI",
+      "comment": "Learning Resource Metadata Initiative (DCMI).",
+      "format": "turtle",
+      "source": "https://www.dublincore.org/specifications/lrmi/lrmi_terms/2022-06-14/lrmi-terms.ttl"
+    },
+    {
+      "prefix": "schema",
+      "namespaceUri": "https://schema.org/",
+      "label": "schema.org",
+      "comment": "schema.org 30.1.",
+      "format": "rdfxml",
+      "source": "https://raw.githubusercontent.com/schemaorg/schemaorg/v30.1/data/releases/30.1/schemaorg-current-https.rdf"
+    }
+  ],
   "sites": [
     {
       "title": "OER Manager Playground",
       "slug": "oer-manager",
       "theme": "default",
-      "summary": "Instalacion para probar el modulo OERManager en Omeka-S Playground. El modulo consume un grafo curricular (DefinedTermSets, ADR-0006) y vocabularios LRMI que un playground limpio no incluye: este preview demuestra la instalacion/activacion del modulo, no la catalogacion curricular completa.",
+      "summary": "Instalacion para probar el modulo OERManager en Omeka-S Playground, con los vocabularios LRMI y schema.org que usa. El grafo curricular (DefinedTermSets, ADR-0006) no se incluye: este preview demuestra la instalacion/activacion del modulo, no la catalogacion curricular completa.",
       "isPublic": true,
       "setAsDefault": true
     }
