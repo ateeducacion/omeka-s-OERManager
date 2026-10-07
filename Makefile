@@ -1,6 +1,5 @@
 # Makefile del módulo Omeka-S «OERManager»
-# Calidad de código, tests, i18n y empaquetado.
-# Docker se gestiona fuera del módulo (el contenedor mapea el dir de trabajo del host).
+# Entorno Docker, calidad de código, tests, i18n y empaquetado.
 
 # Define SED_INPLACE según el sistema operativo
 ifeq ($(shell uname), Darwin)
@@ -8,6 +7,35 @@ ifeq ($(shell uname), Darwin)
 else
   SED_INPLACE = sed -i
 endif
+
+# ---------------------------------------------------------------------------
+# Docker (docker-compose.yml monta este directorio como modules/OERManager)
+# ---------------------------------------------------------------------------
+
+.PHONY: check-docker up upd down pull shell clean
+
+check-docker:
+	@docker version > /dev/null 2>&1 || (echo "" && echo "Error: Docker is not running. Please make sure Docker is installed and running." && echo "" && exit 1)
+
+# El módulo carga su propio vendor/ (smalot/pdfparser): composer install antes de arrancar
+up: check-docker
+	docker compose up --remove-orphans
+
+upd: check-docker
+	docker compose up --detach --remove-orphans
+
+down: check-docker
+	docker compose down
+
+pull: check-docker
+	docker compose -f docker-compose.yml pull
+
+shell: check-docker
+	docker compose exec omekas sh
+
+# Para y borra los contenedores y los volúmenes (instalación desde cero)
+clean: check-docker
+	docker compose down -v --remove-orphans
 
 # ---------------------------------------------------------------------------
 # Calidad de código
@@ -135,6 +163,14 @@ i18n: generate-pot update-po check-untranslated compile-mo
 help:
 	@echo ""
 	@echo "Usage: make <command>"
+	@echo ""
+	@echo "Docker (run composer install first):"
+	@echo "  up                - Start Omeka S on http://localhost:8080 (foreground)"
+	@echo "  upd               - Start Omeka S in the background"
+	@echo "  down              - Stop the containers"
+	@echo "  pull              - Pull the latest images"
+	@echo "  shell             - Open a shell in the omekas container"
+	@echo "  clean             - Stop and remove containers and volumes"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  lint              - Run PHP linter (PHP_CodeSniffer, PSR-12)"
