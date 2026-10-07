@@ -36,8 +36,8 @@ final class CurriculumTermResolver implements TermResolverInterface
         return $this->search->searchSubjectFamilies($etapaId, self::ENUM_LIMIT);
     }
 
-    public function listLeaves(string $dimension, int $etapaId, string $subjectName): array
+    public function listLeaves(string $dimension, int $etapaId, string $subjectName, array $courseIds = []): array
     {
-        return $this->search->searchLeaves($dimension, $etapaId, $subjectName, self::ENUM_LIMIT);
+        return $this->search->searchLeaves($dimension, $etapaId, $subjectName, self::ENUM_LIMIT, $courseIds);
     }
 }

@@ -24,8 +24,10 @@ final class EvaluationScorer
         $fp = count(array_diff($p, $t));
         $fn = count(array_diff($t, $p));
 
-        $precision = 0 === $tp + $fp ? 1.0 : $tp / ($tp + $fp);
-        $recall = 0 === $tp + $fn ? 1.0 : $tp / ($tp + $fn);
+        // División en coma flotante: sin aciertos `0 / 5` da el entero 0, y la
+        // guarda estricta `0.0 ===` de abajo no lo veía y dividía por cero.
+        $precision = 0 === $tp + $fp ? 1.0 : (float) $tp / ($tp + $fp);
+        $recall = 0 === $tp + $fn ? 1.0 : (float) $tp / ($tp + $fn);
         $f1 = 0.0 === $precision + $recall ? 0.0 : 2 * $precision * $recall / ($precision + $recall);
 
         sort($p);

@@ -27,10 +27,11 @@ interface TermResolverInterface
     public function listCandidates(string $dimension, array $context = []): array;
 
     /**
-     * Nombres distintos de materia (asignatura) de una etapa (Fase A.2): delimita
-     * la materia sin fijar el curso.
+     * Nombres distintos de materia (asignatura) de una etapa (Fase A.2), con los
+     * cursos en que existe cada una (TASK-056): delimita la materia sin fijar el
+     * curso, pero deja ver a cuál pertenece.
      *
-     * @return array<int,array{name:string}>
+     * @return array<int,array{name:string,courses?:list<array{id:int,title:string}>}>
      */
     public function listSubjectFamilies(int $etapaId): array;
 
@@ -38,7 +39,8 @@ interface TermResolverInterface
      * Saberes ('lrmi:teaches') o criterios ('lrmi:assesses') de una materia
      * cruzando todos sus cursos (Fase B/C), con linaje para derivar curso+materia.
      *
+     * @param int[] $courseIds acota a esos cursos (paso A.3, TASK-056); vacío = todos
      * @return array<int,array{id:int,title:string,description:string,block:string,courseId:int,courseTitle:string,subjectId:int}>
      */
-    public function listLeaves(string $dimension, int $etapaId, string $subjectName): array;
+    public function listLeaves(string $dimension, int $etapaId, string $subjectName, array $courseIds = []): array;
 }

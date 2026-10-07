@@ -3,6 +3,7 @@
 namespace OERManager\Service\Ai;
 
 use OERManager\Service\Content\ItemContext;
+use OERManager\Service\Stats\CurriculumOrder;
 use OERManager\Service\Llm\LlmClientInterface;
 
 /**
@@ -29,18 +30,36 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     private const LEAF_CAP = 200;
 
     /**
-     * Sesgo de inclusividad SOLO para la etapa acotadora (Fase A.1). La etapa no
-     * se escribe (ADR-0009); solo delimita qué saberes/criterios llegan a las
-     * fases B/C. Una etapa omitida deja fuera sus contenidos, que ya no podrán
-     * proponerse; incluir una de más es inocuo (las hojas se eligen por
-     * descripción y curso/materia se derivan abajo, ADR-0010). Por eso, ante duda
-     * de nivel, se prima el recall. Este sesgo NO se aplica a materia ni a las
-     * hojas: ahí la precisión sí importa (materia/curso salen de las hojas).
+     * Guía de la etapa acotadora (Fase A.1). Desde TASK-056 la inclusividad es
+     * condicional: si el contenido indica la etapa, se elige esa. Con el tope
+     * LEAF_CAP una etapa de más NO era inocua (ADR-0010, addendum TASK-056):
+     * sus hojas desplazaban a las de la etapa correcta (0/57 en el conjunto de
+     * evaluación de TASK-057). Se mantiene el recall solo cuando el contenido no
+     * dice el nivel. No se aplica a materia ni a hojas.
      */
-    private const ETAPA_GUIDANCE = 'Ante la duda sobre el nivel educativo, sé INCLUSIVO: si el recurso podría '
-        . 'encajar en varias etapas, selecciónalas TODAS. Es preferible incluir una etapa de más que dejar '
-        . 'fuera la correcta, porque los contenidos (saberes y criterios) de las etapas no elegidas no podrán '
-        . 'proponerse después. Excluye solo las etapas claramente inaplicables.';
+    private const ETAPA_GUIDANCE = 'Si el contenido indica la etapa o el curso de forma explícita (por ejemplo '
+        . '«4º ESO», «2º ciclo de Educación Primaria», «Educación Infantil»), elige SOLO esa etapa. '
+        . 'Abreviaturas: EI = Educación Infantil, EP = Educación Primaria. '
+        . 'Solo si el contenido no indica la etapa, sé INCLUSIVO: si el recurso podría encajar en varias '
+        . 'etapas, selecciónalas todas, porque los saberes y criterios de una etapa no elegida no podrán '
+        . 'proponerse después.';
+
+    /**
+     * Guía del paso de cursos plausibles (Fase A.3, TASK-056). Acota la búsqueda
+     * de hojas; el curso escrito se sigue derivando de las hojas elegidas.
+     *
+     * Lleva la equivalencia ciclo → cursos de la LOMLOE (RD 95/2022 Infantil,
+     * RD 157/2022 Primaria): medido el 2026-10-06, el modelo leía «2.º ciclo de
+     * EP» como 2º y 3º de Primaria en vez de 3º y 4º. Es conocimiento del
+     * currículo para interpretar el texto, no detección por reglas.
+     */
+    private const COURSE_GUIDANCE = 'Si el contenido indica el curso o el ciclo, elige esos cursos. '
+        . 'Equivalencias de ciclos: primer ciclo de Educación Infantil = 1º, 2º y 3º Infantil (0, 1 y 2 años); '
+        . 'segundo ciclo de Educación Infantil = 4º, 5º y 6º Infantil (3, 4 y 5 años); '
+        . 'primer ciclo de Educación Primaria = 1º y 2º; segundo ciclo de Educación Primaria = 3º y 4º; '
+        . 'tercer ciclo de Educación Primaria = 5º y 6º. EI = Educación Infantil, EP = Educación Primaria. '
+        . 'Añade un curso vecino solo si hay duda real; si el contenido no da ninguna pista de curso, '
+        . 'elige todos los que encajen con su nivel de dificultad.';
 
     /** @var array<int,array<string,mixed>> */
     private array $trace = [];
@@ -83,46 +102,52 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             return [];
         }
 
-        // Fase A.2 — Materias (multi; NO fijan curso; no se escriben).
-        $subjectNames = $this->pickSubjectNames($this->gatherFamilies($etapaIds), $coarse);
+        // Fase A.2 — Materias (multi; NO fijan curso; no se escriben). Se
+        // presentan con sus cursos (TASK-056).
+        $families = $this->gatherFamilies($etapaIds);
+        $subjectNames = $this->pickSubjectNames($families, $coarse);
         if (!$subjectNames) {
             return [];
         }
 
+        // Fase A.3 — Cursos plausibles (TASK-056): acotan las hojas, no se
+        // escriben; el curso escrito se deriva en la Fase D.
+        $courseIds = $this->pickCourseIds($families, $subjectNames, $coarse);
+
         $result = [];
-        /** @var array<int,bool> $courseIds */
-        $courseIds = [];
+        /** @var array<int,bool> $derivedCourses */
+        $derivedCourses = [];
         /** @var array<int,bool> $subjectIds */
         $subjectIds = [];
 
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
-        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames);
+        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames, $courseIds);
         if (count($teaches) > self::BLOCK_THRESHOLD) {
             $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $coarse);
         }
         $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
-            $this->collectLineage($teachesRows, $courseIds, $subjectIds);
+            $this->collectLineage($teachesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
-        $assesses = $this->gatherLeaves(self::ASSESSES, $etapaIds, $subjectNames);
-        if ($courseIds) {
+        $assesses = $this->gatherLeaves(self::ASSESSES, $etapaIds, $subjectNames, $courseIds);
+        if ($derivedCourses) {
             $assesses = array_values(array_filter(
                 $assesses,
-                static fn (array $c): bool => isset($courseIds[(int) ($c['courseId'] ?? 0)])
+                static fn (array $c): bool => isset($derivedCourses[(int) ($c['courseId'] ?? 0)])
             ));
         }
         $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine, self::ASSESSES);
         if ($assessesRows) {
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
-            $this->collectLineage($assessesRows, $courseIds, $subjectIds);
+            $this->collectLineage($assessesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase D — Derivación: curso y materia = padres reales de las hojas.
-        if ($courseIds) {
-            $result['lrmi:educationalLevel'] = array_keys($courseIds);
+        if ($derivedCourses) {
+            $result['lrmi:educationalLevel'] = array_keys($derivedCourses);
         }
         if ($subjectIds) {
             $result['schema:about'] = array_keys($subjectIds);
@@ -202,29 +227,38 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     }
 
     /**
-     * Une las familias de materia de todas las etapas elegidas, dedup por nombre.
+     * Une las familias de materia de todas las etapas elegidas, dedup por nombre,
+     * con la unión de sus cursos (TASK-056).
      *
      * @param int[] $etapaIds
-     * @return array<int,array{name:string}>
+     * @return array<string,array{name:string,courses:array<int,string>}> por nombre; cursos id => título
      */
     private function gatherFamilies(array $etapaIds): array
     {
-        $names = [];
+        $families = [];
         foreach ($etapaIds as $etapaId) {
             foreach ($this->resolver->listSubjectFamilies($etapaId) as $family) {
                 $name = trim((string) ($family['name'] ?? ''));
-                if ('' !== $name) {
-                    $names[$name] = true;
+                if ('' === $name) {
+                    continue;
+                }
+                $families[$name] ??= ['name' => $name, 'courses' => []];
+                foreach ((array) ($family['courses'] ?? []) as $course) {
+                    $id = (int) ($course['id'] ?? 0);
+                    if ($id > 0) {
+                        $families[$name]['courses'][$id] = trim((string) ($course['title'] ?? ''));
+                    }
                 }
             }
         }
-        return array_map(static fn (string $n): array => ['name' => $n], array_keys($names));
+        return $families;
     }
 
     /**
-     * Materias elegidas (multi).
+     * Materias elegidas (multi). Cada candidata lleva sus cursos (TASK-056):
+     * «Tecnología (4º ESO)» frente a «Tecnología e Ingeniería I (1º Bachillerato)».
      *
-     * @param array<int,array{name:string}> $families
+     * @param array<string,array{name:string,courses:array<int,string>}> $families
      * @return string[]
      */
     private function pickSubjectNames(array $families, string $content): array
@@ -233,7 +267,10 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             return [];
         }
         $families = array_values($families);
-        $candidates = array_map(static fn (array $f): array => ['title' => (string) $f['name']], $families);
+        $candidates = array_map(static function (array $f): array {
+            $courses = self::courseRange($f['courses']);
+            return ['title' => '' === $courses ? $f['name'] : $f['name'] . ' (' . $courses . ')'];
+        }, $families);
         $names = [];
         foreach ($this->ask($candidates, 'Materia (asignatura)', $content, 0) as $idx) {
             $pos = $idx - 1;
@@ -245,30 +282,129 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     }
 
     /**
-     * Reúne las hojas de una dimensión cruzando etapas×materias; dedup por id y
-     * tope LEAF_CAP (coste de tokens). Combos inexistentes devuelven [] (inocuo).
+     * Cursos plausibles (Fase A.3, TASK-056): entre los cursos de las materias
+     * elegidas. Con uno o ninguno no hay nada que elegir y no se llama al LLM.
+     * Si el LLM no elige ninguno, se usan todos (sin pérdida de cobertura).
+     *
+     * @param array<string,array{name:string,courses:array<int,string>}> $families
+     * @param string[] $subjectNames
+     * @return int[] cursos que acotan las hojas; vacío = sin acotar
+     */
+    private function pickCourseIds(array $families, array $subjectNames, string $content): array
+    {
+        $courses = [];
+        foreach ($subjectNames as $name) {
+            $courses += $families[$name]['courses'] ?? [];
+        }
+        $ordered = CurriculumOrder::sortCourses(array_map(
+            static fn (string $title): array => ['label' => $title],
+            $courses
+        ));
+        if (count($ordered) <= 1) {
+            return $ordered;
+        }
+        $candidates = array_map(static fn (int $id): array => ['id' => $id, 'title' => $courses[$id]], $ordered);
+        $chosen = $this->mapIndicesToIds(
+            $this->ask($candidates, 'Curso', $content, 0, self::COURSE_GUIDANCE),
+            $candidates
+        );
+        return $chosen ?: $ordered;
+    }
+
+    /**
+     * Cursos de una materia en forma compacta y en orden curricular:
+     * «1º–3º ESO», «1º, 3º ESO», «4º Infantil de 3 años, 5º Infantil de 4 años».
+     *
+     * @param array<int,string> $courses id => título
+     */
+    private static function courseRange(array $courses): string
+    {
+        $titles = [];
+        $labels = array_map(static fn (string $t): array => ['label' => $t], $courses);
+        foreach (CurriculumOrder::sortCourses($labels) as $id) {
+            $titles[] = $courses[$id];
+        }
+        $groups = [];
+        foreach ($titles as $title) {
+            if (1 === preg_match('/^\s*(\d+)º\s+(.+)$/u', $title, $m)) {
+                $groups[$m[2]][] = (int) $m[1];
+            } else {
+                $groups[$title] = $groups[$title] ?? [];
+            }
+        }
+        $parts = [];
+        foreach ($groups as $suffix => $ordinals) {
+            if (!$ordinals) {
+                $parts[] = $suffix;
+                continue;
+            }
+            $runs = [];
+            foreach ($ordinals as $n) {
+                $last = count($runs) - 1;
+                if ($last >= 0 && $runs[$last][1] === $n - 1) {
+                    $runs[$last][1] = $n;
+                } else {
+                    $runs[] = [$n, $n];
+                }
+            }
+            $parts[] = implode(', ', array_map(
+                static fn (array $r): string => $r[0] === $r[1] ? $r[0] . 'º' : $r[0] . 'º–' . $r[1] . 'º',
+                $runs
+            )) . ' ' . $suffix;
+        }
+        return implode(', ', $parts);
+    }
+
+    /**
+     * Reúne las hojas de una dimensión cruzando etapas×materias, acotadas a los
+     * cursos de la Fase A.3; dedup por id. Si superan LEAF_CAP (coste de tokens),
+     * el cupo se reparte a partes iguales entre los pares (materia, curso) en vez
+     * de cortar en orden (TASK-056): antes las primeras etapas llenaban el cupo y
+     * la materia correcta no llegaba al LLM. El recorte queda en la traza.
      *
      * @param int[] $etapaIds
      * @param string[] $subjectNames
+     * @param int[] $courseIds
      * @return array<int,array<string,mixed>>
      */
-    private function gatherLeaves(string $dimension, array $etapaIds, array $subjectNames): array
+    private function gatherLeaves(string $dimension, array $etapaIds, array $subjectNames, array $courseIds): array
     {
         $merged = [];
         foreach ($etapaIds as $etapaId) {
             foreach ($subjectNames as $subjectName) {
-                foreach ($this->resolver->listLeaves($dimension, $etapaId, $subjectName) as $leaf) {
+                foreach ($this->resolver->listLeaves($dimension, $etapaId, $subjectName, $courseIds) as $leaf) {
                     $id = (int) ($leaf['id'] ?? 0);
                     if ($id > 0 && !isset($merged[$id])) {
-                        $merged[$id] = $leaf;
-                        if (count($merged) >= self::LEAF_CAP) {
-                            return array_values($merged);
-                        }
+                        $merged[$id] = $leaf + ['subjectName' => $subjectName];
                     }
                 }
             }
         }
-        return array_values($merged);
+        if (count($merged) <= self::LEAF_CAP) {
+            return array_values($merged);
+        }
+
+        $groups = [];
+        foreach ($merged as $id => $leaf) {
+            $groups[$leaf['subjectName'] . "\u{1F}" . (int) ($leaf['courseId'] ?? 0)][] = $id;
+        }
+        $kept = [];
+        while (count($kept) < self::LEAF_CAP) {
+            foreach ($groups as $key => &$ids) {
+                if (count($kept) >= self::LEAF_CAP) {
+                    break;
+                }
+                if ($ids) {
+                    $kept[array_shift($ids)] = true;
+                }
+            }
+            unset($ids);
+        }
+        $this->trace[] = [
+            'step' => 'leaf_cap', 'dimension' => $dimension, 'available' => count($merged), 'kept' => self::LEAF_CAP,
+        ];
+        // Orden original de las hojas: el reparto decide QUÉ entra, no el orden.
+        return array_values(array_intersect_key($merged, $kept));
     }
 
     /**
@@ -364,25 +500,41 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     /**
      * E2: si hay muchos saberes, el LLM elige bloques temáticos y se filtran los
      * candidatos. Fallback: sin bloque elegido → todos (no se pierde cobertura).
+     * Desde TASK-056 cada bloque es un par (materia, bloque) etiquetado con sus
+     * cursos: dos materias con un bloque del mismo título ya no se funden, y el
+     * LLM ve a qué materia y curso pertenece cada uno.
      *
      * @param array<int,array<string,mixed>> $candidates
      * @return array<int,array<string,mixed>>
      */
     private function prefilterByBlock(array $candidates, string $subjectLabel, string $content): array
     {
-        $blocks = array_values(array_unique(array_filter(array_map(
-            static fn (array $c): string => trim((string) ($c['block'] ?? '')),
-            $candidates
-        ))));
+        $blocks = [];
+        foreach ($candidates as $c) {
+            $block = trim((string) ($c['block'] ?? ''));
+            if ('' === $block) {
+                continue;
+            }
+            $key = self::blockKey($c);
+            $blocks[$key] ??= ['subject' => (string) ($c['subjectName'] ?? ''), 'block' => $block, 'courses' => []];
+            $courseId = (int) ($c['courseId'] ?? 0);
+            if ($courseId > 0) {
+                $blocks[$key]['courses'][$courseId] = (string) ($c['courseTitle'] ?? '');
+            }
+        }
         if (!$blocks) {
             return $candidates;
         }
-        $blockCandidates = array_map(static fn (string $b): array => ['title' => $b], $blocks);
+        $keys = array_keys($blocks);
+        $blockCandidates = array_map(static function (array $b): array {
+            $where = trim($b['subject'] . ' · ' . self::courseRange($b['courses']), ' ·');
+            return ['title' => ('' === $where ? '' : '[' . $where . '] ') . $b['block']];
+        }, array_values($blocks));
         $selected = [];
         foreach ($this->ask($blockCandidates, 'Bloques temáticos de ' . $subjectLabel, $content, 0) as $idx) {
             $pos = $idx - 1;
-            if (isset($blocks[$pos])) {
-                $selected[$blocks[$pos]] = true;
+            if (isset($keys[$pos])) {
+                $selected[$keys[$pos]] = true;
             }
         }
         if (!$selected) {
@@ -390,7 +542,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         }
         return array_values(array_filter(
             $candidates,
-            static fn (array $c): bool => isset($selected[trim((string) ($c['block'] ?? ''))])
+            static fn (array $c): bool => isset($selected[self::blockKey($c)])
         ));
+    }
+
+    /** @param array<string,mixed> $candidate */
+    private static function blockKey(array $candidate): string
+    {
+        return (string) ($candidate['subjectName'] ?? '') . "\u{1F}" . trim((string) ($candidate['block'] ?? ''));
     }
 }

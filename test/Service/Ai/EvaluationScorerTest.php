@@ -47,6 +47,19 @@ final class EvaluationScorerTest extends TestCase
         $this->assertTrue($s['exact']);
     }
 
+    /**
+     * TASK-057: a proposal that hits nothing gave integer 0 for precision and
+     * recall, and the float guard `0.0 === 0` let it divide by zero.
+     */
+    public function testDisjointSetsScoreZeroWithoutDividingByZero(): void
+    {
+        $s = $this->scorer->score([1, 2], [3]);
+        $this->assertSame(0.0, $s['precision']);
+        $this->assertSame(0.0, $s['recall']);
+        $this->assertSame(0.0, $s['f1']);
+        $this->assertFalse($s['exact']);
+    }
+
     public function testEmptyProposalAgainstTruth(): void
     {
         $s = $this->scorer->score([], [1, 2]);

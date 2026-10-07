@@ -96,6 +96,28 @@ Sesgo de **inclusividad en la etapa acotadora** (Fase A.1), sin tocar el mapeo R
   A.1 multi-select. Invertir solo reordena el embudo (no cambia la salida) y
   reintroduce ambigüedad. El sesgo de recall ataca el punto débil real sin reordenar.
 
+## Afinado (TASK-056, 2026-10-06)
+
+Medido con el conjunto de evaluación de TASK-057 (verdad = alineación que declaran los paquetes eXeLearning):
+el clasificador no acertaba ningún saber o criterio declarado (0/57) y el curso nunca (F1 0,00). Tres
+supuestos de este ADR no se cumplían; se corrigen sin tocar el mapeo RDF (ADR-0004) ni el grafo (ADR-0009):
+
+- **La etapa de más NO era inocua.** El afinado de TASK-019 la daba por inocua; con el tope `LEAF_CAP`
+  (200) y la recogida en orden, las hojas de las etapas sobrantes llenaban el cupo y las de la materia
+  correcta no llegaban al LLM (Geometría canaria: Matemáticas elegida, 0 candidatos de Matemáticas). Se
+  mantiene el recall solo si el contenido no dice la etapa: si la cita, se elige esa.
+- **Paso A.3, cursos plausibles.** Tras la materia, el LLM elige entre los cursos de las materias elegidas
+  (con la equivalencia LOMLOE ciclo → cursos en la guía: el modelo leía «2.º ciclo de EP» como 2º y 3º). El
+  paso **acota** la búsqueda de hojas; el curso escrito se sigue **derivando** de las hojas (§1, coherencia
+  por construcción). Sin curso elegido → todos (sin pérdida de cobertura); con un solo curso no hay llamada.
+- **Reparto justo del cupo** entre pares (materia, curso) y etiquetas con contexto: materias con sus cursos,
+  bloques con materia y curso, deduplicados por (materia, bloque).
+
+Resultado con el mismo extractor `.elpx` (TASK-053), 3 pasadas × 4 REA: F1 de curso 0,00 → 0,44; saberes y
+criterios declarados 0/37 → 9/57; el curso correcto aparece en 3 de 4 REA. El límite que queda está en la
+selección fina de hojas dentro del curso correcto, no en la delimitación. Spec:
+`docs/superpowers/specs/2026-10-06-task-056-classifier-candidates-design.md`.
+
 ## Limitaciones conocidas
 
 - ~~**Materia única (v1):**~~ superada por TASK-018 (etapa y materia multi-select; ver «Afinado» arriba).
