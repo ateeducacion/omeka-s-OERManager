@@ -43,8 +43,9 @@
       "prefix": "schema",
       "namespaceUri": "https://schema.org/",
       "label": "schema.org",
+      "comment": "schema.org 30.1.",
       "format": "rdfxml",
-      "source": "https://schema.org/version/latest/schemaorg-current-https.rdf"
+      "source": "https://raw.githubusercontent.com/schemaorg/schemaorg/v30.1/data/releases/30.1/schemaorg-current-https.rdf"
     }
   ],
   "sites": [
