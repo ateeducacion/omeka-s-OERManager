@@ -70,6 +70,37 @@ final class OpenAiCompatibleClientTest extends TestCase
         $this->assertSame(4, $result->outputTokens());
     }
 
+    /**
+     * TASK-059 instrumentation: OpenRouter returns the real charged `usage.cost`
+     * and the model that served the call in every response. Both are kept to
+     * compare strategies on real cost, not on a price table.
+     */
+    public function testKeepsTheChargedCostAndTheServingModelWhenTheProviderSendsThem(): void
+    {
+        $body = (string) json_encode([
+            'choices' => [['message' => ['role' => 'assistant', 'content' => 'ok']]],
+            'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 4, 'cost' => 0.00014],
+            'model' => 'openai/gpt-4o-mini-2024-07-18',
+        ]);
+        $client = new OpenAiCompatibleClient(new FakeTransport(new HttpResult(200, $body)),
+            ['api_key' => 'k', 'model' => 'openai/gpt-4o-mini', 'base_url' => 'https://openrouter.ai/api/v1']);
+        $result = $client->chat([['role' => 'user', 'content' => 'x']]);
+
+        $this->assertSame(0.00014, $result->cost());
+        $this->assertSame('openai/gpt-4o-mini-2024-07-18', $result->model());
+    }
+
+    /** A provider that sends no cost leaves it unknown, never zero; the model falls back to the configured one. */
+    public function testCostIsUnknownWhenTheProviderDoesNotSendIt(): void
+    {
+        $client = new OpenAiCompatibleClient(new FakeTransport($this->okResult()),
+            ['api_key' => 'k', 'model' => 'local-model', 'base_url' => 'http://localhost:8080/v1']);
+        $result = $client->chat([['role' => 'user', 'content' => 'x']]);
+
+        $this->assertNull($result->cost());
+        $this->assertSame('local-model', $result->model());
+    }
+
     public function testTranslatesImagePartToImageUrlAndSkipsDocument(): void
     {
         // Imágenes → image_url (data URL); el PDF no es representable aquí y se omite

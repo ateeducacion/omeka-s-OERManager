@@ -111,6 +111,9 @@ final class AnthropicClientTest extends TestCase
         $this->assertSame(12, $result->inputTokens());
         $this->assertSame(8, $result->outputTokens());
         $this->assertSame(20, $result->totalTokens());
+        // Anthropic reports the serving model but no cost (TASK-059).
+        $this->assertSame('claude-opus-4-8', $result->model());
+        $this->assertNull($result->cost());
     }
 
     public function testConcatenatesTextBlocksAndIgnoresOthers(): void

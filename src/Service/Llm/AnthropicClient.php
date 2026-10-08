@@ -148,7 +148,9 @@ final class AnthropicClient implements LlmClientInterface
         return new ChatResult(
             $text,
             (int) ($usage['input_tokens'] ?? 0),
-            (int) ($usage['output_tokens'] ?? 0)
+            (int) ($usage['output_tokens'] ?? 0),
+            null, // la API de Anthropic no envía coste
+            is_string($data['model'] ?? null) && '' !== $data['model'] ? $data['model'] : $this->model
         );
     }
 

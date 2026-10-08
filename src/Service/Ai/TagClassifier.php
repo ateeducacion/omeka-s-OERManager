@@ -2,6 +2,7 @@
 
 namespace OERManager\Service\Ai;
 
+use OERManager\Service\Llm\LlmUsage;
 use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Llm\LlmClientInterface;
 
@@ -62,10 +63,12 @@ final class TagClassifier implements ClassifierInterface, TraceableInterface
         if (null !== $this->temperature) {
             $options['temperature'] = $this->temperature;
         }
+        $startedAt = microtime(true);
         $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $indices = $this->parser->parseIndices($response->text());
         $this->trace[] = [
             'step' => 'Ejes temáticos',
+            'usage' => LlmUsage::of($response, $startedAt),
             'candidates' => count($candidates),
             'system' => $prompt['system'],
             'user' => $prompt['user'],

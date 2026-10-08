@@ -2,6 +2,7 @@
 
 namespace OERManager\Service\Ai;
 
+use OERManager\Service\Llm\LlmUsage;
 use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Stats\CurriculumOrder;
 use OERManager\Service\Llm\LlmClientInterface;
@@ -72,6 +73,15 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      */
     private array $justifications = [];
 
+    /**
+     * Ids de hojas reunidas por dimensión ANTES del cupo y de los filtros
+     * (TASK-059): con ellos el conjunto de evaluación distingue una hoja que
+     * nunca se reunió de una que se recortó o de una que el modelo no eligió.
+     *
+     * @var array<string,list<int>>
+     */
+    private array $gathered = [];
+
     private int $maxTokens;
     private ?float $temperature;
 
@@ -90,6 +100,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     public function classify(ItemContext $context): array
     {
         $this->justifications = [];
+        $this->gathered = [];
 
         // Pasos gruesos (etapa/materia/bloque) con la ficha; pasos finos
         // (saberes/criterios) con ficha + crudo de medios (ADR-0011).
@@ -195,11 +206,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         if (null !== $this->temperature) {
             $options['temperature'] = $this->temperature;
         }
+        $startedAt = microtime(true);
         $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $indices = $this->parser->parseIndices($response->text());
         $this->trace[] = [
             'step' => $label,
             'candidates' => count($candidates),
+            'usage' => LlmUsage::of($response, $startedAt),
             'system' => $prompt['system'],
             'user' => $prompt['user'],
             'llm_options' => array_diff_key($options, ['system' => '']),
@@ -380,6 +393,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
                 }
             }
         }
+        $this->gathered[$dimension] = array_keys($merged);
         if (count($merged) <= self::LEAF_CAP) {
             return array_values($merged);
         }
@@ -438,12 +452,23 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      */
     private function selectRows(string $label, array $candidates, string $content, string $dimension): array
     {
+        $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $rows);
         if (!$candidates) {
-            return [];
+            $this->trace[] = ['step' => $label, 'candidates' => 0];
+            $rows = [];
+        } else {
+            $map = $this->askWithReasons($candidates, $label, $content);
+            $this->captureJustifications($dimension, $map, $candidates);
+            $rows = $this->mapIndicesToRows(array_keys($map), $candidates);
         }
-        $map = $this->askWithReasons($candidates, $label, $content);
-        $this->captureJustifications($dimension, $map, $candidates);
-        return $this->mapIndicesToRows(array_keys($map), $candidates);
+        // TASK-059: qué hojas se reunieron, cuáles vio el modelo y cuáles eligió.
+        $last = array_key_last($this->trace);
+        $this->trace[$last] += [
+            'gathered_ids' => $this->gathered[$dimension] ?? [],
+            'candidate_ids' => $ids(array_values($candidates)),
+            'selected_ids' => $ids($rows),
+        ];
+        return $rows;
     }
 
     /**
@@ -460,11 +485,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         if (null !== $this->temperature) {
             $options['temperature'] = $this->temperature;
         }
+        $startedAt = microtime(true);
         $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $map = $this->parser->parseSelections($response->text());
         $this->trace[] = [
             'step' => $label,
             'candidates' => count($candidates),
+            'usage' => LlmUsage::of($response, $startedAt),
             'system' => $prompt['system'],
             'user' => $prompt['user'],
             'llm_options' => array_diff_key($options, ['system' => '']),
