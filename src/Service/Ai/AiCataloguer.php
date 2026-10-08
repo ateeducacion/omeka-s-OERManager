@@ -55,7 +55,16 @@ final class AiCataloguer
         // Extrae SOLO el texto de los medios (sin prefijar metadatos): el contexto
         // los mantiene separados con su procedencia (ADR-0011), y el truncado por
         // presupuesto protege el contenido del medio.
+        // Latencia por fase (TASK-059): para comparar estrategias por tiempo.
+        $timings = array_fill_keys(['extraction_ms', 'vision_ms', 'distillation_ms', 'curricular_ms', 'tags_ms'], 0);
+        $clock = microtime(true);
+        $lap = static function (string $phase) use (&$timings, &$clock): void {
+            $now = microtime(true);
+            $timings[$phase] = (int) round(($now - $clock) * 1000);
+            $clock = $now;
+        };
         $media = $this->extractor->extract('', $files);
+        $lap('extraction_ms');
 
         // Visión (ADR-0011): rescata las imágenes (top-N) y los PDF escaneados que el
         // ContentExtractor no pudo leer. Gobernada por el toggle/proveedor dentro del
@@ -67,6 +76,7 @@ final class AiCataloguer
             $progress->report('Analizando imágenes y PDF', 2, $total);
         }
         $visionDescriptions = $this->vision->describe($images, $rescuable);
+        $lap('vision_ms');
         $context = new ItemContext($metadataText, $media->text(), '', $visionDescriptions);
 
         // Destilación (ADR-0011): el modelo barato produce una ficha fiel que usan
@@ -74,6 +84,7 @@ final class AiCataloguer
         $this->stopIfRequested($progress);
         $progress->report('Destilando ficha', 3, $total);
         $ficha = $this->distiller->distill($context);
+        $lap('distillation_ms');
         if ('' !== $ficha) {
             $context = $context->withFicha($ficha);
         }
@@ -84,10 +95,12 @@ final class AiCataloguer
             $this->stopIfRequested($progress);
             $progress->report('Clasificación curricular', 4, $total);
             $curricular = $this->curricular->classify($context);
+            $lap('curricular_ms');
 
             $this->stopIfRequested($progress);
             $progress->report('Ejes temáticos', 5, $total);
             $tags = $this->tags->classify($context);
+            $lap('tags_ms');
 
             $alignment = $curricular + $tags;
         }
@@ -101,6 +114,7 @@ final class AiCataloguer
                 : [],
             'content' => $this->contentBlock($media, $context->isEmpty()),
             'debug' => [
+                'timings' => $timings,
                 'content_text' => $context->fineText(),
                 'ficha' => $ficha,
                 'vision' => $this->vision->getTrace(),

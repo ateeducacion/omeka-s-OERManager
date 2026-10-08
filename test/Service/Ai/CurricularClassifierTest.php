@@ -532,4 +532,73 @@ final class CurricularClassifierTest extends TestCase
         }
         $this->fail('No call for ' . $label);
     }
+
+    // --- TASK-059: the trace says which leaves were gathered, shown and chosen, and what each call cost ---
+
+    /** @return array<string,mixed> the trace entry of the leaf step $label */
+    private function traceStep(CurricularClassifier $classifier, string $label): array
+    {
+        foreach ($classifier->getTrace() as $entry) {
+            if ($label === ($entry['step'] ?? '')) {
+                return $entry;
+            }
+        }
+        $this->fail('No trace entry for ' . $label);
+    }
+
+    public function testLeafStepsTraceGatheredShownAndChosenIdsAndUsage(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}', '{"selected":[2]}', // stage, subject, course 3º ESO
+            '{"selected":[{"i":1,"why":"x"}]}',                        // knowledge → id 31
+            '{"selected":[{"i":1,"why":"y"}]}',                        // criteria → id 40
+        ]);
+        $classifier = $this->make($this->coursedResolver(), $llm);
+        $classifier->classify(new ItemContext('ecuaciones, 3º ESO', ''));
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame([31], $knowledge['gathered_ids']);
+        $this->assertSame([31], $knowledge['candidate_ids']);
+        $this->assertSame([31], $knowledge['selected_ids']);
+        $this->assertArrayHasKey('usage', $knowledge);
+        $this->assertSame(['input_tokens', 'output_tokens', 'cost', 'model', 'ms'], array_keys($knowledge['usage']));
+
+        $criteria = $this->traceStep($classifier, 'Criterios de evaluación');
+        $this->assertSame([40], $criteria['gathered_ids']);
+        $this->assertSame([40], $criteria['candidate_ids']);
+        $this->assertSame([40], $criteria['selected_ids']);
+        $this->assertArrayHasKey('usage', $this->traceStep($classifier, 'Etapa educativa'));
+    }
+
+    public function testGatheredIdsAreTakenBeforeTheCapAndTheBlockPrefilter(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->families = [1 => [['name' => 'Matemáticas'], ['name' => 'Tecnología']]];
+        $resolver->leaves = [
+            'lrmi:teaches|Matemáticas' => $this->leaves(1000, 20, 10, '1º ESO', 'I. Proyectos'),
+            'lrmi:teaches|Tecnología' => $this->leaves(2000, 20, 13, '4º ESO', 'I. Proyectos'),
+        ];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1,2]}', '{"selected":[2]}', '{"selected":[]}']);
+        $classifier = $this->make($resolver, $llm);
+        $classifier->classify(new ItemContext('x', ''));
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertCount(40, $knowledge['gathered_ids']);   // both subjects were gathered…
+        $this->assertCount(20, $knowledge['candidate_ids']);  // …the block prefilter kept Tecnología
+        $this->assertSame(2000, $knowledge['candidate_ids'][0]);
+        $this->assertSame([], $knowledge['selected_ids']);
+    }
+
+    public function testAnEmptyLeafStepIsStillTraced(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->leaves = [];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}']);
+        $classifier = $this->make($resolver, $llm);
+        $classifier->classify(new ItemContext('x', ''));
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame([], $knowledge['gathered_ids']);
+        $this->assertSame([], $knowledge['candidate_ids']);
+    }
 }

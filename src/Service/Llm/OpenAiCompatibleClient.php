@@ -170,7 +170,10 @@ final class OpenAiCompatibleClient implements LlmClientInterface
         return new ChatResult(
             $text,
             (int) ($usage['prompt_tokens'] ?? 0),
-            (int) ($usage['completion_tokens'] ?? 0)
+            (int) ($usage['completion_tokens'] ?? 0),
+            // OpenRouter envía el coste cargado en cada respuesta (TASK-059).
+            is_numeric($usage['cost'] ?? null) ? (float) $usage['cost'] : null,
+            is_string($data['model'] ?? null) && '' !== $data['model'] ? $data['model'] : $this->model
         );
     }
 

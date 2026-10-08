@@ -79,6 +79,13 @@ final class AiCataloguerTest extends TestCase
         $this->assertStringContainsString('Recurso de mates', $curricular->received[0]);
         $this->assertStringContainsString('álgebra', $curricular->received[0]);
         $this->assertStringContainsString('álgebra', $tags->received[0]);
+
+        // TASK-059: time per phase, to compare strategies on latency.
+        $this->assertSame(
+            ['extraction_ms', 'vision_ms', 'distillation_ms', 'curricular_ms', 'tags_ms'],
+            array_keys($out['debug']['timings'])
+        );
+        $this->assertContainsOnly('int', $out['debug']['timings']);
     }
 
     public function testExposesJustificationsFromCurricular(): void

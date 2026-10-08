@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Content;
 
+use OERManager\Service\Llm\LlmUsage;
 use OERManager\Service\Ai\PromptBuilder;
 use OERManager\Service\Ai\TraceableInterface;
 use OERManager\Service\Llm\LlmClientInterface;
@@ -163,10 +164,12 @@ final class MediaVisionExtractor implements TraceableInterface
         if (null !== $this->temperature) {
             $options['temperature'] = $this->temperature;
         }
+        $startedAt = microtime(true);
         $response = $this->llm->chat([['role' => 'user', 'content' => $content]], $options);
         $description = trim($response->text());
         $this->trace[] = [
             'step' => 'vision',
+            'usage' => LlmUsage::of($response, $startedAt),
             'images' => $imageCount,
             'pdfs' => $pdfCount,
             'pdf_pages' => $pageCount,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Ai;
 
+use OERManager\Service\Llm\LlmUsage;
 use OERManager\Service\Content\ItemContext;
 use OERManager\Service\Llm\LlmClientInterface;
 
@@ -61,10 +62,12 @@ final class ContextDistiller implements TraceableInterface
         if (null !== $this->temperature) {
             $options['temperature'] = $this->temperature;
         }
+        $startedAt = microtime(true);
         $response = $this->llm->chat([['role' => 'user', 'content' => $prompt['user']]], $options);
         $ficha = trim($response->text());
         $this->trace[] = [
             'step' => 'distillation',
+            'usage' => LlmUsage::of($response, $startedAt),
             'system' => $prompt['system'],
             'user' => $prompt['user'],
             'llm_options' => array_diff_key($options, ['system' => '']),
