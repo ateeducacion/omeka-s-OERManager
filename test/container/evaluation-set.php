@@ -15,9 +15,14 @@
  * `--no-llm` only checks that the ground truth resolves, at no token cost.
  * `--runs=N` proposes each REA N times: sampling varies between runs, so one run
  * is not a measure (2026-10-06: the same REA hit 3/3 and then 0/3).
+ * The report is rewritten after every REA, so a crash loses nothing measured;
+ * `--resume` keeps the REA already in the report and evaluates the rest, and
+ * `--exclude=1,2` leaves out REA that crash the process (2026-10-08: a PDF in
+ * a package exhausted PHP's memory at REA 32 of 52, an uncatchable fatal error).
  *
  * Usage (inside the container):
- *   php modules/OERManager/test/container/evaluation-set.php [--no-llm] [--runs=3] [--ids=1,2] [--out=/tmp/eval.json]
+ *   php modules/OERManager/test/container/evaluation-set.php [--no-llm] [--runs=3] [--ids=1,2]
+ *       [--exclude=1,2] [--resume] [--out=/tmp/eval.json]
  *
  * Without --ids it discovers every lrmi:LearningResource with a .elpx/.zip medium
  * whose package declares an alignment. Exits 1 if no REA could be evaluated.
@@ -36,9 +41,9 @@ $application = \Omeka\Mvc\Application::init(require 'application/config/applicat
 $services = $application->getServiceManager();
 $api = $services->get('Omeka\ApiManager');
 
-$options = getopt('', ['no-llm', 'ids:', 'out:', 'runs:']);
+$options = getopt('', ['no-llm', 'ids:', 'out:', 'runs:', 'resume', 'exclude:']);
 $runs = max(1, (int) ($options['runs'] ?? 1));
-$errors = 0;
+$exclude = array_flip(array_filter(array_map('intval', explode(',', (string) ($options['exclude'] ?? '')))));
 $noLlm = isset($options['no-llm']);
 $out = (string) ($options['out'] ?? '/tmp/oer-evaluation-set.json');
 $ids = array_values(array_filter(array_map('intval', explode(',', (string) ($options['ids'] ?? '')))));
@@ -112,11 +117,51 @@ if (!$ids) {
 }
 
 $report = ['generated' => date('c'), 'llm' => !$noLlm, 'runs' => $runs, 'items' => [], 'summary' => []];
-$perDimension = array_fill_keys(DIMENSIONS, []);
-$leafHits = 0;
-$leafTotal = 0;
+if (isset($options['resume']) && is_file($out)) {
+    $previous = json_decode((string) file_get_contents($out), true);
+    $report['items'] = is_array($previous['items'] ?? null) ? $previous['items'] : [];
+    printf("Resuming: %d REA already in %s\n", count($report['items']), $out);
+}
+
+/** Summary over every REA of the report, including those of a resumed run. */
+function summarise(array $report, EvaluationScorer $scorer): array
+{
+    $perDimension = array_fill_keys(DIMENSIONS, []);
+    $hits = $total = $failed = 0;
+    foreach ($report['items'] as $row) {
+        foreach ($row['runs'] ?? [] as $run) {
+            if (isset($run['error'])) {
+                $failed++;
+                continue;
+            }
+            foreach (DIMENSIONS as $dimension) {
+                $perDimension[$dimension][] = $run['scores'][$dimension];
+            }
+            [$h, $t] = array_map('intval', explode('/', $run['declared_leaves_hit']));
+            $hits += $h;
+            $total += $t;
+        }
+    }
+    $summary = [];
+    foreach (DIMENSIONS as $dimension) {
+        $summary[$dimension] = $scorer->macroAverage($perDimension[$dimension]);
+    }
+    return $summary + ['declared_leaves_hit' => $hits . '/' . $total, 'failed_runs' => $failed];
+}
+
+function writeReport(string $out, array $report, EvaluationScorer $scorer, bool $noLlm): array
+{
+    if (!$noLlm) {
+        $report['summary'] = summarise($report, $scorer);
+    }
+    file_put_contents($out, json_encode($report, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    return $report;
+}
 
 foreach (array_values(array_unique($ids)) as $id) {
+    if (isset($exclude[$id]) || isset($report['items'][$id])) {
+        continue;
+    }
     try {
         $item = $api->read('items', $id)->getContent();
     } catch (\Exception $e) {
@@ -145,7 +190,6 @@ foreach (array_values(array_unique($ids)) as $id) {
         try {
             $proposal = $cataloguer->propose(metadataText($item), $mediaSource->filesFor($id), $mediaSource->imagesFor($id));
         } catch (\Throwable $e) {
-            $errors++;
             $row['runs'][] = ['error' => get_class($e) . ': ' . $e->getMessage()];
             printf("   run %d failed: %s\n", $run, $e->getMessage());
             continue;
@@ -156,37 +200,31 @@ foreach (array_values(array_unique($ids)) as $id) {
             'proposed' => array_intersect_key($proposed, array_flip(DIMENSIONS)),
         ];
         foreach (DIMENSIONS as $dimension) {
-            $score = $scorer->score($proposed[$dimension] ?? [], $truth[$dimension]);
-            $perDimension[$dimension][] = $score;
-            $result['scores'][$dimension] = $score;
+            $result['scores'][$dimension] = $scorer->score($proposed[$dimension] ?? [], $truth[$dimension]);
         }
         $leaves = array_merge($truth['lrmi:teaches'], $truth['lrmi:assesses']);
         $hits = count(array_intersect($leaves, array_merge($proposed['lrmi:teaches'] ?? [], $proposed['lrmi:assesses'] ?? [])));
         $result['declared_leaves_hit'] = $hits . '/' . count($leaves);
-        $leafHits += $hits;
-        $leafTotal += count($leaves);
         $row['runs'][] = $result;
         printf("   run %d in %ss — declared leaves hit %d/%d, course F1 %.2f\n", $run, $result['elapsed'], $hits,
             count($leaves), $result['scores']['lrmi:educationalLevel']['f1']);
     }
     $report['items'][$id] = $row;
+    $report = writeReport($out, $report, $scorer, $noLlm); // after every REA: a crash loses nothing
 }
 
-if (!$noLlm) {
-    foreach (DIMENSIONS as $dimension) {
-        $report['summary'][$dimension] = $scorer->macroAverage($perDimension[$dimension]);
-    }
-    $report['summary']['declared_leaves_hit'] = $leafHits . '/' . $leafTotal;
-    $report['summary']['failed_runs'] = $errors;
-}
-file_put_contents($out, json_encode($report, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
-
-printf("\n%d REA in the set%s. Report: %s\n", count($report['items']),
-    $noLlm ? '' : sprintf('; %d run(s) each; declared leaves hit %d/%d; failed runs %d', $runs, $leafHits, $leafTotal, $errors), $out);
-foreach ($report['summary'] as $dimension => $summary) {
-    if (is_array($summary)) {
-        printf("   %-24s P %.2f  R %.2f  F1 %.2f\n", $dimension, $summary['precision'] ?? 0, $summary['recall'] ?? 0,
-            $summary['f1'] ?? 0);
+$report = writeReport($out, $report, $scorer, $noLlm);
+$summary = $report['summary'];
+printf("\n%d REA in the report%s. Report: %s\n", count($report['items']), $noLlm ? '' : sprintf(
+    '; %d run(s) each; declared leaves hit %s; failed runs %d',
+    $runs,
+    $summary['declared_leaves_hit'],
+    $summary['failed_runs']
+), $out);
+foreach (DIMENSIONS as $dimension) {
+    if (isset($summary[$dimension])) {
+        printf("   %-24s P %.2f  R %.2f  F1 %.2f\n", $dimension, $summary[$dimension]['precision'],
+            $summary[$dimension]['recall'], $summary[$dimension]['f1']);
     }
 }
 
