@@ -37,6 +37,14 @@ final class ContentExtractor
         // size/comp_size por encima de esto (y con tamaño relevante) = zip-bomb.
         'max_compression_ratio' => 100,
         'max_pdf_bytes' => 20971520, // 20 MB
+        // Cada PDF se lee en un subproceso PHP con su propio tope de memoria y
+        // de tiempo (TASK-060): pdfparser topa la memoria por flujo, no por
+        // documento, y un PDF de 4 MB lleno de imágenes agotó 512 MB con un
+        // fatal que mataba la propuesta. Solo en CLI (Jobs, arneses): en FPM
+        // `PHP_BINARY` no sirve para lanzar scripts y se parsea en proceso.
+        'pdf_isolation' => true,
+        'pdf_worker_memory' => '256M',
+        'pdf_worker_timeout' => 60, // segundos
         // ¿Soporta la plataforma `iconv(..., 'UTF-8//TRANSLIT//IGNORE', ...)`?
         // null = detectar en runtime. En musl (Alpine) NO existe y smalot pierde
         // el texto de WinAnsiEncoding —la codificación más común en PDF—, así
@@ -184,10 +192,38 @@ final class ContentExtractor
     }
 
     /**
-     * Parsea bytes de PDF con los avisos del parser silenciados y los fallos
-     * capturados: nunca debe abortar la extracción ni filtrar avisos.
+     * Texto de un PDF, o null si se salta (el motivo queda registrado). Se lee
+     * en un subproceso cuando se puede (TASK-060); si no, en proceso.
      */
     private function parsePdf(string $bytes, string $name): ?string
+    {
+        $text = $this->canIsolatePdf() ? $this->parsePdfInWorker($bytes) : $this->parsePdfInProcess($bytes);
+        if (false === $text) {
+            // El subproceso murió por memoria o tiempo: ese PDF no, el resto sí.
+            $this->skip($name, 'pdf_too_complex');
+            return null;
+        }
+        if (null === $text) {
+            $this->skip($name, 'pdf_unreadable');
+            return null;
+        }
+        $text = trim($this->normalizeWhitespace($text));
+        if ('' === $text) {
+            // Distinguir «este PDF no tiene texto» de «esta plataforma no sabe
+            // leerlo» (TASK-024b): sin `//TRANSLIT` el parser devuelve vacío
+            // aunque el PDF tenga una capa de texto perfecta.
+            $this->skip($name, $this->supportsIconvTranslit() ? 'pdf_empty' : 'pdf_iconv_unsupported');
+            return null;
+        }
+        return $text;
+    }
+
+    /**
+     * Parsea bytes de PDF con los avisos del parser silenciados y los fallos
+     * capturados: nunca debe abortar la extracción ni filtrar avisos. Sin
+     * aislamiento, un agotamiento de memoria sigue siendo un fatal (TASK-060).
+     */
+    private function parsePdfInProcess(string $bytes): ?string
     {
         $text = null;
         set_error_handler(static fn (): bool => true);
@@ -207,19 +243,87 @@ final class ContentExtractor
         } finally {
             restore_error_handler();
         }
-        if (null === $text) {
-            $this->skip($name, 'pdf_unreadable');
-            return null;
-        }
-        $text = trim($this->normalizeWhitespace($text));
-        if ('' === $text) {
-            // Distinguir «este PDF no tiene texto» de «esta plataforma no sabe
-            // leerlo» (TASK-024b): sin `//TRANSLIT` el parser devuelve vacío
-            // aunque el PDF tenga una capa de texto perfecta.
-            $this->skip($name, $this->supportsIconvTranslit() ? 'pdf_empty' : 'pdf_iconv_unsupported');
-            return null;
-        }
         return $text;
+    }
+
+    private function canIsolatePdf(): bool
+    {
+        return (bool) $this->limits['pdf_isolation']
+            && 'cli' === PHP_SAPI
+            && '' !== PHP_BINARY
+            && function_exists('proc_open')
+            && is_file(self::pdfWorker());
+    }
+
+    private static function pdfWorker(): string
+    {
+        return dirname(__DIR__, 3) . '/data/scripts/pdf-text.php';
+    }
+
+    /**
+     * Lee el PDF en un subproceso (data/scripts/pdf-text.php) con su propio
+     * `memory_limit` y un tope de tiempo. Los argumentos van como lista a
+     * `proc_open`, nunca interpolados en una orden de shell; los bytes van a un
+     * fichero temporal propio que se borra siempre.
+     *
+     * @return string|null|false texto; null si el PDF no se puede leer; false si
+     *     el subproceso murió por memoria o tiempo
+     */
+    private function parsePdfInWorker(string $bytes): string|null|false
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'oer-pdf-');
+        if (false === $tmp) {
+            return $this->parsePdfInProcess($bytes);
+        }
+        try {
+            file_put_contents($tmp, $bytes);
+            $process = proc_open(
+                [
+                    PHP_BINARY,
+                    '-d', 'memory_limit=' . (string) $this->limits['pdf_worker_memory'],
+                    '-d', 'display_errors=0',
+                    self::pdfWorker(),
+                    $tmp,
+                    (string) (int) $this->limits['max_entry_bytes'],
+                ],
+                [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+                $pipes
+            );
+            if (!is_resource($process)) {
+                return $this->parsePdfInProcess($bytes);
+            }
+            stream_set_blocking($pipes[1], false);
+            stream_set_blocking($pipes[2], false);
+            $out = '';
+            $code = -1;
+            $deadline = microtime(true) + (int) $this->limits['pdf_worker_timeout'];
+            while (true) {
+                $out .= (string) stream_get_contents($pipes[1]);
+                stream_get_contents($pipes[2]); // vaciar stderr: un búfer lleno bloquearía al hijo
+                $status = proc_get_status($process);
+                if (!$status['running']) {
+                    $out .= (string) stream_get_contents($pipes[1]);
+                    $code = (int) $status['exitcode'];
+                    break;
+                }
+                if (microtime(true) > $deadline) {
+                    proc_terminate($process, 9);
+                    break;
+                }
+                usleep(10000);
+            }
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($process);
+        } finally {
+            @unlink($tmp);
+        }
+
+        return match ($code) {
+            0 => $out,
+            2 => null,
+            default => false,
+        };
     }
 
     /**
