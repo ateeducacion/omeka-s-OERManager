@@ -91,7 +91,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         private PromptBuilder $prompts,
         private ResponseParser $parser,
         int $maxTokens = 1024,
-        ?float $temperature = null
+        ?float $temperature = null,
+        private ?JevLeafSelector $leafSelector = null
     ) {
         $this->maxTokens = $maxTokens;
         $this->temperature = $temperature;
@@ -453,22 +454,70 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     private function selectRows(string $label, array $candidates, string $content, string $dimension): array
     {
         $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $rows);
+        $candidates = array_values($candidates);
+        $extra = [];
         if (!$candidates) {
             $this->trace[] = ['step' => $label, 'candidates' => 0];
             $rows = [];
         } else {
-            $map = $this->askWithReasons($candidates, $label, $content);
-            $this->captureJustifications($dimension, $map, $candidates);
-            $rows = $this->mapIndicesToRows(array_keys($map), $candidates);
+            $rows = null;
+            if (null !== $this->leafSelector) {
+                // TASK-062: Jev elige con una pregunta sí/no por candidato. Si falla,
+                // el paso cae a la selección con el LLM: la propuesta no se pierde.
+                try {
+                    $rows = $this->selectWithDecisionModel($label, $candidates, $content, $dimension);
+                    $extra = ['strategy' => 'jev'];
+                } catch (\Throwable $e) {
+                    $extra = ['decision_error' => mb_substr($e->getMessage(), 0, 200)];
+                }
+            }
+            if (null === $rows) {
+                $map = $this->askWithReasons($candidates, $label, $content);
+                $this->captureJustifications($dimension, $map, $candidates);
+                $rows = $this->mapIndicesToRows(array_keys($map), $candidates);
+                $extra += ['strategy' => 'llm'];
+            }
         }
         // TASK-059: qué hojas se reunieron, cuáles vio el modelo y cuáles eligió.
         $last = array_key_last($this->trace);
-        $this->trace[$last] += [
+        $this->trace[$last] += $extra + [
             'gathered_ids' => $this->gathered[$dimension] ?? [],
-            'candidate_ids' => $ids(array_values($candidates)),
+            'candidate_ids' => $ids($candidates),
             'selected_ids' => $ids($rows),
         ];
         return $rows;
+    }
+
+    /**
+     * Selección por modelo de decisiones (TASK-062). Una entrada de traza por
+     * petición (con su uso, para coste y latencia) y, al final, la del paso con
+     * la P(sí) de TODOS los candidatos, que permite barrer umbrales sin volver
+     * a llamar. La justificación de cada elegido es su probabilidad.
+     *
+     * @param array<int,array<string,mixed>> $candidates
+     * @return array<int,array<string,mixed>>
+     */
+    private function selectWithDecisionModel(
+        string $label,
+        array $candidates,
+        string $content,
+        string $dimension
+    ): array {
+        $out = $this->leafSelector->select($content, $candidates, $dimension);
+        foreach ($out['usage'] as $usage) {
+            $this->trace[] = ['step' => 'jev_request', 'dimension' => $dimension, 'usage' => $usage];
+        }
+        $this->trace[] = [
+            'step' => $label,
+            'candidates' => count($candidates),
+            'threshold' => $this->leafSelector->threshold(),
+            'probabilities' => $out['probabilities'],
+        ];
+        foreach ($out['selected'] as $row) {
+            $id = (int) $row['id'];
+            $this->justifications[$dimension][$id] ??= sprintf('Jev P = %.2f', $out['probabilities'][$id]);
+        }
+        return $out['selected'];
     }
 
     /**

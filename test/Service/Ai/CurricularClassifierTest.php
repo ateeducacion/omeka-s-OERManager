@@ -601,4 +601,48 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame([], $knowledge['gathered_ids']);
         $this->assertSame([], $knowledge['candidate_ids']);
     }
+
+    // --- TASK-062: Jev as the fine knowledge/criteria selector ---
+
+    public function testWithAJevSelectorTheLeafStepsUseItAndTheLlmOnlyDelimits(): void
+    {
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}']); // stage, subject
+        $jev = new FakeDecisionModel(static fn (string $id, array $q): float =>
+            str_contains($q['instructions'], 'Ecuaciones') || str_contains($q['instructions'], 'Resuelve') ? 0.9 : 0.2);
+        $classifier = new CurricularClassifier($llm, $this->resolver(), new PromptBuilder(), new ResponseParser(),
+            1024, null, new \OERManager\Service\Ai\JevLeafSelector($jev, new PromptBuilder(), 0.6));
+        $result = $classifier->classify(new ItemContext('ecuaciones', ''));
+
+        $this->assertCount(2, $llm->calls);                       // only stage and subject went to the LLM
+        $this->assertCount(2, $jev->calls);                       // knowledge, then criteria
+        $this->assertSame([31], $result['lrmi:teaches']);
+        $this->assertSame([40], $result['lrmi:assesses']);
+        $this->assertSame([12], $result['lrmi:educationalLevel']);  // derivation unchanged
+        $this->assertSame('Jev P = 0.90', $classifier->getJustifications()['lrmi:teaches'][31]);
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame('jev', $knowledge['strategy']);
+        $this->assertSame([30 => 0.2, 31 => 0.9], $knowledge['probabilities']);
+        $this->assertSame([31], $knowledge['selected_ids']);
+        $requests = array_values(array_filter($classifier->getTrace(), static fn (array $t): bool => 'jev_request' === ($t['step'] ?? '')));
+        $this->assertCount(2, $requests);
+        $this->assertSame('typesafe/jev-fake', $requests[0]['usage']['model']);
+    }
+
+    public function testIfJevFailsTheStepFallsBackToTheLlm(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}',
+            '{"selected":[{"i":2,"why":"ecuaciones"}]}', '{"selected":[]}',
+        ]);
+        $jev = new FakeDecisionModel(static fn (): float => 0.9, true);
+        $classifier = new CurricularClassifier($llm, $this->resolver(), new PromptBuilder(), new ResponseParser(),
+            1024, null, new \OERManager\Service\Ai\JevLeafSelector($jev, new PromptBuilder(), 0.6));
+        $result = $classifier->classify(new ItemContext('ecuaciones', ''));
+
+        $this->assertSame([31], $result['lrmi:teaches']);
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame('llm', $knowledge['strategy']);
+        $this->assertStringContainsString('decisions provider down', $knowledge['decision_error']);
+    }
 }

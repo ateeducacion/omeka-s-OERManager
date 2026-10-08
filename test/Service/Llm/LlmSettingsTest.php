@@ -66,4 +66,15 @@ final class LlmSettingsTest extends TestCase
         $this->assertSame(33554432, LlmSettings::parseVisionMaxPdfBytes('33554432'));
         $this->assertSame(20971520, LlmSettings::parseVisionMaxPdfBytes(20971520));
     }
+
+    /** TASK-062: decision threshold, a probability; anything else falls back to the default. */
+    public function testDecisionThresholdIsAProbabilityWithADefault(): void
+    {
+        $this->assertSame(0.75, LlmSettings::parseDecisionThreshold('0.75'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold(null));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold(''));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('abc'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('1.5'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('0'));
+    }
 }

@@ -311,7 +311,25 @@ return [
                     $container->get(Service\Ai\PromptBuilder::class),
                     $container->get(Service\Ai\ResponseParser::class),
                     Service\Llm\LlmSettings::parseMaxTokens($settings->get(Service\Llm\LlmSettings::MAX_TOKENS)),
-                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE))
+                    Service\Llm\LlmSettings::parseTemperature($settings->get(Service\Llm\LlmSettings::TEMPERATURE)),
+                    // TASK-062: Jev elige saberes y criterios solo si está activado (off por defecto).
+                    $settings->get(Service\Llm\LlmSettings::DECISION_ENABLED)
+                        ? new Service\Ai\JevLeafSelector(
+                            new Service\Llm\OpenRouterDecisionClient(
+                                $container->get(Service\Llm\HttpTransportInterface::class),
+                                [
+                                    'api_key' => (string) $settings->get(Service\Llm\LlmSettings::API_KEY, ''),
+                                    'model' => (string) ($settings->get(Service\Llm\LlmSettings::DECISION_MODEL)
+                                        ?: Service\Llm\LlmSettings::DEFAULT_DECISION_MODEL),
+                                    'base_url' => (string) $settings->get(Service\Llm\LlmSettings::BASE_URL, ''),
+                                ]
+                            ),
+                            $container->get(Service\Ai\PromptBuilder::class),
+                            Service\Llm\LlmSettings::parseDecisionThreshold(
+                                $settings->get(Service\Llm\LlmSettings::DECISION_THRESHOLD)
+                            )
+                        )
+                        : null
                 );
             },
             Service\Ai\TagClassifier::class => function ($container) {

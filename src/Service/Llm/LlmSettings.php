@@ -38,6 +38,17 @@ final class LlmSettings
     public const TEMPERATURE = 'oermanager_llm_temperature';
     public const MAX_TOKENS = 'oermanager_llm_max_tokens';
 
+    /**
+     * Modelo de decisiones para la selección fina de saberes y criterios
+     * (TASK-062): desactivado por defecto; Jev a través de OpenRouter, con la
+     * misma clave y base URL. Sin formulario todavía: se adopta tras el piloto.
+     */
+    public const DECISION_ENABLED = 'oermanager_llm_decision_enabled';
+    public const DECISION_MODEL = 'oermanager_llm_decision_model';
+    public const DECISION_THRESHOLD = 'oermanager_llm_decision_threshold';
+    public const DEFAULT_DECISION_MODEL = 'typesafe/jev-1.13';
+    public const DEFAULT_DECISION_THRESHOLD = 0.6;
+
     public const PROVIDER_ANTHROPIC = 'anthropic';
     public const PROVIDER_OPENAI = 'openai';
 
@@ -66,6 +77,17 @@ final class LlmSettings
         }
         $temperature = (float) $value;
         return ($temperature >= 0.0 && $temperature <= 2.0) ? $temperature : null;
+    }
+
+    /** Umbral de P(sí) para proponer un saber o criterio: probabilidad en (0, 1]; si no, el default. */
+    public static function parseDecisionThreshold(mixed $raw): float
+    {
+        $value = trim((string) $raw);
+        if (!is_numeric($value)) {
+            return self::DEFAULT_DECISION_THRESHOLD;
+        }
+        $threshold = (float) $value;
+        return ($threshold > 0.0 && $threshold <= 1.0) ? $threshold : self::DEFAULT_DECISION_THRESHOLD;
     }
 
     /** max_tokens del perfil: entero positivo o el default. */
