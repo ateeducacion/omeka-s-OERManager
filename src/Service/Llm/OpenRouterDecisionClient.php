@@ -39,7 +39,8 @@ final class OpenRouterDecisionClient implements DecisionModelInterface
             'POST',
             $this->endpoint(),
             ['Authorization' => 'Bearer ' . $this->apiKey, 'content-type' => 'application/json'],
-            (string) json_encode(['model' => $this->model, 'state' => $state, 'questions' => $questions])
+            // `questions` siempre como objeto: con ids numéricos json_encode daría una lista.
+            (string) json_encode(['model' => $this->model, 'state' => $state, 'questions' => (object) $questions])
         );
         $data = json_decode($result->body(), true);
         if (!$result->isSuccess() || !is_array($data) || isset($data['error'])) {

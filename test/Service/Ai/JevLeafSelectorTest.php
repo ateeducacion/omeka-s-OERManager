@@ -38,11 +38,11 @@ final class JevLeafSelectorTest extends TestCase
         $this->assertCount(1, $model->calls);
         $this->assertSame('Ficha: geometría', $model->calls[0]['state']);
         $questions = $model->calls[0]['questions'];
-        $this->assertSame(['0', '1'], array_map('strval', array_keys($questions)));
-        $this->assertSame('noul', $questions['0']['type']);
-        $this->assertStringContainsString('[3º Primaria · III. Sentido espacial] Saber 100 (PMAT03SB0)', $questions['0']['instructions']);
-        $this->assertArrayHasKey('true', $questions['0']['criteria']);
-        $this->assertArrayHasKey('false', $questions['0']['criteria']);
+        $this->assertSame(['c0', 'c1'], array_keys($questions)); // never numeric: see the client test
+        $this->assertSame('noul', $questions['c0']['type']);
+        $this->assertStringContainsString('[3º Primaria · III. Sentido espacial] Saber 100 (PMAT03SB0)', $questions['c0']['instructions']);
+        $this->assertArrayHasKey('true', $questions['c0']['criteria']);
+        $this->assertArrayHasKey('false', $questions['c0']['criteria']);
     }
 
     public function testCriteriaAreAskedAsAssessmentNotTeaching(): void
@@ -50,12 +50,12 @@ final class JevLeafSelectorTest extends TestCase
         $model = new FakeDecisionModel(static fn (): float => 0.1);
         $this->selector($model)->select('x', $this->candidates(1), 'lrmi:assesses');
 
-        $this->assertStringContainsString('assess', $model->calls[0]['questions']['0']['instructions']);
+        $this->assertStringContainsString('assess', $model->calls[0]['questions']['c0']['instructions']);
     }
 
     public function testCandidatesAtOrAboveTheThresholdAreChosenMostLikelyFirst(): void
     {
-        $p = ['0' => 0.59, '1' => 0.6, '2' => 0.95, '3' => 0.2];
+        $p = ['c0' => 0.59, 'c1' => 0.6, 'c2' => 0.95, 'c3' => 0.2];
         $out = $this->selector(new FakeDecisionModel(static fn (string $id): float => $p[$id]))
             ->select('x', $this->candidates(4), 'lrmi:teaches');
 
@@ -85,7 +85,7 @@ final class JevLeafSelectorTest extends TestCase
 
     public function testAMissingAnswerIsNeverChosen(): void
     {
-        $out = $this->selector(new FakeDecisionModel(static fn (string $id): ?float => '0' === $id ? null : 0.9))
+        $out = $this->selector(new FakeDecisionModel(static fn (string $id): ?float => 'c0' === $id ? null : 0.9))
             ->select('x', $this->candidates(2), 'lrmi:teaches');
 
         $this->assertSame([101], array_column($out['selected'], 'id'));

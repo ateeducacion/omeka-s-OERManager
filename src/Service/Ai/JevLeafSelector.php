@@ -65,7 +65,8 @@ final class JevLeafSelector
         foreach (array_chunk($candidates, max(1, $this->maxQuestionsPerRequest)) as $chunk) {
             $questions = [];
             foreach ($chunk as $i => $candidate) {
-                $questions[(string) $i] = [
+                // Id no numérico: con claves "0","1" json_encode manda una lista y Jev la rechaza.
+                $questions['c' . $i] = [
                     'type' => 'noul',
                     'instructions' => sprintf($template['instructions'], $this->prompts->formatCandidate($candidate)),
                     'criteria' => ['true' => $template['true'], 'false' => $template['false']],
@@ -75,7 +76,7 @@ final class JevLeafSelector
             $result = $this->model->decide($state, $questions);
             $usage[] = LlmUsage::of($result->usage(), $startedAt);
             foreach ($chunk as $i => $candidate) {
-                $probabilities[(int) $candidate['id']] = $result->noul((string) $i);
+                $probabilities[(int) $candidate['id']] = $result->noul('c' . $i);
             }
         }
 

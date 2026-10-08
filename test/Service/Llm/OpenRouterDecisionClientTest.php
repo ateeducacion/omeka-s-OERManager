@@ -58,6 +58,20 @@ final class OpenRouterDecisionClientTest extends TestCase
         );
     }
 
+    /**
+     * Numeric question ids ("0", "1") become a JSON list under json_encode, which
+     * Jev rejects; found against the real endpoint on 2026-10-08. Questions must
+     * always travel as a JSON object.
+     */
+    public function testQuestionsAlwaysTravelAsAJsonObject(): void
+    {
+        $transport = new FakeTransport($this->ok());
+        (new OpenRouterDecisionClient($transport, self::CONFIG))
+            ->decide('x', ['0' => ['type' => 'noul', 'instructions' => 'a'], '1' => ['type' => 'noul', 'instructions' => 'b']]);
+
+        $this->assertStringContainsString('"questions":{"0":', (string) $transport->body);
+    }
+
     public function testParsesTypedAnswersCostAndServedModel(): void
     {
         $result = (new OpenRouterDecisionClient(new FakeTransport($this->ok()), self::CONFIG))
