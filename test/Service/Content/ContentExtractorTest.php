@@ -70,6 +70,34 @@ final class ContentExtractorTest extends TestCase
         $this->assertStringContainsString('Saberes basicos mates', $content->text());
     }
 
+    /**
+     * TASK-060: un PDF de 4 MB lleno de imágenes agotó los 512 MB de PHP dentro
+     * de pdfparser (2026-10-08), un error fatal que no se puede capturar y que
+     * mataba la propuesta entera. El PDF se lee en un subproceso con su propio
+     * límite: si lo agota, ese PDF se salta y el resto del contenido sigue.
+     */
+    public function testAPdfThatExhaustsTheWorkerMemoryIsSkippedAndExtractionGoesOn(): void
+    {
+        $pdf = $this->tempFile('pesado.pdf', self::minimalPdf('Saberes basicos mates'));
+        $note = $this->tempFile('nota.txt', 'La nota sigue llegando al modelo.');
+        $content = (new ContentExtractor(['pdf_worker_memory' => '2M']))
+            ->extract('meta', [['path' => $pdf], ['path' => $note]]);
+
+        $this->assertSame('pdf_too_complex', $content->skipped()['pesado.pdf'] ?? null);
+        $this->assertStringContainsString('La nota sigue llegando al modelo.', $content->text());
+        $this->assertStringNotContainsString('Saberes basicos mates', $content->text());
+    }
+
+    /** Sin aislamiento (FPM, `proc_open` deshabilitado) se parsea en proceso, como antes. */
+    public function testWithoutIsolationThePdfIsParsedInProcess(): void
+    {
+        $pdf = $this->tempFile('doc.pdf', self::minimalPdf('Saberes basicos mates'));
+        $content = (new ContentExtractor(['pdf_isolation' => false, 'pdf_worker_memory' => '2M']))
+            ->extract('', [['path' => $pdf]]);
+
+        $this->assertStringContainsString('Saberes basicos mates', $content->text());
+    }
+
     public function testMalformedPdfIsSkippedGracefully(): void
     {
         $file = $this->tempFile('broken.pdf', '%PDF-1.4 garbage not a real pdf');
