@@ -53,6 +53,34 @@ final class PromptBuilderTest extends TestCase
         $this->assertGreaterThan($open, $inj);
     }
 
+    /**
+     * TASK-063: the candidates go AFTER the content, right before the answer
+     * instruction. With 72 axes ahead of 16-25k chars of content, gpt-4o-mini
+     * answered with the first numbers of the list (1, 3, 4) and missed item 52;
+     * with the list last it picked the right axes in 6 replays of 6.
+     */
+    public function testCandidatesComeAfterTheContentRightBeforeTheAnswerInstruction(): void
+    {
+        $prompt = (new PromptBuilder())->buildSelectionPrompt(
+            'Ejes temáticos',
+            ['Actividad física', 'Pensamiento computacional'],
+            'Oráculo programado en Scratch',
+            0
+        );
+        $user = $prompt['user'];
+        $header = mb_strpos($user, 'Dimensión: Ejes temáticos');
+        $close = mb_strpos($user, '<<<FIN CONTENIDO>>>');
+        $list = mb_strpos($user, 'Candidatos (elige por NÚMERO):');
+        $last = mb_strpos($user, '2. Pensamiento computacional');
+        $answer = mb_strpos($user, 'Responde SOLO con');
+
+        $this->assertSame(0, mb_strpos($user, '<<<CONTENIDO>>>'));
+        $this->assertGreaterThan($close, $header);
+        $this->assertGreaterThan($header, $list);
+        $this->assertGreaterThan($list, $last);
+        $this->assertGreaterThan($last, $answer);
+    }
+
     public function testSingleVsMultiSelectInstruction(): void
     {
         $builder = new PromptBuilder();

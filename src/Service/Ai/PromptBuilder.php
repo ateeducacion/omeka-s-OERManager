@@ -99,8 +99,12 @@ final class PromptBuilder
             $content
         );
 
-        $user = "Dimensión: {$label}\n{$cardinality}\nCandidatos (elige por NÚMERO):\n{$list}\n"
-            . self::OPEN . "\n" . $safeContent . "\n" . self::CLOSE . "\n\n"
+        // TASK-063: la lista va DESPUÉS del contenido, junto a la instrucción de
+        // respuesta. Con 72 ejes delante de 16-25k caracteres de contenido,
+        // gpt-4o-mini respondía con los primeros números de la lista y perdía los
+        // del medio; con la lista al final eligió bien en 6 de 6 reproducciones.
+        $user = self::OPEN . "\n" . $safeContent . "\n" . self::CLOSE . "\n\n"
+            . "Dimensión: {$label}\n{$cardinality}\nCandidatos (elige por NÚMERO):\n{$list}\n"
             . 'Responde SOLO con ' . $contract . ' usando los NÚMEROS de los candidatos elegidos.';
 
         return ['system' => $system, 'user' => $user];
