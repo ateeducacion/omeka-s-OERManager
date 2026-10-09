@@ -56,3 +56,21 @@ and subject was the wrong rule. Against the TASK-063 run re-scored with the subj
 Rule now: only the cycle of the most likely proposed leaf (the first knowledge item, or the first criterion when
 no knowledge is proposed) is completed with its sibling courses and their same-name subject. Every other course
 and subject is derived as before.
+
+## Addendum 2026-10-09 — completion withdrawn; the rule is already met
+
+The second real run (only the most likely leaf's cycle completed; 3 runs lost to provider timeouts) did not
+help either. Re-deriving, for every stored run, the courses the anchors alone give and comparing them with the
+proposal isolates what the completion added:
+
+| Run | Courses added by the completion, right cycle | Added, wrong cycle | Runs where it rescued the declared cycle |
+| --- | --- | --- | --- |
+| Complete every derived course | 3 | 8 | 0 |
+| Complete only the most likely leaf's cycle | 0 | 7 | 0 |
+
+The owner's rule is already met by the derivation of ADR-0021: courses come from every anchor (P ≥ 0.6), and the
+anchors cover the whole declared cycle in 104 of the 106 Primaria/Infantil runs that reach it (TASK-063 run);
+the subject cycle is complete in 97 of 106. The remaining differences between runs are delimitation noise.
+**Decision:** no completion in the classifier; the classifier is left as it is on `main`. Kept: the cycle
+reading of subjects in the evaluation set (same-name subject of a course of the same cycle), so the subject
+score no longer counts the sibling-course subject as wrong.

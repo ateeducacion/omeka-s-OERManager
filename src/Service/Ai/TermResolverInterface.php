@@ -31,8 +31,7 @@ interface TermResolverInterface
      * cursos en que existe cada una (TASK-056): delimita la materia sin fijar el
      * curso, pero deja ver a cuál pertenece.
      *
-     * @return array<int,array{name:string,courses?:list<array{id:int,title:string,subjectId?:int}>}>
-     *   subjectId: the subject item of that course (TASK-061, completes the cycle)
+     * @return array<int,array{name:string,courses?:list<array{id:int,title:string}>}>
      */
     public function listSubjectFamilies(int $etapaId): array;
 
