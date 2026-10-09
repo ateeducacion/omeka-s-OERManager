@@ -316,6 +316,76 @@ class ConfigForm extends Form implements InputFilterProviderInterface
         ]);
 
         $this->addVisionFields();
+        $this->addDecisionFields();
+    }
+
+    /**
+     * Modelo de decisiones para la selección fina de saberes y criterios
+     * (TASK-062, ADR-0021). Jev responde una pregunta sí/no por candidato; se
+     * proponen los K más probables de los que alcanzan el umbral. Solo funciona
+     * por OpenRouter (misma clave y base URL); si falla, el paso vuelve a la
+     * selección con el LLM y la propuesta no se pierde.
+     */
+    private function addDecisionFields(): void
+    {
+        $this->add([
+            'name' => LlmSettings::DECISION_ENABLED,
+            'type' => 'Checkbox',
+            'options' => [
+                'label' => 'Elegir saberes y criterios con el modelo de decisiones (Jev)', // @translate
+                'info' => 'Requiere el proveedor OpenAI-compatible con la base URL de OpenRouter '
+                    . '(https://openrouter.ai/api/v1) y su clave: el contenido del recurso se envía a '
+                    . 'TypeSafe a través de OpenRouter. El LLM sigue delimitando etapa, materia y curso. '
+                    . 'Si Jev falla, la selección vuelve al LLM.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::DECISION_ENABLED],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::DECISION_MODEL,
+            'type' => 'Text',
+            'options' => [
+                'label' => 'Modelo de decisiones', // @translate
+                'info' => 'Identificador en OpenRouter; en blanco, typesafe/jev-1.13.', // @translate
+            ],
+            'attributes' => ['id' => LlmSettings::DECISION_MODEL],
+        ]);
+
+        $this->add([
+            'name' => LlmSettings::DECISION_THRESHOLD,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Umbral de P(sí)', // @translate
+                'info' => 'Probabilidad mínima para que un saber o criterio cuente. De los que la '
+                    . 'alcanzan salen el curso y los criterios candidatos, aunque no todos se '
+                    . 'propongan. Medido: 0.6.', // @translate
+            ],
+            'attributes' => [
+                'id' => LlmSettings::DECISION_THRESHOLD,
+                'min' => 0.05,
+                'max' => 1,
+                'step' => 0.05,
+            ],
+        ]);
+
+        $limits = [
+            LlmSettings::DECISION_MAX_TEACHES => [
+                'Máximo de saberes propuestos', // @translate
+                'Los más probables de los que alcanzan el umbral; 0 = todos. Medido: 4.', // @translate
+            ],
+            LlmSettings::DECISION_MAX_ASSESSES => [
+                'Máximo de criterios propuestos', // @translate
+                'Los más probables de los que alcanzan el umbral; 0 = todos. Medido: 3.', // @translate
+            ],
+        ];
+        foreach ($limits as $name => [$label, $info]) {
+            $this->add([
+                'name' => $name,
+                'type' => 'Number',
+                'options' => ['label' => $label, 'info' => $info],
+                'attributes' => ['id' => $name, 'min' => 0, 'max' => 200, 'step' => 1],
+            ]);
+        }
     }
 
     /**

@@ -73,6 +73,19 @@ class ConfigPayload
             LlmSettings::VISION_MAX_PDF_BYTES,
             LlmSettings::DEFAULT_VISION_MAX_PDF_BYTES
         );
+        // Modelo de decisiones para saberes y criterios (TASK-062, ADR-0021).
+        $data[LlmSettings::DECISION_ENABLED] = (bool) $get(LlmSettings::DECISION_ENABLED);
+        $data[LlmSettings::DECISION_MODEL] = (string) ($get(LlmSettings::DECISION_MODEL)
+            ?: LlmSettings::DEFAULT_DECISION_MODEL);
+        $data[LlmSettings::DECISION_THRESHOLD] = LlmSettings::parseDecisionThreshold(
+            $get(LlmSettings::DECISION_THRESHOLD)
+        );
+        $caps = LlmSettings::decisionCaps(
+            $get(LlmSettings::DECISION_MAX_TEACHES),
+            $get(LlmSettings::DECISION_MAX_ASSESSES)
+        );
+        $data[LlmSettings::DECISION_MAX_TEACHES] = $caps['lrmi:teaches'];
+        $data[LlmSettings::DECISION_MAX_ASSESSES] = $caps['lrmi:assesses'];
         return $data;
     }
 
@@ -135,6 +148,21 @@ class ConfigPayload
         $settings[LlmSettings::VISION_MAX_PDF_BYTES] = LlmSettings::parseVisionMaxPdfBytes(
             $post[LlmSettings::VISION_MAX_PDF_BYTES] ?? null
         );
+
+        // Modelo de decisiones (TASK-062, ADR-0021): apagado si no se marca; modelo
+        // vacío = el de por defecto (lo resuelve la factoría); umbral y topes no
+        // válidos caen a la configuración adoptada.
+        $settings[LlmSettings::DECISION_ENABLED] = !empty($post[LlmSettings::DECISION_ENABLED]);
+        $settings[LlmSettings::DECISION_MODEL] = trim((string) ($post[LlmSettings::DECISION_MODEL] ?? ''));
+        $settings[LlmSettings::DECISION_THRESHOLD] = LlmSettings::parseDecisionThreshold(
+            $post[LlmSettings::DECISION_THRESHOLD] ?? null
+        );
+        $caps = LlmSettings::decisionCaps(
+            $post[LlmSettings::DECISION_MAX_TEACHES] ?? null,
+            $post[LlmSettings::DECISION_MAX_ASSESSES] ?? null
+        );
+        $settings[LlmSettings::DECISION_MAX_TEACHES] = $caps['lrmi:teaches'];
+        $settings[LlmSettings::DECISION_MAX_ASSESSES] = $caps['lrmi:assesses'];
 
         // Clave API write-only: solo se sobrescribe si llega un valor no vacío.
         $apiKey = (string) ($post[LlmSettings::API_KEY] ?? '');

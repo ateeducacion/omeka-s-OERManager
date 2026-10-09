@@ -99,6 +99,11 @@ final class ConfigPayloadTest extends TestCase
                 LlmSettings::VISION_ENABLED,
                 LlmSettings::VISION_MAX_IMAGES,
                 LlmSettings::VISION_MAX_PDF_BYTES,
+                LlmSettings::DECISION_ENABLED,
+                LlmSettings::DECISION_MODEL,
+                LlmSettings::DECISION_THRESHOLD,
+                LlmSettings::DECISION_MAX_TEACHES,
+                LlmSettings::DECISION_MAX_ASSESSES,
             ]
         );
         foreach ($expected as $key) {
@@ -197,5 +202,59 @@ final class ConfigPayloadTest extends TestCase
             $this->assertArrayHasKey($key, $settings, "el guardado ignora $key");
         }
         $this->assertArrayNotHasKey(LlmSettings::API_KEY, $settings);
+    }
+
+    public function testEveryFieldOfTheFormIsReadAndWritten(): void
+    {
+        $form = new \OERManager\Form\ConfigForm();
+        $form->init();
+        $read = ConfigPayload::read(self::reader([]));
+        $written = ConfigPayload::write([]);
+        foreach (array_keys($form->getElements()) as $name) {
+            if (in_array($name, ['csrf', LlmSettings::API_KEY], true)) {
+                continue;
+            }
+            $this->assertArrayHasKey($name, $read, "the form shows $name but read() does not fill it");
+            $this->assertArrayHasKey($name, $written, "the form shows $name but write() ignores it");
+        }
+    }
+
+    /** TASK-062: the Jev decision model is off by default and shows its adopted configuration. */
+    public function testTheDecisionModelIsOffByDefaultWithTheAdoptedConfiguration(): void
+    {
+        $data = ConfigPayload::read(self::reader([]));
+
+        $this->assertFalse($data[LlmSettings::DECISION_ENABLED]);
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_MODEL, $data[LlmSettings::DECISION_MODEL]);
+        $this->assertSame(0.6, $data[LlmSettings::DECISION_THRESHOLD]);
+        $this->assertSame(4, $data[LlmSettings::DECISION_MAX_TEACHES]);
+        $this->assertSame(3, $data[LlmSettings::DECISION_MAX_ASSESSES]);
+    }
+
+    public function testTheDecisionSettingsAreNormalisedOnSave(): void
+    {
+        $settings = ConfigPayload::write([
+            LlmSettings::DECISION_ENABLED => '1',
+            LlmSettings::DECISION_MODEL => '  typesafe/jev-1.13  ',
+            LlmSettings::DECISION_THRESHOLD => '0.7',
+            LlmSettings::DECISION_MAX_TEACHES => '0',
+            LlmSettings::DECISION_MAX_ASSESSES => '5',
+        ]);
+        $this->assertTrue($settings[LlmSettings::DECISION_ENABLED]);
+        $this->assertSame('typesafe/jev-1.13', $settings[LlmSettings::DECISION_MODEL]);
+        $this->assertSame(0.7, $settings[LlmSettings::DECISION_THRESHOLD]);
+        $this->assertSame(0, $settings[LlmSettings::DECISION_MAX_TEACHES]);
+        $this->assertSame(5, $settings[LlmSettings::DECISION_MAX_ASSESSES]);
+
+        $invalid = ConfigPayload::write([
+            LlmSettings::DECISION_THRESHOLD => '1.5',
+            LlmSettings::DECISION_MAX_TEACHES => '-2',
+            LlmSettings::DECISION_MAX_ASSESSES => 'x',
+        ]);
+        $this->assertFalse($invalid[LlmSettings::DECISION_ENABLED]);
+        $this->assertSame('', $invalid[LlmSettings::DECISION_MODEL]);
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, $invalid[LlmSettings::DECISION_THRESHOLD]);
+        $this->assertSame(4, $invalid[LlmSettings::DECISION_MAX_TEACHES]);
+        $this->assertSame(3, $invalid[LlmSettings::DECISION_MAX_ASSESSES]);
     }
 }
