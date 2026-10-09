@@ -56,6 +56,13 @@ candidates come from the anchors; the subject comes from the proposed leaves. Th
 Measured on 2026-10-09 (52 REA × 3): leaf F1 in cycle 0.35 knowledge / 0.34 criteria, 6.3 leaves per
 proposal, none empty, course in cycle 136/156; figures and caveats in the TASK-062 backlog entry.
 
+**Addendum 2026-10-09 — knowledge up to 400, adoption.** With the decision model, the knowledge step skips the
+block prefilter and caps the gathered items at `CurricularClassifier::DECISION_LEAF_CAP` = 400, split fairly across
+subject × course (two requests of 200); if Jev fails, the LLM fallback sees the usual set (200 cap and block
+prefilter). The declared knowledge reaching Jev rose from 60 % to 79 %, for about $0.0008 more per REA. The owner
+adopted the configuration and asked for the admin form: section 5's settings are now on the module's configuration
+page. Decision and figures: ADR-0021.
+
 ## 5. Configuration and piloting
 
 Settings, no admin form yet: `oermanager_llm_decision_enabled` (default off), `oermanager_llm_decision_model`
@@ -63,7 +70,7 @@ Settings, no admin form yet: `oermanager_llm_decision_enabled` (default off), `o
 `oermanager_llm_decision_max_teaches` / `_max_assesses` (default 4 / 3, addendum of section 4). The evaluation set gains
 `--strategy=jev`, which builds the classifier with the selector **in memory** for the run, without changing
 the stored settings, and `--threshold=x` to re-score stored probabilities. An admin form comes only if the
-strategy is adopted.
+strategy is adopted (done on 2026-10-09, ADR-0021).
 
 ## 6. Tests (host)
 
