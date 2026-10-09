@@ -31,6 +31,16 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     private const LEAF_CAP = 200;
 
     /**
+     * Tope de saberes cuando los elige Jev (TASK-062): sin prefiltro por bloque,
+     * porque el prefiltro dejaba fuera el 22 % de los saberes declarados. Con 400
+     * (dos peticiones de 200) llega a Jev el 81 % de los declarados frente al
+     * 60 %, por unos $0.0011 más por REA (barrido de 2026-10-09); sin tope,
+     * algún REA reúne 1 254 saberes. Si Jev falla, el LLM ve el conjunto de
+     * siempre (LEAF_CAP y prefiltro por bloque).
+     */
+    public const DECISION_LEAF_CAP = 400;
+
+    /**
      * Guía de la etapa acotadora (Fase A.1). Desde TASK-056 la inclusividad es
      * condicional: si el contenido indica la etapa, se elige esa. Con el tope
      * LEAF_CAP una etapa de más NO era inocua (ADR-0010, addendum TASK-056):
@@ -82,6 +92,15 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      */
     private array $gathered = [];
 
+    /**
+     * Hojas ancla por dimensión (TASK-062): con Jev y tope, todas las de P(sí) ≥
+     * umbral, aunque solo se propongan las K primeras; de ellas salen el curso
+     * derivado y el filtro de cursos de los criterios. Sin Jev, las elegidas.
+     *
+     * @var array<string,list<array<string,mixed>>>
+     */
+    private array $anchors = [];
+
     private int $maxTokens;
     private ?float $temperature;
 
@@ -91,7 +110,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         private PromptBuilder $prompts,
         private ResponseParser $parser,
         int $maxTokens = 1024,
-        ?float $temperature = null
+        ?float $temperature = null,
+        private ?JevLeafSelector $leafSelector = null
     ) {
         $this->maxTokens = $maxTokens;
         $this->temperature = $temperature;
@@ -101,6 +121,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     {
         $this->justifications = [];
         $this->gathered = [];
+        $this->anchors = [];
 
         // Pasos gruesos (etapa/materia/bloque) con la ficha; pasos finos
         // (saberes/criterios) con ficha + crudo de medios (ADR-0011).
@@ -132,14 +153,25 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $subjectIds = [];
 
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
-        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames, $courseIds);
-        if (count($teaches) > self::BLOCK_THRESHOLD) {
-            $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $coarse);
+        // Con Jev se le preguntan todos (hasta DECISION_LEAF_CAP); el LLM, propio o
+        // de respaldo, ve los acotados por LEAF_CAP y por bloque.
+        $narrow = function (array $leaves) use ($subjectNames, $coarse): array {
+            $leaves = $this->capLeaves($leaves, self::LEAF_CAP, self::TEACHES);
+            return count($leaves) > self::BLOCK_THRESHOLD
+                ? $this->prefilterByBlock($leaves, implode(', ', $subjectNames), $coarse)
+                : $leaves;
+        };
+        $withJev = null !== $this->leafSelector;
+        $cap = $withJev ? self::DECISION_LEAF_CAP : self::LEAF_CAP;
+        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames, $courseIds, $cap);
+        if (!$withJev) {
+            $teaches = $narrow($teaches);
         }
-        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES);
+        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES, $withJev ? $narrow : null);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
-            $this->collectLineage($teachesRows, $derivedCourses, $subjectIds);
+            $anchors = $this->anchors[self::TEACHES] ?? $teachesRows;
+            $this->collectLineage($anchors, $teachesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
@@ -153,7 +185,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine, self::ASSESSES);
         if ($assessesRows) {
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
-            $this->collectLineage($assessesRows, $derivedCourses, $subjectIds);
+            $anchors = $this->anchors[self::ASSESSES] ?? $assessesRows;
+            $this->collectLineage($anchors, $assessesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase D — Derivación: curso y materia = padres reales de las hojas.
@@ -380,8 +413,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      * @param int[] $courseIds
      * @return array<int,array<string,mixed>>
      */
-    private function gatherLeaves(string $dimension, array $etapaIds, array $subjectNames, array $courseIds): array
-    {
+    private function gatherLeaves(
+        string $dimension,
+        array $etapaIds,
+        array $subjectNames,
+        array $courseIds,
+        int $cap = self::LEAF_CAP
+    ): array {
         $merged = [];
         foreach ($etapaIds as $etapaId) {
             foreach ($subjectNames as $subjectName) {
@@ -394,48 +432,62 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             }
         }
         $this->gathered[$dimension] = array_keys($merged);
-        if (count($merged) <= self::LEAF_CAP) {
-            return array_values($merged);
-        }
-
-        $groups = [];
-        foreach ($merged as $id => $leaf) {
-            $groups[$leaf['subjectName'] . "\u{1F}" . (int) ($leaf['courseId'] ?? 0)][] = $id;
-        }
-        $kept = [];
-        while (count($kept) < self::LEAF_CAP) {
-            foreach ($groups as $key => &$ids) {
-                if (count($kept) >= self::LEAF_CAP) {
-                    break;
-                }
-                if ($ids) {
-                    $kept[array_shift($ids)] = true;
-                }
-            }
-            unset($ids);
-        }
-        $this->trace[] = [
-            'step' => 'leaf_cap', 'dimension' => $dimension, 'available' => count($merged), 'kept' => self::LEAF_CAP,
-        ];
-        // Orden original de las hojas: el reparto decide QUÉ entra, no el orden.
-        return array_values(array_intersect_key($merged, $kept));
+        return $this->capLeaves(array_values($merged), $cap, $dimension);
     }
 
     /**
-     * Acumula el linaje (curso/materia) de las filas elegidas como conjuntos.
+     * Recorta a $cap hojas repartiendo por igual entre materia × curso (TASK-056).
      *
+     * @param list<array<string,mixed>> $leaves
+     * @return list<array<string,mixed>>
+     */
+    private function capLeaves(array $leaves, int $cap, string $dimension): array
+    {
+        if (count($leaves) <= $cap) {
+            return $leaves;
+        }
+        $groups = [];
+        foreach ($leaves as $pos => $leaf) {
+            $groups[($leaf['subjectName'] ?? '') . "\u{1F}" . (int) ($leaf['courseId'] ?? 0)][] = $pos;
+        }
+        $kept = [];
+        while (count($kept) < $cap) {
+            foreach ($groups as $key => &$positions) {
+                if (count($kept) >= $cap) {
+                    break;
+                }
+                if ($positions) {
+                    $kept[array_shift($positions)] = true;
+                }
+            }
+            unset($positions);
+        }
+        $this->trace[] = [
+            'step' => 'leaf_cap', 'dimension' => $dimension, 'available' => count($leaves), 'kept' => $cap,
+        ];
+        // Orden original de las hojas: el reparto decide QUÉ entra, no el orden.
+        return array_values(array_intersect_key($leaves, $kept));
+    }
+
+    /**
+     * Acumula el linaje como conjuntos: cursos de las anclas, materias de las
+     * filas propuestas (TASK-062; sin tope, ambas son las mismas filas).
+     *
+     * @param array<int,array<string,mixed>> $anchorRows
      * @param array<int,array<string,mixed>> $rows
      * @param array<int,bool> $courseIds
      * @param array<int,bool> $subjectIds
      */
-    private function collectLineage(array $rows, array &$courseIds, array &$subjectIds): void
+    private function collectLineage(array $anchorRows, array $rows, array &$courseIds, array &$subjectIds): void
     {
-        foreach ($rows as $c) {
+        foreach ($anchorRows as $c) {
             $cId = (int) ($c['courseId'] ?? 0);
-            $sId = (int) ($c['subjectId'] ?? 0);
             if ($cId > 0) {
                 $courseIds[$cId] = true;
             }
+        }
+        foreach ($rows as $c) {
+            $sId = (int) ($c['subjectId'] ?? 0);
             if ($sId > 0) {
                 $subjectIds[$sId] = true;
             }
@@ -448,27 +500,88 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      * elegidas (igual que antes); la justificación queda en $this->justifications.
      *
      * @param array<int,array<string,mixed>> $candidates
+     * @param ?callable(array<int,array<string,mixed>>):array<int,array<string,mixed>> $narrowForLlm
+     *        acota los candidatos si Jev falla y elige el LLM (TASK-062)
      * @return array<int,array<string,mixed>> filas elegidas
      */
-    private function selectRows(string $label, array $candidates, string $content, string $dimension): array
-    {
+    private function selectRows(
+        string $label,
+        array $candidates,
+        string $content,
+        string $dimension,
+        ?callable $narrowForLlm = null
+    ): array {
         $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $rows);
+        $candidates = array_values($candidates);
+        $extra = [];
         if (!$candidates) {
             $this->trace[] = ['step' => $label, 'candidates' => 0];
             $rows = [];
         } else {
-            $map = $this->askWithReasons($candidates, $label, $content);
-            $this->captureJustifications($dimension, $map, $candidates);
-            $rows = $this->mapIndicesToRows(array_keys($map), $candidates);
+            $rows = null;
+            if (null !== $this->leafSelector) {
+                // TASK-062: Jev elige con una pregunta sí/no por candidato. Si falla,
+                // el paso cae a la selección con el LLM: la propuesta no se pierde.
+                try {
+                    $rows = $this->selectWithDecisionModel($label, $candidates, $content, $dimension);
+                    $extra = ['strategy' => 'jev'];
+                } catch (\Throwable $e) {
+                    $extra = ['decision_error' => mb_substr($e->getMessage(), 0, 200)];
+                }
+            }
+            if (null === $rows) {
+                if (null !== $narrowForLlm) {
+                    $candidates = array_values($narrowForLlm($candidates));
+                }
+                $map = $this->askWithReasons($candidates, $label, $content);
+                $this->captureJustifications($dimension, $map, $candidates);
+                $rows = $this->mapIndicesToRows(array_keys($map), $candidates);
+                $extra += ['strategy' => 'llm'];
+            }
         }
         // TASK-059: qué hojas se reunieron, cuáles vio el modelo y cuáles eligió.
         $last = array_key_last($this->trace);
-        $this->trace[$last] += [
+        $this->trace[$last] += $extra + [
             'gathered_ids' => $this->gathered[$dimension] ?? [],
-            'candidate_ids' => $ids(array_values($candidates)),
+            'candidate_ids' => $ids($candidates),
             'selected_ids' => $ids($rows),
         ];
         return $rows;
+    }
+
+    /**
+     * Selección por modelo de decisiones (TASK-062). Una entrada de traza por
+     * petición (con su uso, para coste y latencia) y, al final, la del paso con
+     * la P(sí) de TODOS los candidatos, que permite barrer umbrales sin volver
+     * a llamar. La justificación de cada elegido es su probabilidad.
+     *
+     * @param array<int,array<string,mixed>> $candidates
+     * @return array<int,array<string,mixed>>
+     */
+    private function selectWithDecisionModel(
+        string $label,
+        array $candidates,
+        string $content,
+        string $dimension
+    ): array {
+        $out = $this->leafSelector->select($content, $candidates, $dimension);
+        foreach ($out['usage'] as $usage) {
+            $this->trace[] = ['step' => 'jev_request', 'dimension' => $dimension, 'usage' => $usage];
+        }
+        $this->anchors[$dimension] = $out['anchors'];
+        $this->trace[] = [
+            'step' => $label,
+            'candidates' => count($candidates),
+            'threshold' => $this->leafSelector->threshold(),
+            'cap' => $this->leafSelector->capFor($dimension),
+            'anchor_ids' => array_map(static fn (array $r): int => (int) $r['id'], $out['anchors']),
+            'probabilities' => $out['probabilities'],
+        ];
+        foreach ($out['selected'] as $row) {
+            $id = (int) $row['id'];
+            $this->justifications[$dimension][$id] ??= sprintf('Jev P = %.2f', $out['probabilities'][$id]);
+        }
+        return $out['selected'];
     }
 
     /**

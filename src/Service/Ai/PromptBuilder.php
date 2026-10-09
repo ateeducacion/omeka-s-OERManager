@@ -25,7 +25,7 @@ final class PromptBuilder
      *
      * @param array<string,mixed> $c
      */
-    private function formatCandidate(array $c): string
+    public function formatCandidate(array $c): string
     {
         $title = trim((string) ($c['title'] ?? ''));
         $desc = trim((string) ($c['description'] ?? ''));

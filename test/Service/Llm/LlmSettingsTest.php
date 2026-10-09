@@ -66,4 +66,24 @@ final class LlmSettingsTest extends TestCase
         $this->assertSame(33554432, LlmSettings::parseVisionMaxPdfBytes('33554432'));
         $this->assertSame(20971520, LlmSettings::parseVisionMaxPdfBytes(20971520));
     }
+
+    /** TASK-062: decision threshold, a probability; anything else falls back to the default. */
+    public function testDecisionThresholdIsAProbabilityWithADefault(): void
+    {
+        $this->assertSame(0.75, LlmSettings::parseDecisionThreshold('0.75'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold(null));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold(''));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('abc'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('1.5'));
+        $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('0'));
+    }
+
+    /** TASK-062: how many knowledge/criteria items Jev proposes; 0 = every anchor, anything else the default. */
+    public function testDecisionCapsAreCountsPerDimensionWithDefaults(): void
+    {
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps(null, ''));
+        $this->assertSame(['lrmi:teaches' => 6, 'lrmi:assesses' => 0], LlmSettings::decisionCaps('6', 0));
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps('-1', 'abc'));
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps('2.5', '300'));
+    }
 }

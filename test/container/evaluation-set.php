@@ -24,6 +24,13 @@
  *   --price=model:in:out  USD per million input/output tokens, used ONLY for the
  *                   calls whose provider sent no cost (OpenRouter always sends it)
  *   --label=text    free label of this strategy in the report
+ *   --strategy=jev  TASK-062: Jev (typesafe/jev-1.13, OpenRouter) picks knowledge and criteria,
+ *                   built in memory for this run; stored settings are not touched
+ *   --threshold=x   P(yes) threshold of the jev strategy (default 0.6); with --rescore it
+ *                   re-decides knowledge/criteria from the stored probabilities (no call)
+ *   --caps=k,c      jev strategy: propose at most k knowledge and c criteria items of those
+ *                   at or above the threshold (default 4,3; 0 = every one). Course and the
+ *                   criteria course filter still come from every item at or above it
  *   --out=path      report (default /tmp/oer-evaluation-set.json), rewritten after
  *                   every REA so a crash loses nothing measured
  *
@@ -49,13 +56,30 @@ use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ElpxDeclaredAlignment;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Llm\LlmSettings;
+use OERManager\Service\Ai\ContextDistiller;
+use OERManager\Service\Ai\CurricularClassifier;
+use OERManager\Service\Ai\JevLeafSelector;
+use OERManager\Service\Ai\PromptBuilder;
+use OERManager\Service\Ai\ResponseParser;
+use OERManager\Service\Ai\TagClassifier;
+use OERManager\Service\Ai\TermResolverInterface;
+use OERManager\Service\Content\ContentExtractor;
+use OERManager\Service\Content\MediaVisionExtractor;
+use OERManager\Service\Llm\HttpTransportInterface;
+use OERManager\Service\Llm\LlmClientInterface;
+use OERManager\Service\Llm\OpenRouterDecisionClient;
 
 $application = \Omeka\Mvc\Application::init(require 'application/config/application.config.php');
 $services = $application->getServiceManager();
 $api = $services->get('Omeka\ApiManager');
 $settings = $services->get('Omeka\Settings');
 
-$options = getopt('', ['no-llm', 'ids:', 'out:', 'runs:', 'resume', 'exclude:', 'rescore', 'price:', 'label:']);
+$options = getopt('', ['no-llm', 'ids:', 'out:', 'runs:', 'resume', 'exclude:', 'rescore', 'price:', 'label:',
+    'strategy:', 'threshold:', 'caps:']);
+$strategy = (string) ($options['strategy'] ?? 'llm');
+$threshold = isset($options['threshold']) ? LlmSettings::parseDecisionThreshold($options['threshold']) : null;
+$capsOption = explode(',', (string) ($options['caps'] ?? ''));
+$caps = LlmSettings::decisionCaps($capsOption[0] ?? null, $capsOption[1] ?? null);
 $runs = max(1, (int) ($options['runs'] ?? 1));
 $exclude = array_flip(array_filter(array_map('intval', explode(',', (string) ($options['exclude'] ?? '')))));
 $noLlm = isset($options['no-llm']);
@@ -75,6 +99,35 @@ $scorer = new EvaluationScorer();
 $mediaSource = $services->get(MediaSourceInterface::class);
 $store = $services->get('Omeka\File\Store');
 $cataloguer = $noLlm ? null : $services->get(AiCataloguer::class);
+if (!$noLlm && 'jev' === $strategy) {
+    // Same wiring as module.config.php, plus the Jev selector; in memory only.
+    $selector = new JevLeafSelector(
+        new OpenRouterDecisionClient($services->get(HttpTransportInterface::class), [
+            'api_key' => (string) $settings->get(LlmSettings::API_KEY, ''),
+            'model' => (string) ($settings->get(LlmSettings::DECISION_MODEL) ?: LlmSettings::DEFAULT_DECISION_MODEL),
+            'base_url' => (string) $settings->get(LlmSettings::BASE_URL, ''),
+        ]),
+        $services->get(PromptBuilder::class),
+        $threshold ?? LlmSettings::DEFAULT_DECISION_THRESHOLD,
+        200,
+        $caps
+    );
+    $cataloguer = new AiCataloguer(
+        $services->get(ContentExtractor::class),
+        $services->get(MediaVisionExtractor::class),
+        $services->get(ContextDistiller::class),
+        new CurricularClassifier(
+            $services->get(LlmClientInterface::class),
+            $services->get(TermResolverInterface::class),
+            $services->get(PromptBuilder::class),
+            $services->get(ResponseParser::class),
+            LlmSettings::parseMaxTokens($settings->get(LlmSettings::MAX_TOKENS)),
+            LlmSettings::parseTemperature($settings->get(LlmSettings::TEMPERATURE)),
+            $selector
+        ),
+        $services->get(TagClassifier::class)
+    );
+}
 
 const DIMENSIONS = ['lrmi:educationalLevel', 'schema:about', 'lrmi:teaches', 'lrmi:assesses'];
 const LEAF_STEPS = ['lrmi:teaches' => 'Saberes básicos', 'lrmi:assesses' => 'Criterios de evaluación'];
@@ -229,7 +282,9 @@ function leafSteps(array $curricularTrace): ?array
                 'gathered' => array_map('intval', $entry['gathered_ids'] ?? []),
                 'shown' => array_map('intval', $entry['candidate_ids']),
                 'chosen' => array_map('intval', $entry['selected_ids'] ?? []),
-            ];
+                'strategy' => (string) ($entry['strategy'] ?? 'llm'),
+            ] + (isset($entry['probabilities']) ? ['probabilities' => $entry['probabilities']] : [])
+                + (isset($entry['anchor_ids']) ? ['anchors' => array_map('intval', $entry['anchor_ids'])] : []);
         }
     }
     return $steps ?: null;
@@ -252,6 +307,52 @@ function runCost(array $usage, array $prices): array
     }
     return ['real' => $known, 'estimated' => $estimated, 'calls_uncovered' => $uncovered,
         'total' => (null === $known && 0.0 === $estimated) ? null : (float) $known + $estimated];
+}
+
+/**
+ * Re-decides knowledge and criteria of a Jev run at another threshold from the
+ * stored P(yes) of every candidate, and re-derives the courses from the chosen
+ * leaves. Approximation, stated in the report: the criteria candidates are the
+ * ones of the original run (they depended on the knowledge chosen then), and
+ * the subjects are left as proposed.
+ */
+function rethreshold(array $run, float $threshold, $api): array
+{
+    $courseOf = static function (int $leafId) use ($api): ?int {
+        static $cache = [];
+        if (!array_key_exists($leafId, $cache)) {
+            try {
+                $value = $api->read('items', $leafId)->getContent()->value('lrmi:educationalAlignment');
+                $cache[$leafId] = $value && $value->valueResource() ? $value->valueResource()->id() : null;
+            } catch (\Exception $e) {
+                $cache[$leafId] = null;
+            }
+        }
+        return $cache[$leafId];
+    };
+    $changed = false;
+    foreach (LEAF_STEPS as $dimension => $label) {
+        $step = $run['leaf_steps'][$dimension] ?? null;
+        if (!is_array($step) || !isset($step['probabilities'])) {
+            continue;
+        }
+        $chosen = [];
+        foreach ($step['probabilities'] as $leafId => $p) {
+            if (null !== $p && (float) $p >= $threshold) {
+                $chosen[(int) $leafId] = (float) $p;
+            }
+        }
+        arsort($chosen);
+        $run['proposed'][$dimension] = array_keys($chosen);
+        $run['leaf_steps'][$dimension]['chosen'] = array_keys($chosen);
+        $changed = true;
+    }
+    if ($changed) {
+        $leaves = array_merge($run['proposed']['lrmi:teaches'] ?? [], $run['proposed']['lrmi:assesses'] ?? []);
+        $run['proposed']['lrmi:educationalLevel'] = array_values(array_unique(array_filter(array_map($courseOf, $leaves))));
+        $run['rethresholded'] = $threshold;
+    }
+    return $run;
 }
 
 /** Summary over the runs of a set of REA. */
@@ -403,6 +504,11 @@ $report = [
         'temperature' => $settings->get(LlmSettings::TEMPERATURE),
         'vision_enabled' => (bool) $settings->get(LlmSettings::VISION_ENABLED),
         'prices' => $prices,
+        'strategy' => $strategy,
+        'decision_model' => 'jev' === $strategy
+            ? (string) ($settings->get(LlmSettings::DECISION_MODEL) ?: LlmSettings::DEFAULT_DECISION_MODEL) : '',
+        'threshold' => 'jev' === $strategy ? ($threshold ?? LlmSettings::DEFAULT_DECISION_THRESHOLD) : null,
+        'caps' => 'jev' === $strategy ? $caps : null,
     ],
     'items' => [],
     'summary' => [],
@@ -420,10 +526,17 @@ $prices = $report['config']['prices'] ?? $prices;
 if (isset($options['rescore'])) {
     foreach ($report['items'] as $id => $row) {
         foreach ($row['runs'] ?? [] as $i => $run) {
-            if (!isset($run['error'])) {
-                $report['items'][$id]['runs'][$i] = array_merge($run, scoreRun($run, $row['truth'], $scorer, $api));
+            if (isset($run['error'])) {
+                continue;
             }
+            if (null !== $threshold) {
+                $run = rethreshold($run, $threshold, $api);
+            }
+            $report['items'][$id]['runs'][$i] = array_merge($run, scoreRun($run, $row['truth'], $scorer, $api));
         }
+    }
+    if (null !== $threshold) {
+        $report['config']['threshold'] = $threshold;
     }
     $ids = []; // rescore only: no new proposal
     $runs = (int) ($report['runs'] ?? $runs);
