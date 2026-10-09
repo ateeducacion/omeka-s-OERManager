@@ -31,6 +31,16 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     private const LEAF_CAP = 200;
 
     /**
+     * Tope de saberes cuando los elige Jev (TASK-062): sin prefiltro por bloque,
+     * porque el prefiltro dejaba fuera el 22 % de los saberes declarados. Con 400
+     * (dos peticiones de 200) llega a Jev el 81 % de los declarados frente al
+     * 60 %, por unos $0.0011 más por REA (barrido de 2026-10-09); sin tope,
+     * algún REA reúne 1 254 saberes. Si Jev falla, el LLM ve el conjunto de
+     * siempre (LEAF_CAP y prefiltro por bloque).
+     */
+    public const DECISION_LEAF_CAP = 400;
+
+    /**
      * Guía de la etapa acotadora (Fase A.1). Desde TASK-056 la inclusividad es
      * condicional: si el contenido indica la etapa, se elige esa. Con el tope
      * LEAF_CAP una etapa de más NO era inocua (ADR-0010, addendum TASK-056):
@@ -143,11 +153,21 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $subjectIds = [];
 
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
-        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames, $courseIds);
-        if (count($teaches) > self::BLOCK_THRESHOLD) {
-            $teaches = $this->prefilterByBlock($teaches, implode(', ', $subjectNames), $coarse);
+        // Con Jev se le preguntan todos (hasta DECISION_LEAF_CAP); el LLM, propio o
+        // de respaldo, ve los acotados por LEAF_CAP y por bloque.
+        $narrow = function (array $leaves) use ($subjectNames, $coarse): array {
+            $leaves = $this->capLeaves($leaves, self::LEAF_CAP, self::TEACHES);
+            return count($leaves) > self::BLOCK_THRESHOLD
+                ? $this->prefilterByBlock($leaves, implode(', ', $subjectNames), $coarse)
+                : $leaves;
+        };
+        $withJev = null !== $this->leafSelector;
+        $cap = $withJev ? self::DECISION_LEAF_CAP : self::LEAF_CAP;
+        $teaches = $this->gatherLeaves(self::TEACHES, $etapaIds, $subjectNames, $courseIds, $cap);
+        if (!$withJev) {
+            $teaches = $narrow($teaches);
         }
-        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES);
+        $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES, $withJev ? $narrow : null);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
             $anchors = $this->anchors[self::TEACHES] ?? $teachesRows;
@@ -393,8 +413,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      * @param int[] $courseIds
      * @return array<int,array<string,mixed>>
      */
-    private function gatherLeaves(string $dimension, array $etapaIds, array $subjectNames, array $courseIds): array
-    {
+    private function gatherLeaves(
+        string $dimension,
+        array $etapaIds,
+        array $subjectNames,
+        array $courseIds,
+        int $cap = self::LEAF_CAP
+    ): array {
         $merged = [];
         foreach ($etapaIds as $etapaId) {
             foreach ($subjectNames as $subjectName) {
@@ -407,31 +432,41 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             }
         }
         $this->gathered[$dimension] = array_keys($merged);
-        if (count($merged) <= self::LEAF_CAP) {
-            return array_values($merged);
-        }
+        return $this->capLeaves(array_values($merged), $cap, $dimension);
+    }
 
+    /**
+     * Recorta a $cap hojas repartiendo por igual entre materia × curso (TASK-056).
+     *
+     * @param list<array<string,mixed>> $leaves
+     * @return list<array<string,mixed>>
+     */
+    private function capLeaves(array $leaves, int $cap, string $dimension): array
+    {
+        if (count($leaves) <= $cap) {
+            return $leaves;
+        }
         $groups = [];
-        foreach ($merged as $id => $leaf) {
-            $groups[$leaf['subjectName'] . "\u{1F}" . (int) ($leaf['courseId'] ?? 0)][] = $id;
+        foreach ($leaves as $pos => $leaf) {
+            $groups[($leaf['subjectName'] ?? '') . "\u{1F}" . (int) ($leaf['courseId'] ?? 0)][] = $pos;
         }
         $kept = [];
-        while (count($kept) < self::LEAF_CAP) {
-            foreach ($groups as $key => &$ids) {
-                if (count($kept) >= self::LEAF_CAP) {
+        while (count($kept) < $cap) {
+            foreach ($groups as $key => &$positions) {
+                if (count($kept) >= $cap) {
                     break;
                 }
-                if ($ids) {
-                    $kept[array_shift($ids)] = true;
+                if ($positions) {
+                    $kept[array_shift($positions)] = true;
                 }
             }
-            unset($ids);
+            unset($positions);
         }
         $this->trace[] = [
-            'step' => 'leaf_cap', 'dimension' => $dimension, 'available' => count($merged), 'kept' => self::LEAF_CAP,
+            'step' => 'leaf_cap', 'dimension' => $dimension, 'available' => count($leaves), 'kept' => $cap,
         ];
         // Orden original de las hojas: el reparto decide QUÉ entra, no el orden.
-        return array_values(array_intersect_key($merged, $kept));
+        return array_values(array_intersect_key($leaves, $kept));
     }
 
     /**
@@ -465,10 +500,17 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      * elegidas (igual que antes); la justificación queda en $this->justifications.
      *
      * @param array<int,array<string,mixed>> $candidates
+     * @param ?callable(array<int,array<string,mixed>>):array<int,array<string,mixed>> $narrowForLlm
+     *        acota los candidatos si Jev falla y elige el LLM (TASK-062)
      * @return array<int,array<string,mixed>> filas elegidas
      */
-    private function selectRows(string $label, array $candidates, string $content, string $dimension): array
-    {
+    private function selectRows(
+        string $label,
+        array $candidates,
+        string $content,
+        string $dimension,
+        ?callable $narrowForLlm = null
+    ): array {
         $ids = static fn (array $rows): array => array_map(static fn (array $r): int => (int) ($r['id'] ?? 0), $rows);
         $candidates = array_values($candidates);
         $extra = [];
@@ -488,6 +530,9 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
                 }
             }
             if (null === $rows) {
+                if (null !== $narrowForLlm) {
+                    $candidates = array_values($narrowForLlm($candidates));
+                }
                 $map = $this->askWithReasons($candidates, $label, $content);
                 $this->captureJustifications($dimension, $map, $candidates);
                 $rows = $this->mapIndicesToRows(array_keys($map), $candidates);

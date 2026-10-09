@@ -658,6 +658,79 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame(1, $knowledge['cap']);
     }
 
+    /** Two subjects, 20 knowledge items each, one block per subject (40 > BLOCK_THRESHOLD). */
+    private function twoBlockResolver(): FakeTermResolver
+    {
+        $resolver = $this->resolver();
+        $resolver->families = [1 => [['name' => 'Matemáticas'], ['name' => 'Tecnología']]];
+        $resolver->leaves = [
+            'lrmi:teaches|Matemáticas' => $this->leaves(1000, 20, 10, '1º ESO', 'I. Proyectos'),
+            'lrmi:teaches|Tecnología' => $this->leaves(2000, 20, 13, '4º ESO', 'I. Proyectos'),
+        ];
+        return $resolver;
+    }
+
+    private function withJev(FakeTermResolver $resolver, FakeLlmClient $llm, FakeDecisionModel $jev): CurricularClassifier
+    {
+        return new CurricularClassifier($llm, $resolver, new PromptBuilder(), new ResponseParser(), 1024, null,
+            new \OERManager\Service\Ai\JevLeafSelector($jev, new PromptBuilder(), 0.6));
+    }
+
+    public function testWithJevEveryGatheredKnowledgeItemIsAskedWithoutTheBlockStep(): void
+    {
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1,2]}']); // stage, subjects
+        $jev = new FakeDecisionModel(static fn (string $id, array $q): float =>
+            str_contains($q['instructions'], 'Saber 1003') ? 0.9 : 0.1);
+        $classifier = $this->withJev($this->twoBlockResolver(), $llm, $jev);
+        $result = $classifier->classify(new ItemContext('x', ''));
+
+        $this->assertCount(2, $llm->calls);                 // no «Bloques temáticos» call
+        $this->assertCount(40, $jev->calls[0]['questions']);
+        $this->assertCount(40, $this->traceStep($classifier, 'Saberes básicos')['candidate_ids']);
+        $this->assertSame([1003], $result['lrmi:teaches']);  // a leaf the block step would have cut
+    }
+
+    public function testWithJevTheKnowledgeCapIsWiderAndStillSplitFairly(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->leaves = [
+            'lrmi:teaches|Matemáticas' => $this->leaves(1000, 450, 10, '1º ESO'),
+            'lrmi:teaches|Lengua' => $this->leaves(2000, 3, 11, '2º ESO'),
+        ];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1,2]}', '{"selected":[]}']);
+        $jev = new FakeDecisionModel(static fn (): float => 0.1);
+        $classifier = $this->withJev($resolver, $llm, $jev);
+        $classifier->classify(new ItemContext('x', ''));
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertCount(453, $knowledge['gathered_ids']);
+        $this->assertCount(CurricularClassifier::DECISION_LEAF_CAP, $knowledge['candidate_ids']);
+        foreach ([2000, 2001, 2002] as $id) {
+            $this->assertContains($id, $knowledge['candidate_ids']);
+        }
+        $this->assertSame([200, 200], array_map(static fn (array $c): int => count($c['questions']), $jev->calls));
+        $cut = array_values(array_filter($classifier->getTrace(), static fn (array $t): bool => 'leaf_cap' === ($t['step'] ?? '')));
+        $this->assertSame(['step' => 'leaf_cap', 'dimension' => 'lrmi:teaches', 'available' => 453, 'kept' => 400], $cut[0]);
+    }
+
+    public function testIfJevFailsTheLlmFallbackSeesTheUsualBoundedSet(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1,2]}', // stage, subjects
+            '{"selected":[2]}',                       // blocks: Tecnología, asked only after Jev failed
+            '{"selected":[]}',                        // knowledge
+        ]);
+        $classifier = $this->withJev($this->twoBlockResolver(), $llm, new FakeDecisionModel(static fn (): float => 0.9, true));
+        $classifier->classify(new ItemContext('x', ''));
+
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame('llm', $knowledge['strategy']);
+        $this->assertCount(40, $knowledge['gathered_ids']);
+        $this->assertCount(20, $knowledge['candidate_ids']);
+        $this->assertSame(2000, $knowledge['candidate_ids'][0]);
+        $this->assertSame(20, $this->stepByLabel($llm, 'Saberes básicos')['candidates']);
+    }
+
     public function testIfJevFailsTheStepFallsBackToTheLlm(): void
     {
         $llm = new FakeLlmClient([
