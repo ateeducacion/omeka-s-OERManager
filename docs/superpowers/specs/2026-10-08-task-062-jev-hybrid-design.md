@@ -20,7 +20,7 @@ off, behaviour is exactly today's.
 | `Llm\DecisionModelInterface` | `decide(string $state, array $questions): DecisionResult` |
 | `Llm\DecisionResult` | typed answers by question id (`noul` → P(yes); `choice` → option, probabilities, confidence) plus usage (tokens, real cost, served model, ms) |
 | `Llm\OpenRouterDecisionClient` | `POST {https://…/api}/alpha/decisions` with the configured OpenRouter key and Jev's native body; reuses `HttpTransportInterface`; the response is untrusted data (unknown ids, non-numeric or out-of-range probabilities are rejected) |
-| `Ai\JevLeafSelector` | builds one `noul` per candidate, splits requests above 200 questions, returns P(yes) per candidate and the chosen ones (P ≥ threshold) |
+| `Ai\JevLeafSelector` | builds one `noul` per candidate, splits requests above 200 questions, returns P(yes) per candidate, the anchors (P ≥ threshold) and the proposed ones (the top K anchors per dimension, section 4) |
 | `CurricularClassifier` | optional selector: when present, the knowledge and criteria steps use it; on any failure of the selector the step falls back to the current LLM selection and the trace says so |
 
 The decisions endpoint is derived from the configured base URL (`…/api/v1` → `…/api/alpha/decisions`); any
@@ -45,10 +45,22 @@ other base URL is a configuration error, never a guess.
 - The trace stores P(yes) for **every** candidate, so the evaluation set can sweep thresholds offline without
   calling Jev again, and the threshold is chosen on data.
 
+**Addendum 2026-10-09 — top K per dimension.** The offline sweep over the stored probabilities showed that P(yes)
+ranks well within one REA but is not calibrated (candidates with P 0.8–0.9 are right 30 % of the time, P 0.9–1.0
+60 %), so a fixed threshold trades recall for review load badly: at 0.8 the course in the declared cycle
+regressed and 12 % of proposals had no leaf. The candidates at or above the threshold are now **anchors**; only
+the K most likely anchors of each dimension are proposed (settings `oermanager_llm_decision_max_teaches` and
+`_max_assesses`, default 4 and 3, 0 = every anchor). The derived course and the course filter of the criteria
+candidates come from the anchors; the subject comes from the proposed leaves. The trace adds `anchor_ids` and
+`cap`; the evaluation set takes `--caps=k,c` (default 4,3).
+Measured on 2026-10-09 (52 REA × 3): leaf F1 in cycle 0.35 knowledge / 0.34 criteria, 6.3 leaves per
+proposal, none empty, course in cycle 136/156; figures and caveats in the TASK-062 backlog entry.
+
 ## 5. Configuration and piloting
 
 Settings, no admin form yet: `oermanager_llm_decision_enabled` (default off), `oermanager_llm_decision_model`
-(default `typesafe/jev-1.13`), `oermanager_llm_decision_threshold` (default 0.6). The evaluation set gains
+(default `typesafe/jev-1.13`), `oermanager_llm_decision_threshold` (default 0.6),
+`oermanager_llm_decision_max_teaches` / `_max_assesses` (default 4 / 3, addendum of section 4). The evaluation set gains
 `--strategy=jev`, which builds the classifier with the selector **in memory** for the run, without changing
 the stored settings, and `--threshold=x` to re-score stored probabilities. An admin form comes only if the
 strategy is adopted.
