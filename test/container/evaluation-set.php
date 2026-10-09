@@ -38,7 +38,8 @@
  * strategies on the same 52 REA):
  *   - strict and cycle scores: in Primaria and Infantil a REA is aligned to the
  *     courses of its cycle (owner decisions 2026-10-08), so a cycle twin of a
- *     declared leaf, or a course of its cycle, counts in the cycle reading;
+ *     declared leaf, a course of its cycle, or the same-name subject of a course
+ *     of its cycle (TASK-061) counts in the cycle reading;
  *   - precision/recall/F1 per dimension, macro (mean per run) and micro;
  *   - where each declared leaf was lost: chosen, shown and not chosen, cut
  *     (cap, block, criteria course filter) or never gathered;
@@ -189,6 +190,31 @@ function labelOf(int $id, $api, string $what): string
     return $cache[$what][$id];
 }
 
+/**
+ * Cycle key of a subject (TASK-061): its name plus the cycle of its course, so
+ * Matemáticas of 3º and of 4º Primaria match; without a cycle, its own id.
+ */
+function subjectCycleKey(int $id, $api): string
+{
+    static $cache = [];
+    if (!isset($cache[$id])) {
+        $cache[$id] = 'id:' . $id;
+        try {
+            $item = $api->read('items', $id)->getContent();
+            $course = $item->value('lrmi:educationalLevel');
+            $cycle = $course && $course->valueResource()
+                ? CurriculumCycle::courseKey((string) $course->valueResource()->displayTitle(''))
+                : null;
+            if (null !== $cycle) {
+                $cache[$id] = trim((string) $item->displayTitle('')) . '|' . $cycle;
+            }
+        } catch (\Exception $e) {
+            // unreadable subject: compared by id
+        }
+    }
+    return $cache[$id];
+}
+
 /** Commit of the module working tree, read from .git without running git. */
 function moduleCommit(): string
 {
@@ -219,6 +245,7 @@ function scoreRun(array $run, array $truth, EvaluationScorer $scorer, $api): arr
     $leafKey = static fn (int $id): string => CurriculumCycle::leafKey(labelOf($id, $api, 'leaf') ?: 'id:' . $id);
     $courseKey = static fn (int $id): string => CurriculumCycle::courseKey(labelOf($id, $api, 'course')) ?? 'id:' . $id;
     $identity = static fn (int $id): string => (string) $id;
+    $subjectKey = static fn (int $id): string => subjectCycleKey($id, $api);
 
     $result = ['scores' => [], 'cycle_scores' => []];
     foreach (DIMENSIONS as $dimension) {
@@ -226,6 +253,7 @@ function scoreRun(array $run, array $truth, EvaluationScorer $scorer, $api): arr
         $key = match ($dimension) {
             'lrmi:educationalLevel' => $courseKey,
             'lrmi:teaches', 'lrmi:assesses' => $leafKey,
+            'schema:about' => $subjectKey,
             default => $identity,
         };
         $result['cycle_scores'][$dimension] = keyedScore($proposed[$dimension] ?? [], $truth[$dimension], $key);
