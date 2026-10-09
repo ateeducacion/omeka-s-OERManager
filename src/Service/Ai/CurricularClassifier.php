@@ -151,9 +151,9 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $derivedCourses = [];
         /** @var array<int,bool> $subjectIds */
         $subjectIds = [];
-        // Filas de las que salen curso y materia, para completar el ciclo (TASK-061).
-        $courseRows = [];
-        $subjectRows = [];
+        // Hojas propuestas en orden (la primera, la más probable), para completar
+        // su ciclo (TASK-061).
+        $proposedRows = [];
 
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
         // Con Jev se le preguntan todos (hasta DECISION_LEAF_CAP); el LLM, propio o
@@ -175,8 +175,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
             $anchors = $this->anchors[self::TEACHES] ?? $teachesRows;
             $this->collectLineage($anchors, $teachesRows, $derivedCourses, $subjectIds);
-            array_push($courseRows, ...$anchors);
-            array_push($subjectRows, ...$teachesRows);
+            array_push($proposedRows, ...$teachesRows);
         }
 
         // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
@@ -192,16 +191,16 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
             $anchors = $this->anchors[self::ASSESSES] ?? $assessesRows;
             $this->collectLineage($anchors, $assessesRows, $derivedCourses, $subjectIds);
-            array_push($courseRows, ...$anchors);
-            array_push($subjectRows, ...$assessesRows);
+            array_push($proposedRows, ...$assessesRows);
         }
 
         // Fase D — Derivación: curso y materia = padres reales de las hojas. En
-        // Primaria e Infantil se completan con los cursos del ciclo (TASK-061).
-        foreach ($this->cycleSiblings($courseRows, $families) as [$courseId]) {
+        // Primaria e Infantil, el ciclo de la hoja propuesta más probable se
+        // completa con sus cursos hermanos y la materia de cada uno (TASK-061).
+        // Solo ese: completar todo lo derivado duplicaba los cursos y materias
+        // erróneos (materias erróneas 21 → 54 en el conjunto de evaluación).
+        foreach ($this->cycleSiblings(array_slice($proposedRows, 0, 1), $families) as [$courseId, $subjectId]) {
             $derivedCourses[$courseId] = true;
-        }
-        foreach ($this->cycleSiblings($subjectRows, $families) as [, $subjectId]) {
             $subjectIds[$subjectId] = true;
         }
         if ($derivedCourses) {

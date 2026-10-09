@@ -41,3 +41,18 @@ course and its subject by hand.
 The evaluation set (52 REA × 3) against the TASK-063 run: course and subject in cycle must not regress,
 leaves unchanged within noise, and strict course precision is expected to fall in Primaria/Infantil by
 construction (two or three courses instead of one).
+
+## Addendum 2026-10-09 — complete only the cycle of the most likely leaf
+
+The first real run (52 REA × 3, 3 runs lost to provider timeouts) showed that completing every derived course
+and subject was the wrong rule. Against the TASK-063 run re-scored with the subject cycle reading:
+
+- the declared cycle was **already complete** in 104 of 106 Primaria/Infantil runs that reached it, because the
+  courses come from every Jev anchor and the anchors usually cover the whole cycle;
+- completing everything fixed 2 course runs and 6 subject runs, but also completed the wrong extra courses and
+  subjects: wrong course items 14 → 29, wrong subject items 21 → 54; course F1 in cycle 0.95 → 0.90, subject
+  0.86 → 0.76.
+
+Rule now: only the cycle of the most likely proposed leaf (the first knowledge item, or the first criterion when
+no knowledge is proposed) is completed with its sibling courses and their same-name subject. Every other course
+and subject is derived as before.

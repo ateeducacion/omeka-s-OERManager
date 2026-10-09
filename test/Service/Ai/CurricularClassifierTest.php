@@ -452,6 +452,27 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame([23, 24], $result['schema:about']);
     }
 
+    public function testOnlyTheCycleOfTheMostLikelyLeafIsCompleted(): void
+    {
+        // A second, less likely leaf in another subject and cycle (Lengua 5º) keeps its own
+        // course and subject: completing every derived cycle doubled the wrong ones in the
+        // evaluation set (wrong subject items 21 → 54).
+        $r = $this->cycleResolver();
+        $r->families[2][1]['courses'][] = ['id' => 15, 'title' => '5º Primaria', 'subjectId' => 35];
+        $r->families[2][1]['courses'][] = ['id' => 16, 'title' => '6º Primaria', 'subjectId' => 36];
+        $r->leaves['lrmi:teaches|Lengua'] = [['id' => 315, 'title' => 'PLCL05SBI.1', 'description' => 'Poesía',
+            'block' => '', 'courseId' => 15, 'courseTitle' => '5º Primaria', 'subjectId' => 35]];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1,2]}', '{"selected":[1,3]}', // stage, both subjects, 3º and 5º
+            '{"selected":[{"i":1,"why":"números"},{"i":2,"why":"poesía"}]}', // 300 (3º Matemáticas) first, then 315
+        ]);
+        $result = $this->make($r, $llm)->classify(new ItemContext('números y poesía', ''));
+
+        $this->assertSame([300, 315], $result['lrmi:teaches']);
+        $this->assertSame([13, 15, 14], $result['lrmi:educationalLevel']); // 4º completes the first leaf's cycle only
+        $this->assertSame([23, 35, 24], $result['schema:about']);
+    }
+
     public function testASiblingCourseWithoutTheSubjectIsNotAdded(): void
     {
         $llm = new FakeLlmClient([
