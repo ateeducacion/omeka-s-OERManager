@@ -147,7 +147,10 @@ final class CurriculumSearchIntegrationTest extends TestCase
         $this->api->method('search')->willReturn($this->response([$math3, $math4, $math4bis]));
 
         $this->assertSame(
-            [['name' => 'Math', 'courses' => [['id' => 10, 'title' => '3º ESO'], ['id' => 11, 'title' => '4º ESO']]]],
+            [['name' => 'Math', 'courses' => [
+                ['id' => 10, 'title' => '3º ESO', 'subjectId' => 1],
+                ['id' => 11, 'title' => '4º ESO', 'subjectId' => 2], // first subject item of the course wins
+            ]]],
             $this->search->searchSubjectFamilies(9)
         );
     }

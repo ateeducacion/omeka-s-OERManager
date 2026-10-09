@@ -415,6 +415,91 @@ final class CurricularClassifierTest extends TestCase
         return $out;
     }
 
+    // --- TASK-061: Primaria and Infantil align to the courses of the cycle ---
+
+    /** Primaria stage with Matemáticas in 3º and 4º (subjects 23, 24) and Lengua only in 3º (subject 33). */
+    private function cycleResolver(): FakeTermResolver
+    {
+        $r = new FakeTermResolver(['etapa' => [['id' => 2, 'title' => 'Educación Primaria']]]);
+        $r->families = [2 => [
+            ['name' => 'Matemáticas', 'courses' => [
+                ['id' => 13, 'title' => '3º Primaria', 'subjectId' => 23],
+                ['id' => 14, 'title' => '4º Primaria', 'subjectId' => 24],
+                ['id' => 15, 'title' => '5º Primaria', 'subjectId' => 25],
+            ]],
+            ['name' => 'Lengua', 'courses' => [['id' => 13, 'title' => '3º Primaria', 'subjectId' => 33]]],
+        ]];
+        $r->leaves = [
+            'lrmi:teaches|Matemáticas' => [['id' => 300, 'title' => 'PMAT03SBI.1', 'description' => 'Números',
+                'block' => '', 'courseId' => 13, 'courseTitle' => '3º Primaria', 'subjectId' => 23]],
+            'lrmi:teaches|Lengua' => [['id' => 310, 'title' => 'PLCL03SBI.1', 'description' => 'Lectura',
+                'block' => '', 'courseId' => 13, 'courseTitle' => '3º Primaria', 'subjectId' => 33]],
+        ];
+        return $r;
+    }
+
+    public function testAPrimariaProposalCarriesBothCoursesOfTheCycleAndTheirSubject(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}',       // stage, subject Matemáticas
+            '{"selected":[1]}',                           // course step: 3º Primaria
+            '{"selected":[{"i":1,"why":"números"}]}',     // knowledge 300 (3º)
+        ]);
+        $result = $this->make($this->cycleResolver(), $llm)->classify(new ItemContext('números, 3º Primaria', ''));
+
+        $this->assertSame([300], $result['lrmi:teaches']);            // the leaf is not duplicated
+        $this->assertSame([13, 14], $result['lrmi:educationalLevel']); // 3º and 4º, never 5º
+        $this->assertSame([23, 24], $result['schema:about']);
+    }
+
+    public function testASiblingCourseWithoutTheSubjectIsNotAdded(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[2]}',       // stage, subject Lengua (only in 3º)
+            '{"selected":[{"i":1,"why":"lectura"}]}',     // knowledge 310
+        ]);
+        $result = $this->make($this->cycleResolver(), $llm)->classify(new ItemContext('lectura', ''));
+
+        $this->assertSame([13], $result['lrmi:educationalLevel']);
+        $this->assertSame([33], $result['schema:about']);
+    }
+
+    public function testAnInfantilProposalCarriesTheThreeCoursesOfItsCycle(): void
+    {
+        $r = new FakeTermResolver(['etapa' => [['id' => 3, 'title' => 'Educación Infantil']]]);
+        $r->families = [3 => [['name' => 'Descubrimiento del entorno', 'courses' => [
+            ['id' => 41, 'title' => '3º Infantil de 2 años', 'subjectId' => 51],
+            ['id' => 44, 'title' => '4º Infantil de 3 años', 'subjectId' => 54],
+            ['id' => 45, 'title' => '5º Infantil de 4 años', 'subjectId' => 55],
+            ['id' => 46, 'title' => '6º Infantil de 5 años', 'subjectId' => 56],
+        ]]]];
+        $r->leaves = ['lrmi:teaches' => [['id' => 400, 'title' => 'IDEE06SBI.1', 'description' => 'Animales',
+            'block' => '', 'courseId' => 46, 'courseTitle' => '6º Infantil de 5 años', 'subjectId' => 56]]];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}', '{"selected":[4]}', // stage, subject, course 6º
+            '{"selected":[{"i":1,"why":"animales"}]}',
+        ]);
+        $result = $this->make($r, $llm)->classify(new ItemContext('animales, 5 años', ''));
+
+        $this->assertSame([46, 44, 45], $result['lrmi:educationalLevel']); // the derived course first, then its cycle
+        $this->assertSame([56, 54, 55], $result['schema:about']);
+    }
+
+    public function testEsoCoursesHaveNoCycleAndAreNotCompleted(): void
+    {
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', '{"selected":[1]}', '{"selected":[1]}', // stage, subject, course 1º ESO
+            '{"selected":[{"i":1,"why":"x"}]}', '{"selected":[]}',
+        ]);
+        $r = $this->coursedResolver();
+        $r->families[1][0]['courses'][0]['subjectId'] = 22;
+        $r->families[1][0]['courses'][1]['subjectId'] = 20;
+        $result = $this->make($r, $llm)->classify(new ItemContext('números, 1º ESO', ''));
+
+        $this->assertSame([10], $result['lrmi:educationalLevel']);
+        $this->assertSame([20], $result['schema:about']);
+    }
+
     public function testSubjectCandidatesShowTheirCourses(): void
     {
         $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}', '{"selected":[2]}', '{"selected":[]}',

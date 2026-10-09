@@ -151,6 +151,9 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $derivedCourses = [];
         /** @var array<int,bool> $subjectIds */
         $subjectIds = [];
+        // Filas de las que salen curso y materia, para completar el ciclo (TASK-061).
+        $courseRows = [];
+        $subjectRows = [];
 
         // Fase B — Saberes por descripción, cruzando etapas/materias/cursos.
         // Con Jev se le preguntan todos (hasta DECISION_LEAF_CAP); el LLM, propio o
@@ -172,6 +175,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
             $anchors = $this->anchors[self::TEACHES] ?? $teachesRows;
             $this->collectLineage($anchors, $teachesRows, $derivedCourses, $subjectIds);
+            array_push($courseRows, ...$anchors);
+            array_push($subjectRows, ...$teachesRows);
         }
 
         // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
@@ -187,9 +192,18 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
             $anchors = $this->anchors[self::ASSESSES] ?? $assessesRows;
             $this->collectLineage($anchors, $assessesRows, $derivedCourses, $subjectIds);
+            array_push($courseRows, ...$anchors);
+            array_push($subjectRows, ...$assessesRows);
         }
 
-        // Fase D — Derivación: curso y materia = padres reales de las hojas.
+        // Fase D — Derivación: curso y materia = padres reales de las hojas. En
+        // Primaria e Infantil se completan con los cursos del ciclo (TASK-061).
+        foreach ($this->cycleSiblings($courseRows, $families) as [$courseId]) {
+            $derivedCourses[$courseId] = true;
+        }
+        foreach ($this->cycleSiblings($subjectRows, $families) as [, $subjectId]) {
+            $subjectIds[$subjectId] = true;
+        }
         if ($derivedCourses) {
             $result['lrmi:educationalLevel'] = array_keys($derivedCourses);
         }
@@ -288,11 +302,15 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
                 if ('' === $name) {
                     continue;
                 }
-                $families[$name] ??= ['name' => $name, 'courses' => []];
+                $families[$name] ??= ['name' => $name, 'courses' => [], 'subjects' => []];
                 foreach ((array) ($family['courses'] ?? []) as $course) {
                     $id = (int) ($course['id'] ?? 0);
                     if ($id > 0) {
                         $families[$name]['courses'][$id] = trim((string) ($course['title'] ?? ''));
+                        $subjectId = (int) ($course['subjectId'] ?? 0);
+                        if ($subjectId > 0) {
+                            $families[$name]['subjects'][$id] = $subjectId;
+                        }
                     }
                 }
             }
@@ -467,6 +485,41 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         ];
         // Orden original de las hojas: el reparto decide QUÉ entra, no el orden.
         return array_values(array_intersect_key($leaves, $kept));
+    }
+
+    /**
+     * Cursos hermanos de ciclo de las filas, con la materia del mismo nombre en
+     * cada uno (TASK-061, decisión del propietario de 2026-10-08): en Primaria
+     * (1º–2º, 3º–4º, 5º–6º) e Infantil (1º–3º, 4º–6º) un REA se alinea con los
+     * cursos de su ciclo. Solo cursos donde existe esa materia, para que cada
+     * curso propuesto lleve la suya (subgrafo coherente, ADR-0010). Las hojas no
+     * se duplican: la gemela de ciclo de una hoja vale igual.
+     *
+     * @param list<array<string,mixed>> $rows filas de hojas con subjectName y courseId
+     * @param array<string,array{name:string,courses:array<int,string>,subjects?:array<int,int>}> $families
+     * @return list<array{0:int,1:int}> [courseId, subjectId] de los hermanos
+     */
+    private function cycleSiblings(array $rows, array $families): array
+    {
+        $siblings = [];
+        foreach ($rows as $row) {
+            $family = $families[(string) ($row['subjectName'] ?? '')] ?? null;
+            $courseId = (int) ($row['courseId'] ?? 0);
+            if (null === $family || !isset($family['courses'][$courseId])) {
+                continue;
+            }
+            $cycle = CurriculumCycle::courseKey($family['courses'][$courseId]);
+            if (null === $cycle) {
+                continue;
+            }
+            foreach ($family['courses'] as $siblingId => $title) {
+                $subjectId = $family['subjects'][$siblingId] ?? 0;
+                if ($siblingId !== $courseId && $subjectId > 0 && CurriculumCycle::courseKey($title) === $cycle) {
+                    $siblings[$siblingId . ':' . $subjectId] = [$siblingId, $subjectId];
+                }
+            }
+        }
+        return array_values($siblings);
     }
 
     /**

@@ -249,8 +249,12 @@ class CurriculumSearch
             }
             $families[$name] ??= ['name' => $name, 'courses' => []];
             $course = $this->courseOf($item);
-            if ($course['id'] > 0 && !in_array($course, $families[$name]['courses'], true)) {
-                $families[$name]['courses'][] = $course;
+            // TASK-061: cada curso lleva el id de SU item de materia, para que la
+            // derivación complete el ciclo con la materia del curso hermano. Si un
+            // curso tiene varios items con el mismo nombre, gana el primero.
+            $known = array_column($families[$name]['courses'], 'id');
+            if ($course['id'] > 0 && !in_array($course['id'], $known, true)) {
+                $families[$name]['courses'][] = $course + ['subjectId' => (int) $item->id()];
             }
         }
         return array_values($families);
