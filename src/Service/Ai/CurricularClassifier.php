@@ -82,6 +82,15 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
      */
     private array $gathered = [];
 
+    /**
+     * Hojas ancla por dimensión (TASK-062): con Jev y tope, todas las de P(sí) ≥
+     * umbral, aunque solo se propongan las K primeras; de ellas salen el curso
+     * derivado y el filtro de cursos de los criterios. Sin Jev, las elegidas.
+     *
+     * @var array<string,list<array<string,mixed>>>
+     */
+    private array $anchors = [];
+
     private int $maxTokens;
     private ?float $temperature;
 
@@ -102,6 +111,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     {
         $this->justifications = [];
         $this->gathered = [];
+        $this->anchors = [];
 
         // Pasos gruesos (etapa/materia/bloque) con la ficha; pasos finos
         // (saberes/criterios) con ficha + crudo de medios (ADR-0011).
@@ -140,7 +150,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $teachesRows = $this->selectRows('Saberes básicos', $teaches, $fine, self::TEACHES);
         if ($teachesRows) {
             $result[self::TEACHES] = array_map(static fn (array $c): int => (int) $c['id'], $teachesRows);
-            $this->collectLineage($teachesRows, $derivedCourses, $subjectIds);
+            $anchors = $this->anchors[self::TEACHES] ?? $teachesRows;
+            $this->collectLineage($anchors, $teachesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase C — Criterios; acotados a los cursos de los saberes elegidos (si los hay).
@@ -154,7 +165,8 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $assessesRows = $this->selectRows('Criterios de evaluación', $assesses, $fine, self::ASSESSES);
         if ($assessesRows) {
             $result[self::ASSESSES] = array_map(static fn (array $c): int => (int) $c['id'], $assessesRows);
-            $this->collectLineage($assessesRows, $derivedCourses, $subjectIds);
+            $anchors = $this->anchors[self::ASSESSES] ?? $assessesRows;
+            $this->collectLineage($anchors, $assessesRows, $derivedCourses, $subjectIds);
         }
 
         // Fase D — Derivación: curso y materia = padres reales de las hojas.
@@ -423,20 +435,24 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
     }
 
     /**
-     * Acumula el linaje (curso/materia) de las filas elegidas como conjuntos.
+     * Acumula el linaje como conjuntos: cursos de las anclas, materias de las
+     * filas propuestas (TASK-062; sin tope, ambas son las mismas filas).
      *
+     * @param array<int,array<string,mixed>> $anchorRows
      * @param array<int,array<string,mixed>> $rows
      * @param array<int,bool> $courseIds
      * @param array<int,bool> $subjectIds
      */
-    private function collectLineage(array $rows, array &$courseIds, array &$subjectIds): void
+    private function collectLineage(array $anchorRows, array $rows, array &$courseIds, array &$subjectIds): void
     {
-        foreach ($rows as $c) {
+        foreach ($anchorRows as $c) {
             $cId = (int) ($c['courseId'] ?? 0);
-            $sId = (int) ($c['subjectId'] ?? 0);
             if ($cId > 0) {
                 $courseIds[$cId] = true;
             }
+        }
+        foreach ($rows as $c) {
+            $sId = (int) ($c['subjectId'] ?? 0);
             if ($sId > 0) {
                 $subjectIds[$sId] = true;
             }
@@ -507,10 +523,13 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         foreach ($out['usage'] as $usage) {
             $this->trace[] = ['step' => 'jev_request', 'dimension' => $dimension, 'usage' => $usage];
         }
+        $this->anchors[$dimension] = $out['anchors'];
         $this->trace[] = [
             'step' => $label,
             'candidates' => count($candidates),
             'threshold' => $this->leafSelector->threshold(),
+            'cap' => $this->leafSelector->capFor($dimension),
+            'anchor_ids' => array_map(static fn (array $r): int => (int) $r['id'], $out['anchors']),
             'probabilities' => $out['probabilities'],
         ];
         foreach ($out['selected'] as $row) {

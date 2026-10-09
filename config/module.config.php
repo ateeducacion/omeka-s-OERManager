@@ -327,6 +327,11 @@ return [
                             $container->get(Service\Ai\PromptBuilder::class),
                             Service\Llm\LlmSettings::parseDecisionThreshold(
                                 $settings->get(Service\Llm\LlmSettings::DECISION_THRESHOLD)
+                            ),
+                            200,
+                            Service\Llm\LlmSettings::decisionCaps(
+                                $settings->get(Service\Llm\LlmSettings::DECISION_MAX_TEACHES),
+                                $settings->get(Service\Llm\LlmSettings::DECISION_MAX_ASSESSES)
                             )
                         )
                         : null

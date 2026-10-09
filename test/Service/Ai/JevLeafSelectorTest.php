@@ -25,9 +25,10 @@ final class JevLeafSelectorTest extends TestCase
         return $out;
     }
 
-    private function selector(FakeDecisionModel $model, float $threshold = 0.6, int $max = 200): JevLeafSelector
+    /** @param array<string,int> $caps */
+    private function selector(FakeDecisionModel $model, float $threshold = 0.6, int $max = 200, array $caps = []): JevLeafSelector
     {
-        return new JevLeafSelector($model, new PromptBuilder(), $threshold, $max);
+        return new JevLeafSelector($model, new PromptBuilder(), $threshold, $max, $caps);
     }
 
     public function testAsksOneNoulPerCandidateWithItsOwnTextAndTheResourceAsState(): void
@@ -63,12 +64,33 @@ final class JevLeafSelectorTest extends TestCase
         $this->assertSame([100 => 0.59, 101 => 0.6, 102 => 0.95, 103 => 0.2], $out['probabilities']);
     }
 
+    public function testACapProposesOnlyTheMostLikelyAndKeepsEveryAnchor(): void
+    {
+        $p = ['c0' => 0.7, 'c1' => 0.95, 'c2' => 0.65, 'c3' => 0.2, 'c4' => 0.8];
+        $out = $this->selector(new FakeDecisionModel(static fn (string $id): float => $p[$id]), 0.6, 200, ['lrmi:teaches' => 2])
+            ->select('x', $this->candidates(5), 'lrmi:teaches');
+
+        $this->assertSame([101, 104], array_column($out['selected'], 'id'));
+        $this->assertSame([101, 104, 100, 102], array_column($out['anchors'], 'id'));
+    }
+
+    public function testTheCapIsPerDimensionAndZeroMeansNoCap(): void
+    {
+        $model = new FakeDecisionModel(static fn (): float => 0.9);
+        $selector = $this->selector($model, 0.6, 200, ['lrmi:teaches' => 0, 'lrmi:assesses' => 1]);
+
+        $this->assertCount(3, $selector->select('x', $this->candidates(3), 'lrmi:teaches')['selected']);
+        $this->assertCount(1, $selector->select('x', $this->candidates(3), 'lrmi:assesses')['selected']);
+        $this->assertSame(['lrmi:teaches' => 0, 'lrmi:assesses' => 1], $selector->caps());
+    }
+
     public function testNothingAboveTheThresholdMeansAbstention(): void
     {
         $out = $this->selector(new FakeDecisionModel(static fn (): float => 0.3))
             ->select('x', $this->candidates(3), 'lrmi:teaches');
 
         $this->assertSame([], $out['selected']);
+        $this->assertSame([], $out['anchors']);
     }
 
     public function testLargeCandidateSetsAreSplitIntoSeveralRequests(): void

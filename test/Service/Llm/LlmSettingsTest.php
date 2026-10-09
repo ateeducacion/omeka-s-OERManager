@@ -77,4 +77,13 @@ final class LlmSettingsTest extends TestCase
         $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('1.5'));
         $this->assertSame(LlmSettings::DEFAULT_DECISION_THRESHOLD, LlmSettings::parseDecisionThreshold('0'));
     }
+
+    /** TASK-062: how many knowledge/criteria items Jev proposes; 0 = every anchor, anything else the default. */
+    public function testDecisionCapsAreCountsPerDimensionWithDefaults(): void
+    {
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps(null, ''));
+        $this->assertSame(['lrmi:teaches' => 6, 'lrmi:assesses' => 0], LlmSettings::decisionCaps('6', 0));
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps('-1', 'abc'));
+        $this->assertSame(['lrmi:teaches' => 4, 'lrmi:assesses' => 3], LlmSettings::decisionCaps('2.5', '300'));
+    }
 }

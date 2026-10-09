@@ -629,6 +629,35 @@ final class CurricularClassifierTest extends TestCase
         $this->assertSame('typesafe/jev-fake', $requests[0]['usage']['model']);
     }
 
+    public function testWithACapCoursesAndTheCriteriaFilterComeFromEveryAnchorAndSubjectsFromTheProposal(): void
+    {
+        $resolver = $this->resolver();
+        $resolver->leaves['lrmi:assesses'][] = ['id' => 41, 'title' => 'MATCE.2', 'description' => 'Cuenta naturales',
+            'block' => '', 'courseId' => 10, 'courseTitle' => '1º ESO', 'subjectId' => 20];
+        $llm = new FakeLlmClient(['{"selected":[1]}', '{"selected":[1]}']); // stage, subject
+        $p = ['Ecuaciones' => 0.9, 'Números naturales' => 0.7, 'Resuelve' => 0.95, 'Cuenta' => 0.3];
+        $jev = new FakeDecisionModel(static function (string $id, array $q) use ($p): float {
+            foreach ($p as $needle => $value) {
+                if (str_contains($q['instructions'], $needle)) {
+                    return $value;
+                }
+            }
+            return 0.0;
+        });
+        $classifier = new CurricularClassifier($llm, $resolver, new PromptBuilder(), new ResponseParser(), 1024, null,
+            new \OERManager\Service\Ai\JevLeafSelector($jev, new PromptBuilder(), 0.6, 200, ['lrmi:teaches' => 1]));
+        $result = $classifier->classify(new ItemContext('ecuaciones', ''));
+
+        $this->assertSame([31], $result['lrmi:teaches']);            // top 1 of the two anchors
+        $this->assertSame([40], $result['lrmi:assesses']);
+        $this->assertSame([12, 10], $result['lrmi:educationalLevel']); // both anchors' courses
+        $this->assertSame([22], $result['schema:about']);             // only what is proposed
+        $this->assertSame([40, 41], $this->traceStep($classifier, 'Criterios de evaluación')['candidate_ids']);
+        $knowledge = $this->traceStep($classifier, 'Saberes básicos');
+        $this->assertSame([31, 30], $knowledge['anchor_ids']);
+        $this->assertSame(1, $knowledge['cap']);
+    }
+
     public function testIfJevFailsTheStepFallsBackToTheLlm(): void
     {
         $llm = new FakeLlmClient([

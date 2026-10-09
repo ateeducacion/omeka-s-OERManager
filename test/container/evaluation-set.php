@@ -28,6 +28,9 @@
  *                   built in memory for this run; stored settings are not touched
  *   --threshold=x   P(yes) threshold of the jev strategy (default 0.6); with --rescore it
  *                   re-decides knowledge/criteria from the stored probabilities (no call)
+ *   --caps=k,c      jev strategy: propose at most k knowledge and c criteria items of those
+ *                   at or above the threshold (default 4,3; 0 = every one). Course and the
+ *                   criteria course filter still come from every item at or above it
  *   --out=path      report (default /tmp/oer-evaluation-set.json), rewritten after
  *                   every REA so a crash loses nothing measured
  *
@@ -72,9 +75,11 @@ $api = $services->get('Omeka\ApiManager');
 $settings = $services->get('Omeka\Settings');
 
 $options = getopt('', ['no-llm', 'ids:', 'out:', 'runs:', 'resume', 'exclude:', 'rescore', 'price:', 'label:',
-    'strategy:', 'threshold:']);
+    'strategy:', 'threshold:', 'caps:']);
 $strategy = (string) ($options['strategy'] ?? 'llm');
 $threshold = isset($options['threshold']) ? LlmSettings::parseDecisionThreshold($options['threshold']) : null;
+$capsOption = explode(',', (string) ($options['caps'] ?? ''));
+$caps = LlmSettings::decisionCaps($capsOption[0] ?? null, $capsOption[1] ?? null);
 $runs = max(1, (int) ($options['runs'] ?? 1));
 $exclude = array_flip(array_filter(array_map('intval', explode(',', (string) ($options['exclude'] ?? '')))));
 $noLlm = isset($options['no-llm']);
@@ -103,7 +108,9 @@ if (!$noLlm && 'jev' === $strategy) {
             'base_url' => (string) $settings->get(LlmSettings::BASE_URL, ''),
         ]),
         $services->get(PromptBuilder::class),
-        $threshold ?? LlmSettings::DEFAULT_DECISION_THRESHOLD
+        $threshold ?? LlmSettings::DEFAULT_DECISION_THRESHOLD,
+        200,
+        $caps
     );
     $cataloguer = new AiCataloguer(
         $services->get(ContentExtractor::class),
@@ -276,7 +283,8 @@ function leafSteps(array $curricularTrace): ?array
                 'shown' => array_map('intval', $entry['candidate_ids']),
                 'chosen' => array_map('intval', $entry['selected_ids'] ?? []),
                 'strategy' => (string) ($entry['strategy'] ?? 'llm'),
-            ] + (isset($entry['probabilities']) ? ['probabilities' => $entry['probabilities']] : []);
+            ] + (isset($entry['probabilities']) ? ['probabilities' => $entry['probabilities']] : [])
+                + (isset($entry['anchor_ids']) ? ['anchors' => array_map('intval', $entry['anchor_ids'])] : []);
         }
     }
     return $steps ?: null;
@@ -500,6 +508,7 @@ $report = [
         'decision_model' => 'jev' === $strategy
             ? (string) ($settings->get(LlmSettings::DECISION_MODEL) ?: LlmSettings::DEFAULT_DECISION_MODEL) : '',
         'threshold' => 'jev' === $strategy ? ($threshold ?? LlmSettings::DEFAULT_DECISION_THRESHOLD) : null,
+        'caps' => 'jev' === $strategy ? $caps : null,
     ],
     'items' => [],
     'summary' => [],
