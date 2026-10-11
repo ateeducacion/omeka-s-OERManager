@@ -4,6 +4,7 @@
  * size whatever the card width (spec D5).
  */
 import { escapeHtml } from './escape.js';
+import { stageKey } from './layout.js';
 
 function toId(value) {
     if (value === null || value === undefined || value === '') {
@@ -30,16 +31,33 @@ export function renderBarList(rows, max = null) {
     return `<ul class="oer-stats-bars">${items}</ul>`;
 }
 
+/**
+ * A stage as a collapsible section (TASK-047 revision): the summary keeps the
+ * stage name and its total visible when the section is folded.
+ */
+function stageSection(stageId, heading, body, collapsed) {
+    const key = stageKey(stageId);
+    const open = collapsed.includes(key) ? '' : ' open';
+    return `<details class="oer-stats-group" data-stage-key="${escapeHtml(key)}"${open}>`
+        + `<summary><h4>${heading}</h4></summary>${body}</details>`;
+}
+
+function totalBadge(total, reaLabel) {
+    return ` <span class="oer-stats-total">${total} ${escapeHtml(reaLabel)}</span>`;
+}
+
 /** «Etapa y curso»: one block per stage with its distinct REA total, courses in level order. */
-export function renderStageCounts(groups, reaLabel = 'REA') {
+export function renderStageCounts(groups, reaLabel = 'REA', collapsed = []) {
     if (!groups.length) {
         return '<p class="oer-stats-empty">—</p>';
     }
     const max = groups.reduce((m, g) => Math.max(m, ...g.courses.map((c) => c.count)), 0);
-    return groups.map((group) => '<div class="oer-stats-group">'
-        + `<h4>${escapeHtml(group.label)} <span class="oer-stats-total">${group.total} ${escapeHtml(reaLabel)}</span></h4>`
-        + renderBarList(group.courses, max)
-        + '</div>').join('');
+    return groups.map((group) => stageSection(
+        group.stageId,
+        escapeHtml(group.label) + totalBadge(group.total, reaLabel),
+        renderBarList(group.courses, max),
+        collapsed
+    )).join('');
 }
 
 /** Same rule as SubjectCounts::filter() on the server, so the CSV matches the screen. */
@@ -72,8 +90,12 @@ export function courseOptions(groups, stageId) {
         .flatMap((g) => g.courses.filter((c) => c.courseId !== null).map((c) => ({ id: c.courseId, label: c.label })));
 }
 
-/** «Materia»: stage → course → subjects; a subject is never shown without its course. */
-export function renderSubjectCounts(groups) {
+/**
+ * «Materia»: stage → course → subjects; a subject is never shown without its
+ * course. `totals` = distinct REA per stage key (from «Etapa y curso»), shown in
+ * the summary so a folded stage still says how much it holds.
+ */
+export function renderSubjectCounts(groups, collapsed = [], totals = {}, reaLabel = 'REA') {
     if (!groups.length) {
         return '<p class="oer-stats-empty">—</p>';
     }
@@ -81,8 +103,13 @@ export function renderSubjectCounts(groups) {
         (m, g) => Math.max(m, ...g.courses.flatMap((c) => c.subjects.map((s) => s.count))),
         0
     );
-    return groups.map((group) => '<div class="oer-stats-group">'
-        + `<h4>${escapeHtml(group.label)}</h4>`
-        + group.courses.map((course) => `<h5>${escapeHtml(course.label)}</h5>${renderBarList(course.subjects, max)}`).join('')
-        + '</div>').join('');
+    return groups.map((group) => {
+        const total = totals[stageKey(group.stageId)];
+        return stageSection(
+            group.stageId,
+            escapeHtml(group.label) + (total === undefined ? '' : totalBadge(total, reaLabel)),
+            group.courses.map((course) => `<h5>${escapeHtml(course.label)}</h5>${renderBarList(course.subjects, max)}`).join(''),
+            collapsed
+        );
+    }).join('');
 }

@@ -285,6 +285,76 @@
     font-variant-numeric: tabular-nums;
 }
 
+/* Movable cards and collapsible stages (TASK-047 revision, 2026-10-11). No colour:
+ * shape and position only (ADR-0014 rule 2). */
+.oer-stats-counts .oer-stats-heading {
+    margin-bottom: 0.75rem;
+}
+
+.oer-stats-card-head h3 {
+    margin-right: auto;
+}
+
+.oer-stats-card-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.oer-stats-card-tools button {
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0 0.35rem;
+    font-size: var(--oer-stats-text);
+    line-height: 1.4;
+    background: transparent;
+    border: 1px solid var(--oer-rule);
+    border-radius: 3px;
+    color: var(--oer-ink);
+    cursor: pointer;
+}
+
+.oer-stats-card-tools button:focus-visible,
+.oer-stats-group summary:focus-visible {
+    outline: 2px solid var(--oer-ink);
+    outline-offset: 1px;
+}
+
+.oer-stats-handle {
+    padding: 0 0.25rem;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--oer-muted);
+    cursor: grab;
+    user-select: none;
+}
+
+.oer-stats-dragging {
+    opacity: 0.5;
+    outline: 2px dashed var(--oer-rule);
+}
+
+.oer-stats-group summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.oer-stats-group summary::-webkit-details-marker {
+    display: none;
+}
+
+.oer-stats-group summary h4::before {
+    content: "▸ ";
+}
+
+.oer-stats-group[open] summary h4::before {
+    content: "▾ ";
+}
+
+.oer-stats-group summary h4 {
+    display: block;
+}
+
 /* Completeness keeps the status triad (ADR-0014). */
 .oer-stats-ok {
     fill: var(--oer-ok);

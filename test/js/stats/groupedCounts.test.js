@@ -66,3 +66,25 @@ test('renderSubjectCounts nunca muestra una materia sin su curso', () => {
     assert.equal(html.split('>Educación física</span>').length - 1, 2);
     assert.match(renderSubjectCounts([]), /oer-stats-empty/);
 });
+
+// TASK-047 revision (2026-10-11): each stage is a collapsible section.
+test('renderStageCounts pinta cada etapa como sección plegable con su clave', () => {
+    const groups = [
+        { stageId: 2, label: 'Primaria', total: 1, courses: [{ courseId: 20, label: '1º Primaria', count: 1 }] },
+        { stageId: null, label: 'Sin etapa', total: 2, courses: [{ courseId: 9, label: 'Otro', count: 2 }] }
+    ];
+    const open = renderStageCounts(groups);
+    assert.match(open, /<details class="oer-stats-group" data-stage-key="2" open><summary>/);
+    assert.match(open, /data-stage-key="none" open/);
+    const folded = renderStageCounts(groups, 'REA', ['2']);
+    assert.match(folded, /data-stage-key="2"><summary>/);
+    assert.match(folded, /Primaria <span class="oer-stats-total">1 REA<\/span><\/h4><\/summary>/);
+});
+
+test('renderSubjectCounts pliega etapas y muestra en el resumen el total de REA de la etapa', () => {
+    const html = renderSubjectCounts(subjects, ['3'], { 3: 5, 2: 4 }, 'REA');
+    assert.match(html, /data-stage-key="3"><summary><h4>ESO <span class="oer-stats-total">5 REA<\/span><\/h4><\/summary>/);
+    assert.match(html, /data-stage-key="2" open>/);
+    assert.match(html, /data-stage-key="none" open><summary><h4>Sin curso<\/h4>/);
+});
+

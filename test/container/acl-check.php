@@ -23,16 +23,15 @@ chdir('/var/www/html');
 require 'bootstrap.php';
 
 use OERManager\Controller\Admin\IndexController;
+use OERManager\Controller\Admin\StatsController;
 
 $application = \Omeka\Mvc\Application::init(require 'application/config/application.config.php');
 $services = $application->getServiceManager();
 /** @var \Omeka\Permissions\Acl $acl */
 $acl = $services->get('Omeka\Acl');
 
-$resource = IndexController::class;
-
 /** Rol => [privilegio => ¿debe entrar?] */
-$expected = [
+$expectedIndex = [
     'global_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true],
     'site_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true],
     // El editor cura pero NO configura: la clave API del LLM y los vocabularios
@@ -45,28 +44,44 @@ $expected = [
     'author' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false],
 ];
 
+// Estadísticas (TASK-006, TASK-047): quien cura las ve, exporta y guarda SU
+// disposición de «Conteo por dimensión» (`layout`, ajuste de usuario).
+$stats = ['index' => true, 'export' => true, 'layout' => true];
+$noStats = ['index' => false, 'export' => false, 'layout' => false];
+$expectedStats = [
+    'global_admin' => $stats,
+    'site_admin' => $stats,
+    'editor' => $stats,
+    'reviewer' => $stats,
+    'researcher' => $noStats,
+    'author' => $noStats,
+];
+
 $failures = 0;
 $checks = 0;
-foreach ($expected as $role => $privileges) {
-    if (!$acl->hasRole($role)) {
-        printf("  [SALTA] el rol %s no existe en esta instalación\n", $role);
-        continue;
-    }
-    foreach ($privileges as $privilege => $shouldPass) {
-        $actual = $acl->isAllowed($role, $resource, $privilege);
-        $ok = $actual === $shouldPass;
-        $checks++;
-        if (!$ok) {
-            $failures++;
+foreach ([[IndexController::class, $expectedIndex], [StatsController::class, $expectedStats]] as [$resource, $expected]) {
+    foreach ($expected as $role => $privileges) {
+        if (!$acl->hasRole($role)) {
+            printf("  [SALTA] el rol %s no existe en esta instalación\n", $role);
+            continue;
         }
-        printf(
-            "  [%s] %-13s %-18s espera=%s obtiene=%s\n",
-            $ok ? ' OK ' : 'FALLA',
-            $role,
-            $privilege,
-            $shouldPass ? 'entra' : 'NO entra',
-            $actual ? 'entra' : 'NO entra'
-        );
+        foreach ($privileges as $privilege => $shouldPass) {
+            $actual = $acl->isAllowed($role, $resource, $privilege);
+            $ok = $actual === $shouldPass;
+            $checks++;
+            if (!$ok) {
+                $failures++;
+            }
+            printf(
+                "  [%s] %-6s %-13s %-18s espera=%s obtiene=%s\n",
+                $ok ? ' OK ' : 'FALLA',
+                IndexController::class === $resource ? 'index' : 'stats',
+                $role,
+                $privilege,
+                $shouldPass ? 'entra' : 'NO entra',
+                $actual ? 'entra' : 'NO entra'
+            );
+        }
     }
 }
 

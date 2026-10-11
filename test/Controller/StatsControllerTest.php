@@ -12,6 +12,7 @@ use OERManager\Service\Stats\DimensionFacts;
 use OERManager\Service\Stats\DimensionCounter;
 use OERManager\Service\Stats\DimensionCrosser;
 use OERManager\Service\Stats\CsvExport;
+use OERManager\Service\Stats\StatsLayout;
 use Omeka\Api\Manager;
 use Omeka\Api\Response;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -69,9 +70,35 @@ class StatsControllerTest extends TestCase
         );
         $controller->plugins = ['response' => new \Laminas\Http\Response(), 'params' => new class {
             public array $query = [];
+            public array $post = [];
             public function fromQuery($key, $default = null)
             {
                 return $this->query[$key] ?? $default;
+            }
+            public function fromPost($key, $default = null)
+            {
+                return $this->post[$key] ?? $default;
+            }
+        }, 'request' => new class {
+            public bool $post = true;
+            public function isPost(): bool
+            {
+                return $this->post;
+            }
+        }, 'userSettings' => new class {
+            public array $values = [];
+            public function get($id, $default = null)
+            {
+                return $this->values[$id] ?? $default;
+            }
+            public function set($id, $value): void
+            {
+                $this->values[$id] = $value;
+            }
+        }, 'url' => new class {
+            public function fromRoute($route = null, $params = []): string
+            {
+                return '/admin/' . $route . '/' . ($params['action'] ?? '');
             }
         }];
         return $controller;
@@ -165,5 +192,53 @@ class StatsControllerTest extends TestCase
         $this->assertStringNotContainsString('Course', $controller->exportAction()->getContent());
         $controller->plugins['params']->query = ['dimension' => 'materia', 'course' => 'x;1'];
         $this->assertStringContainsString('Course', $controller->exportAction()->getContent());
+    }
+
+    // --- TASK-047 revision (2026-10-11): each curator's layout of «Conteo por dimensión» ---
+
+    public function testThePageReceivesTheCuratorsLayoutAndAToken(): void
+    {
+        $controller = $this->controller();
+        $controller->plugins['userSettings']->values[StatsLayout::SETTING] = [
+            'order' => ['licencia'],
+            'collapsed' => ['etapa' => ['3']],
+        ];
+        $view = $controller->indexAction();
+
+        $layout = $view->getVariable('layout');
+        $this->assertSame('licencia', $layout['order'][0]);
+        $this->assertSame(['3'], $layout['collapsed']['etapa']);
+        $this->assertSame('valid', $view->getVariable('layoutCsrf'));
+        $this->assertSame('/admin/admin/oer-manager-stats/layout', $view->getVariable('layoutUrl'));
+    }
+
+    public function testSavingTheLayoutStoresOnlyTheSanitisedShape(): void
+    {
+        $controller = $this->controller();
+        $controller->plugins['params']->post = [
+            'csrf' => 'valid',
+            'layout' => json_encode(['order' => ['eje', 'nope'], 'collapsed' => ['materia' => ['2', 'x']]]),
+        ];
+        $result = $controller->layoutAction();
+
+        $this->assertTrue($result->getVariable('saved'));
+        $stored = $controller->plugins['userSettings']->values[StatsLayout::SETTING];
+        $this->assertSame('eje', $stored['order'][0]);
+        $this->assertCount(6, $stored['order']);
+        $this->assertSame(['2'], $stored['collapsed']['materia']);
+        $this->assertSame($stored, $result->getVariable('layout'));
+    }
+
+    public function testSavingNeedsAPostAndAValidToken(): void
+    {
+        $controller = $this->controller();
+        $controller->plugins['params']->post = ['csrf' => 'bad', 'layout' => '{}'];
+        $this->assertSame('csrf', $controller->layoutAction()->getVariable('error'));
+        $this->assertSame(403, $controller->getResponse()->getStatusCode());
+
+        $controller->plugins['request']->post = false;
+        $this->assertSame('method', $controller->layoutAction()->getVariable('error'));
+        $this->assertSame(405, $controller->getResponse()->getStatusCode());
+        $this->assertSame([], $controller->plugins['userSettings']->values);
     }
 }

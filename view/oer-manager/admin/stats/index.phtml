@@ -14,6 +14,9 @@
  * @var int $total
  * @var bool $hasUniverse
  * @var array $statsData
+ * @var array{order:list<string>,collapsed:array<string,list<string>>} $layout
+ * @var string $layoutCsrf
+ * @var string $layoutUrl
  */
 
 $this->htmlElement('body')->appendAttribute('class', 'oer-stats');
@@ -38,7 +41,25 @@ $i18n = [
     'notApplicable' => $this->translate('No existe en este curso'),
     'gap' => $this->translate('Sin REA'),
     'rea' => $this->translate('REA'),
+    'layoutSaveFailed' => $this->translate('No se pudo guardar la disposición; se mantiene mientras no recargues la página.'),
 ];
+// Movable cards and collapsible stages of «Conteo por dimensión» (TASK-047 revision, 2026-10-11).
+$layoutConfig = ['layout' => $layout, 'url' => $layoutUrl, 'csrf' => $layoutCsrf];
+$cardTools = function (string $card, string $title, bool $collapsible = false): string {
+    $t = fn (string $s): string => $this->escapeHtmlAttr(sprintf($this->translate($s), $title));
+    $html = '<span class="oer-stats-card-tools">';
+    if ($collapsible) {
+        $html .= '<button type="button" class="oer-stats-fold" data-oer-stats-fold="collapse" aria-label="' . $t('Plegar todas las etapas de %s') . '">'
+            . $this->escapeHtml($this->translate('Plegar todo')) . '</button>'
+            . '<button type="button" class="oer-stats-fold" data-oer-stats-fold="expand" aria-label="' . $t('Desplegar todas las etapas de %s') . '">'
+            . $this->escapeHtml($this->translate('Desplegar todo')) . '</button>';
+    }
+    return $html
+        . '<button type="button" class="oer-stats-move" data-oer-stats-move="-1" aria-label="' . $t('Mover %s antes') . '">◀</button>'
+        . '<button type="button" class="oer-stats-move" data-oer-stats-move="1" aria-label="' . $t('Mover %s después') . '">▶</button>'
+        . '<span class="oer-stats-handle" draggable="true" title="' . $t('Arrastra para mover %s') . '" aria-hidden="true">⠿</span>'
+        . '</span>';
+};
 $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
 ?>
 
@@ -54,6 +75,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
 
 <script id="oer-stats-data" type="application/json"><?php echo json_encode($statsData, $jsonFlags); ?></script>
 <script id="oer-stats-i18n" type="application/json"><?php echo json_encode($i18n, $jsonFlags); ?></script>
+<script id="oer-stats-layout" type="application/json"><?php echo json_encode($layoutConfig, $jsonFlags); ?></script>
 
 <form class="oer-stats-toolbar" method="get" action="<?php echo $this->escapeHtmlAttr($this->url('admin/oer-manager-stats')); ?>">
     <label for="oer-stats-year"><?php echo $this->translate('Año de alta en el catálogo'); ?></label>
@@ -97,20 +119,27 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
     <div class="oer-heatmap-scroll" data-oer-stats-chart="coverage" tabindex="0"></div>
 </section>
 
-<section class="oer-stats-section">
-    <h2><?php echo $this->translate('Conteo por dimensión'); ?></h2>
-    <div class="oer-stats-grid">
-        <div class="oer-stats-card">
+<section class="oer-stats-section oer-stats-counts">
+    <div class="oer-stats-heading">
+        <h2><?php echo $this->translate('Conteo por dimensión'); ?></h2>
+        <span class="oer-stats-hint"><?php echo $this->translate('Arrastra ⠿ o usa ◀ ▶ para ordenar los paneles; pulsa una etapa para plegarla. Se guarda para tu usuario.'); ?></span>
+        <button type="button" id="oer-stats-layout-reset"><?php echo $this->translate('Restablecer disposición'); ?></button>
+        <span id="oer-stats-layout-status" class="oer-stats-hint" role="status" aria-live="polite"></span>
+    </div>
+    <div class="oer-stats-grid" id="oer-stats-cards">
+        <div class="oer-stats-card" data-oer-stats-card="etapa">
             <div class="oer-stats-card-head">
                 <h3><?php echo $this->translate('Etapa y curso'); ?></h3>
                 <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => 'etapa'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+                <?php echo $cardTools('etapa', $this->translate('Etapa y curso'), true); ?>
             </div>
             <div class="oer-stats-card-body" data-oer-stats-chart="etapa"></div>
         </div>
-        <div class="oer-stats-card oer-stats-card-tall">
+        <div class="oer-stats-card oer-stats-card-tall" data-oer-stats-card="materia">
             <div class="oer-stats-card-head">
                 <h3><?php echo $this->translate('Materia'); ?></h3>
                 <a id="oer-stats-subject-export" href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => 'materia'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+                <?php echo $cardTools('materia', $this->translate('Materia'), true); ?>
             </div>
             <div class="oer-stats-filters">
                 <label for="oer-stats-subject-stage"><?php echo $this->translate('Etapa'); ?></label>
@@ -125,18 +154,20 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
             <div class="oer-stats-card-body" data-oer-stats-chart="materia"></div>
         </div>
         <?php foreach (['eje', 'proyecto', 'licencia'] as $dimension): ?>
-        <div class="oer-stats-card">
+        <div class="oer-stats-card" data-oer-stats-card="<?php echo $this->escapeHtmlAttr($dimension); ?>">
             <div class="oer-stats-card-head">
                 <h3><?php echo $dimensionLabels[$dimension]; ?></h3>
                 <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['dimension' => $dimension])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+                <?php echo $cardTools($dimension, $dimensionLabels[$dimension]); ?>
             </div>
             <div class="oer-stats-card-body" data-oer-stats-chart="<?php echo $this->escapeHtmlAttr($dimension); ?>"></div>
         </div>
         <?php endforeach; ?>
-        <div class="oer-stats-card">
+        <div class="oer-stats-card" data-oer-stats-card="completitud">
             <div class="oer-stats-card-head">
                 <h3><?php echo $this->translate('Completitud'); ?></h3>
                 <a href="<?php echo $this->escapeHtmlAttr($exportUrl(['type' => 'completeness'])); ?>"><?php echo $this->translate('Exportar CSV'); ?></a>
+                <?php echo $cardTools('completitud', $this->translate('Completitud')); ?>
             </div>
             <p>
                 <?php echo $this->escapeHtml(sprintf(

@@ -207,3 +207,27 @@ dark mode, and the views of §4 marked defer or reject.
   the container catalogue (1280 and 1440 px wide). Not the logged-in admin: the host chrome, its font
   stack and the sticky headers inside the admin layout are still to be checked there.
 - Not verified: behaviour and timing at 3000+ REA (TASK-052).
+
+## Addendum 2026-10-11 — movable cards and collapsible stages (owner's revision)
+
+The owner asked for an adaptable «Conteo por dimensión»: panels that can be moved, and stages that can be
+grouped and ungrouped in the cards that have them. Owner answers: «agrupar/desagrupar» means folding and
+unfolding each stage (the folded stage keeps its name and total), and the layout is stored per user.
+
+- **Cards** (`etapa`, `materia`, `eje`, `proyecto`, `licencia`, `completitud`) move by dragging the ⠿ handle
+  (native HTML5 drag and drop) or with the ◀ ▶ buttons, the keyboard alternative (NFR-006). «Restablecer
+  disposición» returns to the default order with every stage unfolded. Order only: no width, hiding or resizing.
+- **Stages** in «Etapa y curso» and «Materia» are `<details>` sections keyed by stage id («none» for the
+  stageless group), with «Plegar todo» / «Desplegar todo» per card. The «Materia» summary shows the stage's
+  distinct REA total from «Etapa y curso». Filters and CSV links are unchanged.
+- **Storage**: native Omeka user setting `oermanager_stats_layout` = `{order, collapsed: {etapa, materia}}`,
+  read by `StatsController::indexAction`, saved by `POST stats/layout` (CSRF, privilege `layout` for the
+  roles that already see the page) half a second after the last change. `Service\Stats\StatsLayout` keeps
+  only known cards and stage keys, caps the size, and stores the sanitised shape, never the posted JSON.
+  A failed save is reported in a status line and the page keeps working.
+- **Colour**: none added; tools are outlined, folded/unfolded is a ▸/▾ shape (ADR-0014 rule 2).
+- **Verification**: host PHP and JS tests; container ACL check (43 checks, `layout` allowed to global_admin,
+  site_admin, editor and reviewer, denied to researcher and author); headless Chrome on the page rendered in
+  the container with the branch's CSS/JS and the save request intercepted: 24/24 (move buttons and focus,
+  fold all, fold one, drag, one debounced save with token, filter repaint keeps the fold, failed save reported,
+  reset, stored layout applied on load without saving).
