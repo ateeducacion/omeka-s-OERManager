@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace OERManager\Controller\Admin;
 
 use Laminas\Mvc\Controller\AbstractActionController;
+use Laminas\Validator\Csrf;
+use Laminas\View\Model\JsonModel;
 use Laminas\View\Model\ViewModel;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\Stats\CatalogSnapshot;
@@ -17,6 +19,7 @@ use OERManager\Service\Stats\DimensionCounter;
 use OERManager\Service\Stats\DimensionCrosser;
 use OERManager\Service\Stats\DimensionFacts;
 use OERManager\Service\Stats\StageCounts;
+use OERManager\Service\Stats\StatsLayout;
 use OERManager\Service\Stats\SubjectCounts;
 use OERManager\Service\Stats\YearFilter;
 
@@ -45,6 +48,9 @@ class StatsController extends AbstractActionController
     ];
 
     private const OTHER_STAGE = 'Sin etapa'; // @translate
+
+    private const LAYOUT_CSRF_NAME = 'oer_stats_layout';
+    private const LAYOUT_CSRF_SALT = 'oermanager';
     private const OTHER_COURSE = 'Sin curso'; // @translate
 
     private CatalogSnapshot $catalogSnapshot;
@@ -128,7 +134,36 @@ class StatsController extends AbstractActionController
             'cross' => $cross,
             'completeness' => $completeness,
         ]);
+        // Disposición de «Conteo por dimensión» de quien mira (revisión de TASK-047).
+        $view->setVariable('layout', StatsLayout::sanitize($this->userSettings()->get(StatsLayout::SETTING)));
+        $view->setVariable('layoutCsrf', $this->layoutCsrf()->getHash());
+        $view->setVariable('layoutUrl', $this->url()->fromRoute('admin/oer-manager-stats', ['action' => 'layout']));
         return $view;
+    }
+
+    /**
+     * Guarda la disposición de «Conteo por dimensión» del curador como ajuste
+     * de usuario (revisión de TASK-047, 2026-10-11). Solo POST con CSRF; lo
+     * guardado es siempre la forma saneada, nunca el JSON recibido.
+     */
+    public function layoutAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            $this->getResponse()->setStatusCode(405);
+            return new JsonModel(['saved' => false, 'error' => 'method']);
+        }
+        if (!$this->layoutCsrf()->isValid((string) $this->params()->fromPost('csrf'))) {
+            $this->getResponse()->setStatusCode(403);
+            return new JsonModel(['saved' => false, 'error' => 'csrf']);
+        }
+        $layout = StatsLayout::sanitize((string) $this->params()->fromPost('layout', ''));
+        $this->userSettings()->set(StatsLayout::SETTING, $layout);
+        return new JsonModel(['saved' => true, 'layout' => $layout]);
+    }
+
+    private function layoutCsrf(): Csrf
+    {
+        return new Csrf(['name' => self::LAYOUT_CSRF_NAME, 'salt' => self::LAYOUT_CSRF_SALT, 'timeout' => 3600]);
     }
 
     public function exportAction()

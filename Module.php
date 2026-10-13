@@ -133,7 +133,8 @@ class Module extends AbstractModule implements InitProviderInterface
         $acl->allow(
             ['editor', 'site_admin', 'reviewer'],
             [Controller\Admin\StatsController::class],
-            ['index', 'export']
+            // `layout`: guarda la disposición propia de la página (ajuste de usuario).
+            ['index', 'export', 'layout']
         );
 
         // Lote de licencia y autoría (TASK-028 slice 4): los mismos roles que
