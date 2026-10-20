@@ -83,7 +83,19 @@ check('distinctResourceIds() no repite ids', count($distinctIds) === count(array
 // module.config.php, resolveTitles(), relabelCounts()/relabelCrossTable()/
 // transpose() y el cableado de ruta/ACL no tenían verificación automatizada.
 $controller = $services->get('ControllerManager')->get(StatsController::class);
+// Since the TASK-047 layout revision (2026-10-11) indexAction() reads the
+// viewer's user setting and assembles the layout URL. In CLI there is neither
+// a logged-in user nor a routed request, so the harness supplies both: the
+// first user as user-settings target (only read here, never written) and the
+// HTTP router. Without this the check dies on a harness artefact, not on the module.
+$firstUser = $services->get('Omeka\EntityManager')->getRepository('Omeka\Entity\User')
+    ->findOneBy([], ['id' => 'ASC']);
+$services->get('Omeka\Settings\User')->setTargetId($firstUser->getId());
+$statsEvent = new Laminas\Mvc\MvcEvent();
+$statsEvent->setRouter($services->get('HttpRouter'));
+$controller->setEvent($statsEvent);
 $view = $controller->indexAction();
+check('indexAction() pasa a la vista una disposición saneada', is_array($view->getVariable('layout')['order'] ?? null));
 $statsData = $view->getVariable('statsData');
 check('indexAction() resuelve y devuelve statsData', null !== $statsData);
 check(
