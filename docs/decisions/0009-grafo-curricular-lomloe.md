@@ -2,7 +2,7 @@
 
 ## Estado
 
-Aceptado (2026-06-24)
+Reemplazado por ADR-0022 (2026-11-09). Aceptado (2026-06-24)
 
 ## Contexto
 
