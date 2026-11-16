@@ -32,16 +32,23 @@ $acl = $services->get('Omeka\Acl');
 
 /** Rol => [privilegio => ¿debe entrar?] */
 $expectedIndex = [
-    'global_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true],
-    'site_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true],
+    'global_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true,
+        'curriculum-tree' => true],
+    'site_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true,
+        'curriculum-tree' => true],
     // El editor cura pero NO configura: la clave API del LLM y los vocabularios
     // del catálogo no son suyos.
-    'editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false],
+    'editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false,
+        'curriculum-tree' => true],
     // site_editor lo añade IsolatedSites heredando de editor: hereda la curación
     // y, con el allow por privilegio, NO hereda la configuración.
-    'site_editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false],
-    'researcher' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false],
-    'author' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false],
+    'site_editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false,
+        'curriculum-tree' => true],
+    // TASK-064 slice 4: the tree is a curation read, closed like the rest.
+    'researcher' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false,
+        'curriculum-tree' => false],
+    'author' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false,
+        'curriculum-tree' => false],
 ];
 
 // Estadísticas (TASK-006, TASK-047): quien cura las ve, exporta y guarda SU

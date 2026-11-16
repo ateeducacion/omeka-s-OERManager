@@ -36,6 +36,10 @@ class ModuleRuntimeTest extends TestCase
         $module->init($this->createMock(\Laminas\ModuleManager\ModuleManagerInterface::class));
         $module->onBootstrap(new \Laminas\Mvc\MvcEvent());
         $this->assertCount(6, $calls);
+        // TASK-064 slice 4: the read-only tree goes with the other curation reads.
+        $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[0][0]);
+        $this->assertContains('curriculum-tree', $calls[0][2]);
+        $this->assertContains('search-terms', $calls[0][2]);
         $this->assertSame(['site_admin'], $calls[2][0]);
         $this->assertSame(['config'], $calls[2][2]);
         $this->assertContains('author', $calls[1][0]);

@@ -3,6 +3,7 @@
 namespace OERManager\Service\Curriculum;
 
 use Omeka\Api\Manager as ApiManager;
+use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Settings\Settings;
 
 /**
@@ -11,6 +12,12 @@ use Omeka\Settings\Settings;
  */
 class ApiCurriculumTerms implements CurriculumTerms
 {
+    /** Tree page size: one page holds a whole course subject in 1.1.2 (≤119). */
+    public const TREE_PAGE_SIZE = 200;
+
+    /** Pages per class and course subject before giving up (NFR-004 bound). */
+    public const TREE_MAX_PAGES = 5;
+
     private bool $schemeResolved = false;
     private ?int $schemeId = null;
     private bool $retiredResolved = false;
@@ -93,6 +100,109 @@ class ApiCurriculumTerms implements CurriculumTerms
             $this->classIds[$term] = $classes ? (int) reset($classes)->id() : null;
         }
         return $this->classIds[$term];
+    }
+
+    public function courseSubjectTree(int $courseSubjectId): ?array
+    {
+        $subject = $this->courseSubject($courseSubjectId);
+        $schemeId = $this->schemeId();
+        if (null === $subject || null === $schemeId) {
+            return null;
+        }
+        $tree = ['subject' => ['id' => $courseSubjectId, 'title' => CurModel::label($subject)]];
+        foreach (CurModel::treeDimensions() as $dimension) {
+            $shape = CurModel::treeShape($dimension);
+            $rows = [];
+            // Blocks first: the leaves' parents are then already loaded, so
+            // reading a parent id does not fetch it again.
+            foreach ([$shape['block'] => false, $shape['leaf'] => true] as $class => $selectable) {
+                foreach ($this->courseSubjectTerms($schemeId, $class, $courseSubjectId) as $item) {
+                    $rows[] = [
+                        'id' => (int) $item->id(),
+                        'parentId' => $selectable ? CurModel::refId($item, $shape['parent']) : 0,
+                        'notation' => CurModel::notation($item),
+                        'title' => CurModel::label($item),
+                        'definition' => CurModel::definition($item),
+                        'selectable' => $selectable,
+                    ];
+                }
+            }
+            $tree[$dimension] = LeafTree::build($rows);
+        }
+        return $tree;
+    }
+
+    public function retiredTerms(array $ids): array
+    {
+        $ids = CurModel::ids($ids);
+        if (!$ids) {
+            return [];
+        }
+        $retired = array_flip($this->retiredIds());
+        $terms = [];
+        foreach ($ids as $id) {
+            if (!isset($retired[$id])) {
+                continue;
+            }
+            try {
+                $item = $this->api->read('items', $id)->getContent();
+            } catch (\Exception $e) {
+                continue;
+            }
+            $terms[] = [
+                'id' => $id,
+                'title' => CurModel::label($item),
+                'replacedBy' => array_values(array_filter(
+                    array_column(CurModel::refs($item, CurModel::IS_REPLACED_BY), 'title'),
+                    static fn (string $title): bool => '' !== trim($title)
+                )),
+            ];
+        }
+        return $terms;
+    }
+
+    /** The item if it is a `cur:MateriaCurso` of the curriculum item set. */
+    private function courseSubject(int $id): ?AbstractResourceEntityRepresentation
+    {
+        $schemeId = $this->schemeId();
+        if ($id <= 0 || null === $schemeId) {
+            return null;
+        }
+        try {
+            $item = $this->api->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return null;
+        }
+        $inScheme = array_key_exists($schemeId, $item->itemSets());
+        return $inScheme && CurModel::MATERIA_CURSO === CurModel::classTerm($item) ? $item : null;
+    }
+
+    /**
+     * Every current term of $class under one course subject, page by page.
+     * The page cap only guards against a corrupt corpus: 1.1.2 needs one page.
+     *
+     * @return list<AbstractResourceEntityRepresentation>
+     */
+    private function courseSubjectTerms(int $schemeId, string $class, int $courseSubjectId): array
+    {
+        $classId = $this->classId($class);
+        if (null === $classId) {
+            return [];
+        }
+        $items = [];
+        for ($page = 1; $page <= self::TREE_MAX_PAGES; $page++) {
+            $batch = $this->api->search(
+                'items',
+                CurModel::courseSubjectQuery($schemeId, $classId, $courseSubjectId, self::TREE_PAGE_SIZE, $page)
+            )->getContent();
+            foreach ($batch as $item) {
+                $items[] = $item;
+            }
+            if (count($batch) < self::TREE_PAGE_SIZE) {
+                break;
+            }
+        }
+        return $items;
     }
 
     private function schemeUriOf(int $itemSetId): string

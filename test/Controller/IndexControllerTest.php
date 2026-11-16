@@ -315,6 +315,53 @@ class IndexControllerTest extends TestCase
         }
     }
 
+    public function testCurriculumTreeValidatesEachCourseSubjectAndMarksRetiredLinks(): void
+    {
+        $terms = $this->dependencies['curriculumTerms'];
+        $tree = ['subject' => ['id' => 500, 'title' => 'Matemáticas · 1º ESO'],
+            'lrmi:teaches' => [], 'lrmi:assesses' => []];
+        $asked = [];
+        $terms->method('courseSubjectTree')->willReturnCallback(function (int $id) use ($tree, &$asked) {
+            $asked[] = $id;
+            return 500 === $id ? $tree : null;
+        });
+        $retiredAsked = [];
+        $terms->method('retiredTerms')->willReturnCallback(function (array $ids) use (&$retiredAsked) {
+            $retiredAsked[] = $ids;
+            return in_array(60, $ids, true) ? [['id' => 60, 'title' => 'Viejo', 'replacedBy' => []]] : [];
+        });
+
+        // Read only: works on GET, needs no CSRF.
+        $this->request->post = false;
+        $this->params->query = ['about' => ['500', 'x', '77', '500', '-1'], 'linked' => ['60', '61']];
+        $data = $this->data('curriculumTree');
+        $this->assertSame([$tree], $data['trees']);
+        $this->assertSame([77], $data['invalid']);
+        $this->assertSame([['id' => 60, 'title' => 'Viejo', 'replacedBy' => []]], $data['retired']);
+        $this->assertSame([500, 77], $asked);
+        $this->assertSame([[60, 61]], $retiredAsked);
+
+        // A scalar id works; no course subject means no tree, retired still checked.
+        $this->params->query = ['about' => '500'];
+        $this->assertCount(1, $this->data('curriculumTree')['trees']);
+        $this->params->query = ['linked' => '60'];
+        $data = $this->data('curriculumTree');
+        $this->assertSame([], $data['trees']);
+        $this->assertSame(60, $data['retired'][0]['id']);
+
+        // Bounded: too many course subjects are refused without a query.
+        $asked = [];
+        $this->params->query = ['about' => range(1, 11)];
+        $data = $this->data('curriculumTree');
+        $this->assertSame('too_many', $data['error']);
+        $this->assertSame([], $asked);
+        // Linked ids are capped.
+        $retiredAsked = [];
+        $this->params->query = ['linked' => range(1, 600)];
+        $this->data('curriculumTree');
+        $this->assertCount(500, $retiredAsked[0]);
+    }
+
     public function testRecatalogPayloadAndExceptionMapping(): void
     {
         $this->params->post['alignment'] = ['lrmi:teaches' => [1], 'unknown' => [2]];

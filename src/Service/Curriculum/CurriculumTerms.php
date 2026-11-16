@@ -40,4 +40,29 @@ interface CurriculumTerms
 
     /** Resource class id of a term such as `cur:Curso`, or null. */
     public function classId(string $term): ?int;
+
+    /**
+     * The knowledge and criteria trees of one course subject (TASK-064 slice
+     * 4), or null when $courseSubjectId is not a `cur:MateriaCurso` of the
+     * curriculum item set. Only current terms; each tree is built by
+     * LeafTree from rows {id, parentId, notation, title, definition,
+     * selectable}: blocks are roots and not selectable, knowledge and criteria
+     * are selectable at any depth. Queries are bounded by `cur:materiaCurso`,
+     * the class and a page (at most 119 knowledge and 30 criteria per course
+     * subject in 1.1.2).
+     *
+     * @return array{subject:array{id:int,title:string},
+     *     'lrmi:teaches':list<array<string,mixed>>, 'lrmi:assesses':list<array<string,mixed>>}|null
+     */
+    public function courseSubjectTree(int $courseSubjectId): ?array;
+
+    /**
+     * The retired terms among $ids, with their label and the labels of their
+     * successors (`dcterms:isReplacedBy`). Only retired terms are read; the
+     * rest is compared by id with retiredIds().
+     *
+     * @param list<int> $ids
+     * @return list<array{id:int,title:string,replacedBy:list<string>}>
+     */
+    public function retiredTerms(array $ids): array;
 }

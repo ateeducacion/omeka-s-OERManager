@@ -98,6 +98,55 @@ final class CurModel
 
     private const DEFAULT_PER_PAGE = 25;
 
+    /**
+     * The panel's tree per leaf dimension (TASK-064 slice 4): the block class
+     * (a root, never selectable), the leaf class (selectable at any depth) and
+     * the edge from a leaf up to its parent. Knowledge nests by
+     * `skos:broader` (a block or another knowledge item); a criterion hangs
+     * from its competence block. Every node of both trees carries
+     * `cur:materiaCurso`, so one course subject scopes the whole tree.
+     */
+    private const TREES = [
+        'lrmi:teaches' => ['block' => self::BLOQUE_SABERES, 'leaf' => self::SABER, 'parent' => self::BROADER],
+        'lrmi:assesses' => [
+            'block' => self::BLOQUE_COMPETENCIAL,
+            'leaf' => self::CRITERIO,
+            'parent' => self::EDGE_BLOQUE,
+        ],
+    ];
+
+    /** @return list<string> the dimensions chosen in a tree (knowledge, criteria) */
+    public static function treeDimensions(): array
+    {
+        return array_keys(self::TREES);
+    }
+
+    /** @return array{block:string,leaf:string,parent:string}|null */
+    public static function treeShape(string $dimension): ?array
+    {
+        return self::TREES[$dimension] ?? null;
+    }
+
+    /**
+     * One page of the current terms of one class under a course subject
+     * (`cur:materiaCurso`): the bounded query behind the panel's tree.
+     *
+     * @return array<string,mixed>
+     */
+    public static function courseSubjectQuery(
+        int $schemeId,
+        int $classId,
+        int $courseSubjectId,
+        int $perPage,
+        int $page = 1
+    ): array {
+        return self::withResource(
+            self::termsQuery($schemeId, $classId, '', $perPage, $page),
+            self::EDGE_MATERIA_CURSO,
+            $courseSubjectId
+        );
+    }
+
     /** @return list<string> the REA properties that point at the curriculum */
     public static function dimensions(): array
     {
@@ -364,6 +413,16 @@ final class CurModel
             }
         }
         return null;
+    }
+
+    /**
+     * Id of the first resource an edge points at, 0 if none. Unlike ref() it
+     * never asks the target for its title.
+     */
+    public static function refId(AbstractResourceEntityRepresentation $item, string $edge): int
+    {
+        $target = self::target($item, $edge);
+        return null === $target ? 0 : (int) $target->id();
     }
 
     /** @return array{id:int,title:string} */

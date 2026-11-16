@@ -20,6 +20,7 @@ use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curriculum\CurModel;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\GovernanceService;
@@ -52,6 +53,12 @@ class IndexController extends AbstractActionController
 
     /** Tope de items por evaluación síncrona de accuracy (acota coste de tokens). */
     private const MAX_EVALUATE_ITEMS = 50;
+
+    /** Course subjects per tree request (a REA rarely has more than a few). */
+    private const MAX_TREE_SUBJECTS = 10;
+
+    /** Linked knowledge/criteria ids checked for retirement per request. */
+    private const MAX_TREE_LINKED = 500;
 
     private MasterViewQuery $masterViewQuery;
     private CurriculumSearch $curriculumSearch;
@@ -335,6 +342,42 @@ class IndexController extends AbstractActionController
         }
 
         return new JsonModel(['results' => $results]);
+    }
+
+    /**
+     * Knowledge and criteria trees of the chosen course subjects (TASK-064
+     * slice 4). Read only, like `search-terms`: no CSRF, same ACL (curators).
+     *
+     * `about` holds the chosen `cur:MateriaCurso` ids (multiple cardinality,
+     * one tree per id); each is validated by class and curriculum set, and an
+     * id that fails comes back in `invalid` instead of a tree. `linked` holds
+     * the knowledge/criteria ids the panel shows, so the ones that are retired
+     * come back marked (they are not in any tree: only current terms are).
+     * Bounded (NFR-004): one course subject is ≤119 knowledge and ≤30 criteria.
+     */
+    public function curriculumTreeAction()
+    {
+        $about = CurModel::ids($this->params()->fromQuery('about'));
+        if (count($about) > self::MAX_TREE_SUBJECTS) {
+            return new JsonModel(['error' => 'too_many', 'trees' => [], 'invalid' => [], 'retired' => []]);
+        }
+        $trees = [];
+        $invalid = [];
+        foreach ($about as $id) {
+            $tree = $this->curriculumTerms->courseSubjectTree($id);
+            if (null === $tree) {
+                $invalid[] = $id;
+                continue;
+            }
+            $trees[] = $tree;
+        }
+        $linked = array_slice(CurModel::ids($this->params()->fromQuery('linked')), 0, self::MAX_TREE_LINKED);
+
+        return new JsonModel([
+            'trees' => $trees,
+            'invalid' => $invalid,
+            'retired' => $this->curriculumTerms->retiredTerms($linked),
+        ]);
     }
 
     /**

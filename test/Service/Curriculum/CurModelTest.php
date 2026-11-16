@@ -213,6 +213,40 @@ final class CurModelTest extends TestCase
         $this->assertNull(CurModel::target($item, 'cur:etapa'));
     }
 
+    public function testRefIdReadsOnlyTheTargetId(): void
+    {
+        $block = $this->item(30, 'Bloque');
+        $item = $this->item(1, 'Saber', ['skos:broader' => [$this->value('', $block, 'resource:item')]]);
+        $this->assertSame(30, CurModel::refId($item, 'skos:broader'));
+        $this->assertSame(0, CurModel::refId($item, 'cur:bloqueCompetencial'));
+    }
+
+    public function testTreeShapesForKnowledgeAndCriteria(): void
+    {
+        $this->assertSame(['lrmi:teaches', 'lrmi:assesses'], CurModel::treeDimensions());
+        $this->assertSame(
+            ['block' => 'cur:BloqueSaberes', 'leaf' => 'cur:SaberBasico', 'parent' => 'skos:broader'],
+            CurModel::treeShape('lrmi:teaches')
+        );
+        $this->assertSame(
+            ['block' => 'cur:BloqueCompetencial', 'leaf' => 'cur:CriterioEvaluacion', 'parent' => 'cur:bloqueCompetencial'],
+            CurModel::treeShape('lrmi:assesses')
+        );
+        $this->assertNull(CurModel::treeShape('schema:about'));
+    }
+
+    public function testCourseSubjectQueryIsATermsQueryScopedByTheCourseSubject(): void
+    {
+        $this->assertSame(
+            CurModel::withResource(CurModel::termsQuery(46259, 4771, '', 200, 2), 'cur:materiaCurso', 123),
+            CurModel::courseSubjectQuery(46259, 4771, 123, 200, 2)
+        );
+        $query = CurModel::courseSubjectQuery(1, 2, 3, 50);
+        $this->assertSame(1, $query['page']);
+        $this->assertSame(50, $query['per_page']);
+        $this->assertSame(['property' => 'skos:changeNote', 'type' => 'nex'], $query['property'][0]);
+    }
+
     public function testClassTermIsEmptyWithoutClass(): void
     {
         $this->assertSame('', CurModel::classTerm($this->item(1)));

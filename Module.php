@@ -88,6 +88,9 @@ class Module extends AbstractModule implements InitProviderInterface
                 'index',
                 'search',
                 'search-terms',
+                // TASK-064 slice 4: knowledge/criteria tree of a course
+                // subject for the panel; read only, like `search-terms`.
+                'curriculum-tree',
                 'set-visibility',
                 'recatalog-preview',
                 'recatalog-apply',
