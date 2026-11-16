@@ -8,60 +8,60 @@ use OERManager\Service\Stats\CurriculumOrder;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Stage and course order of the statistics (TASK-047, spec D8): stages by
- * schema:position, courses by an explicit position if the curriculum ever
- * carries one, else by the leading ordinal of the title.
+ * Stage and course order of the statistics on the `cur:` model (TASK-064
+ * slice 5, owner decision 4): stages INF, PRI, ESO, BAC by `skos:notation`,
+ * unknown stages last by notation; courses by `skos:notation`. Replaces the
+ * ADR-0009 order (schema:position, leading ordinal of the title).
  */
 final class CurriculumOrderTest extends TestCase
 {
-    public function testOrdinalReadsTheLeadingNumberOfTheTitle(): void
+    public function testStagesFollowThePedagogicalNotationOrder(): void
     {
-        $this->assertSame(1, CurriculumOrder::ordinal('1º ESO'));
-        $this->assertSame(6, CurriculumOrder::ordinal(' 6º Infantil de 5 años'));
-        $this->assertSame(12, CurriculumOrder::ordinal('12 Nivel'));
-        $this->assertNull(CurriculumOrder::ordinal('Bachillerato'));
-        $this->assertNull(CurriculumOrder::ordinal(''));
+        // Ids in corpus order, which is alphabetical (BAC, ESO, INF, PRI).
+        $stages = [
+            46261 => ['label' => 'Bachillerato', 'notation' => 'BAC'],
+            46262 => ['label' => 'Educación Secundaria Obligatoria', 'notation' => 'ESO'],
+            46263 => ['label' => 'Educación Infantil', 'notation' => 'INF'],
+            46264 => ['label' => 'Educación Primaria', 'notation' => 'PRI'],
+            9 => ['label' => 'Sin notación', 'notation' => ''],
+            8 => ['label' => 'Adultos', 'notation' => 'ADU'],
+        ];
+        $this->assertSame([46263, 46264, 46262, 46261, 8, 9], CurriculumOrder::sortStages($stages));
     }
 
-    public function testStagesFollowPositionThenTitle(): void
+    public function testStagesWithoutNotationFallBackToLabelThenId(): void
     {
         $stages = [
-            5054 => ['label' => 'Bachillerato', 'position' => 4],
-            5055 => ['label' => 'ESO', 'position' => 3],
-            5056 => ['label' => 'Educación Infantil', 'position' => 1],
-            5057 => ['label' => 'Educación Primaria', 'position' => 2],
-            9 => ['label' => 'Adultos', 'position' => null],
+            3 => ['label' => 'B'],
+            2 => ['label' => 'A'],
+            1 => ['label' => 'A'],
         ];
-        $this->assertSame([5056, 5057, 5055, 5054, 9], CurriculumOrder::sortStages($stages));
+        $this->assertSame([1, 2, 3], CurriculumOrder::sortStages($stages));
     }
 
-    public function testCoursesFollowOrdinalNotAlphabetNorId(): void
+    public function testCoursesFollowTheirNotationNotTheirTitle(): void
     {
         $courses = [
-            30 => ['label' => '10º Curso', 'position' => null],
-            10 => ['label' => '2º ESO', 'position' => null],
-            20 => ['label' => '1º ESO', 'position' => null],
-            40 => ['label' => 'Curso puente', 'position' => null],
+            10 => ['label' => '2º ESO', 'notation' => 'S02'],
+            20 => ['label' => '1º ESO', 'notation' => 'S01'],
+            // A notation beats a misleading title.
+            30 => ['label' => '0º Algo', 'notation' => 'S03'],
+            40 => ['label' => 'Curso suelto', 'notation' => ''],
         ];
         $this->assertSame([20, 10, 30, 40], CurriculumOrder::sortCourses($courses));
     }
 
-    public function testAnExplicitCoursePositionWinsOverTheTitle(): void
+    public function testCoursesWithoutNotationUseNaturalTitleOrderThenId(): void
     {
+        // The classifier passes labels only: natural order keeps «10º» after «2º».
         $courses = [
-            1 => ['label' => '1º ESO', 'position' => 2],
-            2 => ['label' => '2º ESO', 'position' => 1],
+            30 => ['label' => '10º Curso'],
+            10 => ['label' => '2º ESO'],
+            20 => ['label' => '1º ESO'],
+            40 => ['label' => 'Curso puente'],
+            6 => ['label' => 'Grupo A'],
+            5 => ['label' => 'Grupo A'],
         ];
-        $this->assertSame([2, 1], CurriculumOrder::sortCourses($courses));
-    }
-
-    public function testTiesFallBackToNaturalTitleThenId(): void
-    {
-        $courses = [
-            7 => ['label' => 'Grupo B', 'position' => null],
-            5 => ['label' => 'Grupo A', 'position' => null],
-            6 => ['label' => 'Grupo A', 'position' => null],
-        ];
-        $this->assertSame([5, 6, 7], CurriculumOrder::sortCourses($courses));
+        $this->assertSame([20, 10, 30, 40, 5, 6], CurriculumOrder::sortCourses($courses));
     }
 }

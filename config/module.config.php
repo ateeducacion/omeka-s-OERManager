@@ -117,11 +117,12 @@ return [
             Service\Stats\CatalogSnapshot::class => function ($container) {
                 return new Service\Stats\CatalogSnapshot($container->get('Omeka\ApiManager'));
             },
-            // TASK-047: stages, courses and subjects of the curriculum, read-only.
+            // TASK-047: stages, courses and subjects of the curriculum, read-only
+            // (on the cur: model since TASK-064 slice 5).
             Service\Stats\CurriculumOutline::class => function ($container) {
                 return new Service\Stats\CurriculumOutline(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de

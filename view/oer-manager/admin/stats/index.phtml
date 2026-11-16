@@ -108,7 +108,7 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP;
         <?php echo $this->translate('REA enlazados a la materia de ese curso'); ?>
     </p>
     <?php if (!$hasUniverse): ?>
-    <p class="oer-stats-note"><?php echo $this->translate('No se distinguen los huecos: falta configurar el tipo de las asignaturas del currículo, así que solo se muestran las materias que usa algún REA.'); ?></p>
+    <p class="oer-stats-note"><?php echo $this->translate('No se distinguen los huecos: no se encuentra el conjunto de ítems del currículo (configuración del módulo), así que solo se muestran las materias que usa algún REA.'); ?></p>
     <?php endif; ?>
     <?php if (($statsData['coverage']['unplaced'] ?? 0) > 0): ?>
     <p class="oer-stats-note"><?php echo $this->escapeHtml(sprintf(
