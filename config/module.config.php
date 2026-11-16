@@ -195,6 +195,14 @@ return [
                     }
                 );
             },
+            // Currículo con el modelo cur: (TASK-064, ADR-0022): conjunto del
+            // currículo, retirados y clases, resueltos una vez por petición.
+            Service\Curriculum\CurriculumTerms::class => function ($container) {
+                return new Service\Curriculum\ApiCurriculumTerms(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
+            },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {
                 return new Service\CurriculumSearch(
