@@ -6,6 +6,7 @@ namespace OERManager\Test\Service;
 
 use OERManager\Service\ConfigPayload;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 use PHPUnit\Framework\TestCase;
@@ -80,8 +81,7 @@ final class ConfigPayloadTest extends TestCase
         $data = ConfigPayload::read(self::reader([]));
 
         $expected = array_merge(
-            [CurriculumSearch::AXIS_SETTING, CurriculumSearch::FRAMEWORK_SETTING],
-            array_values(CurriculumSearch::TYPE_SETTINGS),
+            [CurriculumSearch::AXIS_SETTING, CurriculumTerms::SCHEME_SETTING],
             [
                 GovernanceSettings::LICENCE_VOCAB_ID,
                 GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
@@ -176,11 +176,39 @@ final class ConfigPayloadTest extends TestCase
     {
         $settings = ConfigPayload::write([
             LlmSettings::MODEL => '  claude-opus-5  ',
-            CurriculumSearch::FRAMEWORK_SETTING => '  LOMLOE  ',
         ]);
 
         $this->assertSame('claude-opus-5', $settings[LlmSettings::MODEL]);
-        $this->assertSame('LOMLOE', $settings[CurriculumSearch::FRAMEWORK_SETTING]);
+    }
+
+    /**
+     * TASK-064 (ADR-0022): the curriculum is one item set by id; the dimension
+     * literals and the framework value are gone from the form and the payload.
+     */
+    public function testTheCurriculumIsOneItemSetIdAndLegacySettingsAreGone(): void
+    {
+        $this->assertNull(ConfigPayload::write([CurriculumTerms::SCHEME_SETTING => ''])[
+            CurriculumTerms::SCHEME_SETTING
+        ]);
+        $this->assertNull(ConfigPayload::write([CurriculumTerms::SCHEME_SETTING => 'abc'])[
+            CurriculumTerms::SCHEME_SETTING
+        ]);
+        $this->assertSame(46259, ConfigPayload::write([CurriculumTerms::SCHEME_SETTING => '46259'])[
+            CurriculumTerms::SCHEME_SETTING
+        ]);
+        $written = ConfigPayload::write(array_fill_keys(ConfigPayload::LEGACY_SETTINGS, 'x'));
+        $read = ConfigPayload::read(self::reader([]));
+        foreach (ConfigPayload::LEGACY_SETTINGS as $legacy) {
+            $this->assertArrayNotHasKey($legacy, $written);
+            $this->assertArrayNotHasKey($legacy, $read);
+        }
+        $this->assertSame([
+            'oermanager_type_educationallevel',
+            'oermanager_type_about',
+            'oermanager_type_teaches',
+            'oermanager_type_assesses',
+            'oermanager_educational_framework',
+        ], ConfigPayload::LEGACY_SETTINGS);
     }
 
     public function testGovernanceIdsDegradeToNullWhenTheyAreNotUsableIds(): void

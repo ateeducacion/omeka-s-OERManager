@@ -52,8 +52,22 @@ class ModuleRuntimeTest extends TestCase
         $module->attachListeners($events);
         $module->install($module->getServiceLocator());
         $module->uninstall($module->getServiceLocator());
-        $module->upgrade('1', '2', $module->getServiceLocator());
         $this->assertIsArray($module->getConfig());
+    }
+
+    /** TASK-064 (ADR-0022): the upgrade removes the settings of the ADR-0009 graph, and only those. */
+    public function testUpgradeDeletesTheLegacyCurriculumSettings(): void
+    {
+        $settings = new \Omeka\Settings\Settings();
+        foreach (\OERManager\Service\ConfigPayload::LEGACY_SETTINGS as $legacy) {
+            $settings->set($legacy, 'Curso');
+        }
+        $settings->set('oermanager_axis_termset_item_id', 9);
+        $module = $this->module(['Omeka\Settings' => $settings]);
+        $module->upgrade('0.9.0', '1.0.0', $module->getServiceLocator());
+        $this->assertSame(['oermanager_axis_termset_item_id' => 9], $settings->values);
+        $module->upgrade('1.0.0', '1.0.1', $module->getServiceLocator());
+        $this->assertSame(['oermanager_axis_termset_item_id' => 9], $settings->values);
     }
 
     public function testSearchFilterChipsResolveTitlesAndKeepMissingIds(): void

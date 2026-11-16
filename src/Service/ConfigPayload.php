@@ -2,6 +2,7 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Llm\LlmSettings;
 
 /**
@@ -21,6 +22,19 @@ use OERManager\Service\Llm\LlmSettings;
  */
 class ConfigPayload
 {
+    /**
+     * Settings of the ADR-0009 graph that ADR-0022 removed (TASK-064): the
+     * `dcterms:type` literal of each dimension and the framework value. The
+     * class of a `cur:` term fixes its dimension; `Module::upgrade()` deletes them.
+     */
+    public const LEGACY_SETTINGS = [
+        'oermanager_type_educationallevel',
+        'oermanager_type_about',
+        'oermanager_type_teaches',
+        'oermanager_type_assesses',
+        'oermanager_educational_framework',
+    ];
+
     /** Vocabularios y plantilla de la gobernanza del catálogo (ADR-0013). */
     private const GOVERNANCE_ID_SETTINGS = [
         GovernanceSettings::LICENCE_VOCAB_ID,
@@ -39,11 +53,8 @@ class ConfigPayload
     {
         $data = [
             CurriculumSearch::AXIS_SETTING => $get(CurriculumSearch::AXIS_SETTING),
-            CurriculumSearch::FRAMEWORK_SETTING => $get(CurriculumSearch::FRAMEWORK_SETTING),
+            CurriculumTerms::SCHEME_SETTING => $get(CurriculumTerms::SCHEME_SETTING),
         ];
-        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
-            $data[$setting] = $get($setting);
-        }
         foreach (self::GOVERNANCE_ID_SETTINGS as $setting) {
             $data[$setting] = $get($setting);
         }
@@ -102,11 +113,12 @@ class ConfigPayload
         $axisId = (int) ($post[CurriculumSearch::AXIS_SETTING] ?? 0);
         $settings = [
             CurriculumSearch::AXIS_SETTING => $axisId > 0 ? $axisId : null,
-            CurriculumSearch::FRAMEWORK_SETTING => trim((string) ($post[CurriculumSearch::FRAMEWORK_SETTING] ?? '')),
+            // Curriculum item set (TASK-064, ADR-0022): null = detect it. The
+            // controller checks that the id is a curriculum before saving it.
+            CurriculumTerms::SCHEME_SETTING => GovernanceSettings::parseId(
+                $post[CurriculumTerms::SCHEME_SETTING] ?? null
+            ),
         ];
-        foreach (CurriculumSearch::TYPE_SETTINGS as $setting) {
-            $settings[$setting] = trim((string) ($post[$setting] ?? ''));
-        }
 
         // Gobernanza del catálogo (ADR-0013). Los artefactos se identifican por
         // id; un valor vacío o no numérico se guarda como null = «sin

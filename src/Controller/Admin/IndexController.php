@@ -20,6 +20,7 @@ use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Governance\BatchJobLookup;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\GovernanceService;
 use OERManager\Service\IntegrityChecker;
@@ -36,6 +37,7 @@ use Omeka\Job\Dispatcher;
 use Omeka\Permissions\Acl;
 use Omeka\Permissions\Exception\PermissionDeniedException;
 use Omeka\Settings\Settings;
+use Omeka\Stdlib\Message;
 
 /**
  * Vista maestra del catálogo REA (TASK-003, ADR-0005) y re-catalogador
@@ -71,6 +73,7 @@ class IndexController extends AbstractActionController
     private GovernanceService $governanceService;
     private UndoRouter $undoRouter;
     private BatchJobLookup $jobLookup;
+    private CurriculumTerms $curriculumTerms;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -92,7 +95,8 @@ class IndexController extends AbstractActionController
         Acl $acl,
         GovernanceService $governanceService,
         UndoRouter $undoRouter,
-        BatchJobLookup $jobLookup
+        BatchJobLookup $jobLookup,
+        CurriculumTerms $curriculumTerms
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -114,6 +118,7 @@ class IndexController extends AbstractActionController
         $this->governanceService = $governanceService;
         $this->undoRouter = $undoRouter;
         $this->jobLookup = $jobLookup;
+        $this->curriculumTerms = $curriculumTerms;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -483,7 +488,7 @@ class IndexController extends AbstractActionController
             $post = $this->params()->fromPost();
             $form->setData($post);
             if ($form->isValid()) {
-                foreach (ConfigPayload::write($post) as $key => $value) {
+                foreach ($this->withCurriculumScheme(ConfigPayload::write($post)) as $key => $value) {
                     $settings->set($key, $value);
                 }
                 $this->messenger()->addSuccess('Configuración guardada.'); // @translate
@@ -497,6 +502,31 @@ class IndexController extends AbstractActionController
         $view = new ViewModel();
         $view->setVariable('form', $form);
         return $view;
+    }
+
+    /**
+     * Curriculum item set of the configuration (TASK-064, ADR-0022/ADR-0006):
+     * an id is kept only if that item set is identified as `<base>id/curriculo`
+     * (otherwise the stored value stays and the admin is told); an empty field
+     * stores the single curriculum item set found, if any.
+     *
+     * @param array<string,mixed> $settings
+     * @return array<string,mixed>
+     */
+    private function withCurriculumScheme(array $settings): array
+    {
+        $key = CurriculumTerms::SCHEME_SETTING;
+        $id = $settings[$key] ?? null;
+        if (null === $id) {
+            $settings[$key] = $this->curriculumTerms->detectSchemeId();
+        } elseif (!$this->curriculumTerms->isScheme($id)) {
+            unset($settings[$key]);
+            $this->messenger()->addError(new Message(
+                'El conjunto %d no es el currículo: su dcterms:identifier no acaba en id/curriculo.', // @translate
+                $id
+            ));
+        }
+        return $settings;
     }
 
     /**

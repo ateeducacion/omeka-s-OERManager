@@ -50,7 +50,9 @@ return [
                     $container->get(Service\Curation\UndoRouter::class),
                     // Estado/cancelación del propose IA: dueño leído de la
                     // entidad Job, no de la API de jobs (vetada a editor/reviewer).
-                    $container->get(Service\Governance\BatchJobLookup::class)
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    // TASK-064: valida o detecta el conjunto del currículo al guardar.
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {

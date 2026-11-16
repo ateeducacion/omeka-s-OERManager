@@ -11,6 +11,7 @@ use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
 use OERManager\Service\Curation\UndoRouter;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\Workflow\WorkflowService;
@@ -512,6 +513,42 @@ class IndexControllerTest extends TestCase
         $valid = false;
         $this->assertSame($form, $this->controller->configAction()->getVariable('form'));
         $this->assertContains('invalid form', $this->messages->messages);
+    }
+
+    /**
+     * TASK-064 (ADR-0022, ADR-0006): the curriculum is one item set, by id,
+     * accepted only if its identifier is `<base>id/curriculo`; left empty, the
+     * single such item set is detected and stored.
+     */
+    public function testConfigValidatesOrDetectsTheCurriculumItemSet(): void
+    {
+        $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();
+        $form->init();
+        $form->method('isValid')->willReturn(true);
+        $this->dependencies['formElementManager']->method('get')->willReturn($form);
+        $terms = $this->dependencies['curriculumTerms'];
+        $terms->method('isScheme')->willReturnCallback(static fn (int $id): bool => 46259 === $id);
+        $terms->method('detectSchemeId')->willReturn(46259);
+        $settings = $this->dependencies['settings'];
+        $this->request->post = true;
+
+        $settings->set(CurriculumTerms::SCHEME_SETTING, 46259);
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => '7'];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
+        $this->assertContains(
+            'El conjunto 7 no es el currículo: su dcterms:identifier no acaba en id/curriculo.',
+            array_map('strval', $this->messages->messages)
+        );
+
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => ''];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
+
+        $settings->set(CurriculumTerms::SCHEME_SETTING, null);
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => '46259'];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
     }
 
     public function testDrawerDetailsHandlesUnavailableAndReadableItems(): void
