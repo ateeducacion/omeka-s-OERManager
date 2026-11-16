@@ -8,13 +8,24 @@
  * DimensionCrosser, CompletenessAggregator, CsvExport) ya tienen TDD real en
  * host — este arnés cubre solo la extracción real desde el catálogo.
  *
- * SOLO LECTURA: ninguna llamada aquí escribe en el catálogo.
+ * SOLO LECTURA por defecto: ninguna llamada aquí escribe en el catálogo.
+ *
+ * TASK-064 slice 5: the outline is the `cur:` curriculum (stages INF, PRI,
+ * ESO, BAC by skos:notation; courses by skos:notation; subjects by cur:curso).
+ * The REA-dependent checks need REA aligned to `cur:`; when the catalogue has
+ * none they are SKIPped, and with --write the harness creates two disposable
+ * private REA aligned to 1º ESO / Matemáticas and 2º ESO / Matemáticas (via
+ * RecatalogService) and deletes them at exit, also on failure
+ * (test/container/cur-fixture.php). Nothing else is written.
  *
  * Uso, desde el contenedor:
- *   php /var/www/html/modules/OERManager/test/container/stats-check.php
+ *   php /var/www/html/modules/OERManager/test/container/stats-check.php [<userEmail> [--write]]
+ * Without an email it authenticates as the first user (the layout lives in
+ * user settings).
  */
 
 require '/var/www/html/bootstrap.php';
+require __DIR__ . '/cur-fixture.php';
 
 use OERManager\Controller\Admin\StatsController;
 use OERManager\Service\Stats\CatalogSnapshot;
@@ -27,6 +38,40 @@ use OERManager\Service\IntegrityChecker;
 $application = Omeka\Mvc\Application::init(require '/var/www/html/application/config/application.config.php');
 $services = $application->getServiceManager();
 
+$email = (string) ($argv[1] ?? '');
+$write = ($argv[2] ?? '') === '--write';
+if ('' === $email) {
+    $first = $services->get('Omeka\EntityManager')->getRepository(\Omeka\Entity\User::class)
+        ->findOneBy([], ['id' => 'ASC']);
+    $email = $first ? $first->getEmail() : '';
+}
+$user = curAuthenticate($services, $email);
+$disposable = [];
+$marker = curMarker('stats-check');
+if ($write) {
+    // Deleted at exit, whatever happens below (exit, fatal error).
+    register_shutdown_function(static function () use ($services, &$disposable, $marker): void {
+        $left = curDeleteAll($services, $disposable, $marker);
+        echo "\n  " . (0 === $left ? 'OK  ' : 'FAIL') . " disposable REA deleted ($left left)\n";
+        if ($left > 0) {
+            exit(1);
+        }
+    });
+    $fixture = curFixture($services);
+    curCreateRea($services, $marker, [
+        'lrmi:educationalLevel' => [$fixture['S01']],
+        'schema:about' => [$fixture['SMAT01']],
+        'lrmi:teaches' => [$fixture['saber']],
+        'lrmi:assesses' => [$fixture['criterio']],
+    ], $user->getName(), $disposable);
+    curCreateRea($services, $marker, [
+        'lrmi:educationalLevel' => [$fixture['S02']],
+        'schema:about' => [$fixture['SMAT02']],
+    ], $user->getName(), $disposable);
+    echo 'disposable REA: #' . implode(', #', $disposable) . "\n";
+    curClear($services, $email);
+}
+
 /** @var CatalogSnapshot $snapshot */
 $snapshot = $services->get(CatalogSnapshot::class);
 $facts = $services->get(DimensionFacts::class);
@@ -38,6 +83,24 @@ $integrityChecker = $services->get(IntegrityChecker::class);
 
 $passed = 0;
 $failed = 0;
+$skipped = 0;
+
+/** The real controller, with the router its url() plugin needs outside the MVC. */
+function statsController($services): StatsController
+{
+    $controller = $services->get('ControllerManager')->get(StatsController::class);
+    $event = new \Laminas\Mvc\MvcEvent();
+    $event->setRouter($services->get('Router'));
+    $controller->setEvent($event);
+    return $controller;
+}
+
+function skip(string $label, string $reason): void
+{
+    global $skipped;
+    $skipped++;
+    echo "  SKIP $label — $reason\n";
+}
 
 function check(string $label, bool $condition, string $detail = ''): void
 {
@@ -59,10 +122,14 @@ $extracted = $facts->extract($data['items']);
 check('extract() devuelve una fila por item', count($extracted) === count($data['items']));
 
 $materiaCounts = $counter->count($extracted, 'materia');
-check('DimensionCounter da conteos para materia', array_sum($materiaCounts) > 0);
-
 $cross = $crosser->cross($extracted, 'materia', 'etapa');
-check('DimensionCrosser da al menos una combinación materia×etapa', count($cross) > 0);
+$aligned = array_sum($materiaCounts) > 0;
+if ($aligned) {
+    check('DimensionCounter da conteos para materia', true);
+    check('DimensionCrosser da al menos una combinación materia×etapa', count($cross) > 0);
+} else {
+    skip('DimensionCounter / DimensionCrosser con materia', 'ningún REA enlaza una materia (usa --write)');
+}
 
 $statuses = [];
 foreach ($data['items'] as $item) {
@@ -82,7 +149,7 @@ check('distinctResourceIds() no repite ids', count($distinctIds) === count(array
 // nada resolvía el controlador real, así que la factory de 8 argumentos en
 // module.config.php, resolveTitles(), relabelCounts()/relabelCrossTable()/
 // transpose() y el cableado de ruta/ACL no tenían verificación automatizada.
-$controller = $services->get('ControllerManager')->get(StatsController::class);
+$controller = statsController($services);
 $view = $controller->indexAction();
 $statsData = $view->getVariable('statsData');
 check('indexAction() resuelve y devuelve statsData', null !== $statsData);
@@ -133,14 +200,22 @@ check('el mapa curricular tiene universo de asignaturas', $map->hasUniverse());
 
 $stageLabels = array_map(static fn (int $id): string => $map->label($id), $map->orderedStageIds());
 check(
-    'etapas en el orden de schema:position',
-    ['Educación Infantil', 'Educación Primaria', 'ESO', 'Bachillerato'] === $stageLabels,
+    'etapas en orden pedagógico (skos:notation INF, PRI, ESO, BAC)',
+    ['Educación Infantil', 'Educación Primaria', 'Educación Secundaria Obligatoria', 'Bachillerato'] === $stageLabels,
     implode(' | ', $stageLabels)
 );
+check('el esquema tiene los 18 cursos y las 232 materias de curso de 1.1.2', 18 <= count($map->orderedCourseIds())
+    && 232 <= count($map->subjects()), count($map->orderedCourseIds()) . ' / ' . count($map->subjects()));
 $courseLabels = array_map(static fn (int $id): string => $map->label($id), $map->orderedCourseIds());
 echo '  INFO orden de cursos: ' . implode(' | ', $courseLabels) . "\n";
 $esoCourses = array_values(array_filter($courseLabels, static fn (string $l): bool => str_ends_with($l, 'ESO')));
-check('cursos de ESO por nivel', ['1º ESO', '2º ESO', '3º ESO', '4º ESO'] === $esoCourses, implode(' | ', $esoCourses));
+check('cursos de ESO por skos:notation', ['1º ESO', '2º ESO', '3º ESO', '4º ESO'] === $esoCourses, implode(' | ', $esoCourses));
+$firstCourses = array_slice($courseLabels, 0, 7);
+check(
+    'los cursos empiezan por Infantil (I01…I06) y siguen con 1º Primaria',
+    '1º Infantil de 0 años' === $firstCourses[0] && '1º Primaria' === ($firstCourses[6] ?? ''),
+    implode(' | ', $firstCourses)
+);
 check(
     'cada curso tiene etapa conocida',
     [] === array_filter($map->orderedCourseIds(), static fn (int $id): bool => null === $map->stageOfCourse($id))
@@ -196,7 +271,7 @@ check('aplicar el año deja exactamente sus REA', count($yearFilter->apply($extr
 echo '  INFO años: ' . json_encode($years) . "\n";
 
 $export = static function (array $query) use ($services): string {
-    $controller = $services->get('ControllerManager')->get(StatsController::class);
+    $controller = statsController($services);
     $controller->getRequest()->getQuery()->fromArray($query);
     return (string) $controller->exportAction()->getContent();
 };
@@ -206,12 +281,25 @@ $csvRows = static function (string $csv): array {
     return array_map(static fn (string $line): array => str_getcsv($line, ',', '"', ''), $lines);
 };
 $esoId = $map->orderedStageIds()[2];
+$esoLabel = $map->label($esoId);
 $esoRows = $csvRows($export(['dimension' => 'materia', 'stage' => (string) $esoId]));
-check(
-    'CSV de Materia filtrado por ESO solo trae ESO',
-    [] !== $esoRows && [] === array_filter($esoRows, static fn (array $r): bool => 'ESO' !== $r[0]),
-    count($esoRows) . ' filas'
-);
+if (!$aligned) {
+    skip('CSV de Materia filtrado por ESO solo trae ESO', 'ningún REA enlaza una materia (usa --write)');
+} else {
+    check(
+        'CSV de Materia filtrado por ESO solo trae ESO',
+        [] !== $esoRows && [] === array_filter($esoRows, static fn (array $r): bool => $esoLabel !== $r[0]),
+        count($esoRows) . ' filas: ' . json_encode($esoRows, JSON_UNESCAPED_UNICODE)
+    );
+}
+if ($write) {
+    $expected = [[$esoLabel, '1º ESO', 'Matemáticas', '1'], [$esoLabel, '2º ESO', 'Matemáticas', '1']];
+    check(
+        'los REA desechables salen bajo su curso, con la materia sin el sufijo del curso',
+        $expected === array_values(array_filter($esoRows, static fn (array $r): bool => in_array($r, $expected, true))),
+        json_encode($esoRows, JSON_UNESCAPED_UNICODE)
+    );
+}
 $coverageRows = $csvRows($export(['type' => 'coverage']));
 check(
     'CSV de cobertura = celdas existentes del mapa',
@@ -220,11 +308,11 @@ check(
 $futureRows = $csvRows($export(['dimension' => 'licencia', 'year' => '2099']));
 check('CSV con un año sin REA sale vacío', [] === $futureRows);
 
-$controller = $services->get('ControllerManager')->get(StatsController::class);
+$controller = statsController($services);
 $controller->getRequest()->getQuery()->fromArray(['year' => (string) $someYear]);
 $view = $controller->indexAction();
 check('indexAction() con año: total = REA de ese año', $view->getVariable('total') === $years[$someYear]);
 check('indexAction() con año: completitud sobre esos REA', $view->getVariable('statsData')['completeness']['total'] === $years[$someYear]);
 
-echo "\n$passed OK, $failed FAIL\n";
+echo "\n$passed OK, $failed FAIL, $skipped SKIP\n";
 exit($failed > 0 ? 1 : 0);

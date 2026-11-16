@@ -50,28 +50,34 @@ function check(string $label, bool $condition, string $detail = ''): void
     echo "  FAIL $label" . ('' !== $detail ? " — $detail" : '') . "\n";
 }
 
-/** Id del primer Curso cuyo título es exactamente $title, o 0. */
-function findCursoId($api, string $title): int
+/**
+ * TASK-064 slice 5: the courses are cur:Curso items of the curriculum item set
+ * found by skos:notation (P01 = 1º Primaria, B02 = 2º Bachillerato), and the
+ * course subjects carry their course in the label («Matemáticas · 1º
+ * Primaria»). The ADR-0009 lookup (dcterms:type «Curso» + dcterms:title) no
+ * longer finds anything.
+ */
+function findCursoId($services, string $notation): int
 {
-    $items = $api->search('items', [
-        'property' => [
-            ['property' => 'dcterms:type', 'type' => 'eq', 'text' => 'Curso'],
-            ['property' => 'dcterms:title', 'type' => 'eq', 'text' => $title],
-        ],
-        'page' => 1,
-        'per_page' => 1,
-    ])->getContent();
-    foreach ($items as $item) {
+    $terms = $services->get(OERManager\Service\Curriculum\CurriculumTerms::class);
+    $scheme = $terms->schemeId();
+    $class = $terms->classId(OERManager\Service\Curriculum\CurModel::CURSO);
+    if (null === $scheme || null === $class) {
+        return 0;
+    }
+    $query = OERManager\Service\Curriculum\CurModel::termsQuery($scheme, $class, '', 1);
+    $query['property'][] = ['property' => 'skos:notation', 'type' => 'eq', 'text' => $notation];
+    foreach ($services->get('Omeka\ApiManager')->search('items', $query)->getContent() as $item) {
         return (int) $item->id();
     }
     return 0;
 }
 
-$primaria1 = findCursoId($api, '1º Primaria');
-$bachillerato2 = findCursoId($api, '2º Bachillerato');
+$primaria1 = findCursoId($services, 'P01');
+$bachillerato2 = findCursoId($services, 'B02');
 
 if (0 === $primaria1 || 0 === $bachillerato2) {
-    fwrite(STDERR, "No se encuentran los cursos '1º Primaria' / '2º Bachillerato' en este catálogo — arnés no aplicable aquí.\n");
+    fwrite(STDERR, "No se encuentran los cursos P01 / B02 del currículo cur: en este catálogo — arnés no aplicable aquí.\n");
     exit(1);
 }
 
@@ -82,12 +88,12 @@ $soloPrimaria = $curriculumSearch->searchDimension('schema:about', 'mat', ['leve
 $titulosSoloPrimaria = array_column($soloPrimaria, 'title');
 check(
     'Con un solo curso (1º Primaria), "mat" encuentra su Matemáticas',
-    in_array('Matemáticas', $titulosSoloPrimaria, true),
+    in_array('Matemáticas · 1º Primaria', $titulosSoloPrimaria, true),
     implode(', ', $titulosSoloPrimaria)
 );
 check(
     'Con un solo curso (1º Primaria), "mat" NO trae Matemáticas II (es de otro curso)',
-    !in_array('Matemáticas II', $titulosSoloPrimaria, true),
+    !in_array('Matemáticas II · 2º Bachillerato', $titulosSoloPrimaria, true),
     implode(', ', $titulosSoloPrimaria)
 );
 
@@ -100,12 +106,12 @@ $dosCursos = $curriculumSearch->searchDimension(
 $titulosDosCursos = array_column($dosCursos, 'title');
 check(
     'Con los dos cursos, "mat" SIGUE trayendo Matemáticas (1º Primaria)',
-    in_array('Matemáticas', $titulosDosCursos, true),
+    in_array('Matemáticas · 1º Primaria', $titulosDosCursos, true),
     implode(', ', $titulosDosCursos)
 );
 check(
     'Con los dos cursos, "mat" AHORA TAMBIÉN trae Matemáticas II (2º Bachillerato)',
-    in_array('Matemáticas II', $titulosDosCursos, true),
+    in_array('Matemáticas II · 2º Bachillerato', $titulosDosCursos, true),
     implode(', ', $titulosDosCursos)
 );
 
@@ -116,13 +122,13 @@ foreach ($dosCursos as $r) {
 }
 check(
     'Matemáticas lleva "1º Primaria" como linaje',
-    ($linajesPorTitulo['Matemáticas'] ?? '') === '1º Primaria',
-    $linajesPorTitulo['Matemáticas'] ?? '(ausente)'
+    ($linajesPorTitulo['Matemáticas · 1º Primaria'] ?? '') === '1º Primaria',
+    $linajesPorTitulo['Matemáticas · 1º Primaria'] ?? '(ausente)'
 );
 check(
     'Matemáticas II lleva "2º Bachillerato" como linaje, no el de Matemáticas',
-    ($linajesPorTitulo['Matemáticas II'] ?? '') === '2º Bachillerato',
-    $linajesPorTitulo['Matemáticas II'] ?? '(ausente)'
+    ($linajesPorTitulo['Matemáticas II · 2º Bachillerato'] ?? '') === '2º Bachillerato',
+    $linajesPorTitulo['Matemáticas II · 2º Bachillerato'] ?? '(ausente)'
 );
 
 // --- Sin duplicados aunque un id se repita en el contexto ---
