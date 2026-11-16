@@ -49,7 +49,8 @@ current terms have no `skos:changeNote`. Build every curriculum query with `CurM
 Stage and Materia are navigation, never written to the REA. Preserve incremental search and per-level
 lazy loading; filter child choices by every selected ancestor (one query per id, merged).
 Links to a retired term are kept and warned about (`retired_term`, compared by id with the retired set).
-Slices 4 and 6 of TASK-064 still move the leaf tree and the classifier code off ADR-0009.
+The panel chooses knowledge and criteria in a tree per block (`curriculum-tree`, TASK-064 slice 4) and
+still writes chips; slice 6 still moves the classifier code off ADR-0009.
 
 ## Audit and reversal
 

@@ -202,3 +202,63 @@ Implemented on `feature/task-064-cur-model` (`f1e51b7`, `32a342f`, `a9e86d0`, `b
   edges move from `CurricularPairs::COURSE_TERMS` into a private `LEGACY_COURSE_EDGES` until slice 6.
 - `RecatalogService::QUALIFIER_TERMS` was already gone in slice 3; no copy of the ancestor edges remains
   outside `CurModel` and that legacy constant.
+
+## 7. Slice 4 decisions (2026-11-16)
+
+Implemented on `feature/task-064-cur-model` (`aa31206`, `79837a7`, `0e3ce9b`). Owner decision (closed): once
+the course subject (`schema:about`, `cur:MateriaCurso`) is chosen, knowledge (`lrmi:teaches`) and criteria
+(`lrmi:assesses`) are chosen with checkboxes in a collapsible tree per block.
+
+### 7.1 Server
+
+- `CurModel::treeShape($dimension)`: knowledge = `cur:BloqueSaberes` roots and `cur:SaberBasico` by
+  `skos:broader` (any depth); criteria = `cur:BloqueCompetencial` roots and `cur:CriterioEvaluacion` by
+  `cur:bloqueCompetencial`. `CurModel::courseSubjectQuery()` = `termsQuery` (set, class, `nex`, page) +
+  `cur:materiaCurso res <id>`. `CurModel::refId()` reads a parent id without its title.
+- `CurriculumTerms::courseSubjectTree($id)` validates the id (class `cur:MateriaCurso`, member of the
+  curriculum set; anything else is null), runs one paged query per class (blocks first, so a leaf's parent is
+  already loaded; 200 per page, at most 5 pages) and builds each tree with `LeafTree` from rows
+  `{id, parentId, notation, title, definition, selectable}`. Blocks are roots and not selectable.
+- `CurriculumTerms::retiredTerms($ids)`: the retired ids among the panel's linked knowledge/criteria (compared
+  with `retiredIds()`), each with its label and the labels of `dcterms:isReplacedBy`. Only retired terms are read.
+- Action `curriculum-tree` (GET, read only, no CSRF, ACL `editor`/`site_admin`/`reviewer` like `search-terms`):
+  `about[]` (≤ 10 course subjects, one tree each; an id that fails validation comes back in `invalid`) and
+  `linked[]` (≤ 500 ids, answered in `retired`). Several subjects in one request rather than one id per call,
+  so a change of subjects is one request and the retired marks come with it.
+
+### 7.2 Panel
+
+- The chips stay the only selection. A checkbox adds or removes a chip; every chip change (picker, AI
+  pre-fill, a chip's ×) fires `oer:chips-changed`, and the tree re-checks itself. Preview, apply, undo and the
+  AI (`addChip`) are unchanged; the AI pre-fill gets its proposals checked in the tree for free.
+- Knowledge and criteria lose their autocomplete; their chips stay as the summary of the selection. A chip the
+  tree cannot show is kept and marked in text: «retirado» with the successor (same wording as the
+  `retired_term` warning), or «fuera del árbol» (e.g. an AI proposal for another subject or a legacy link).
+- Without a course subject the tree area asks for one and no tree is requested (NFR-004); retired marks are
+  still requested when there are linked ids. The trees load when the editor opens and on each change of
+  subjects, one request per change; a stale answer is dropped.
+- Accessibility (NFR-006): nested lists of native, labelled checkboxes (`label for`), the full
+  `skos:definition` as tooltip and `aria-describedby`, disclosure buttons with `aria-expanded` and
+  `aria-controls` (blocks are buttons, not choices); Tab/Space native, ArrowRight/ArrowLeft open/close a branch.
+  Branches with something selected open by themselves; each block shows how many are selected.
+- i18n (NFR-005): the new strings go through `Omeka.jsTranslate()` and are registered in `js_translate_strings`
+  with `// @translate`. The repository has no `.po` catalogue yet (`language/` is empty), so the English
+  texts are pending with the rest of the module's catalogue.
+- Pure core `asset/js/core/leafTreeModel.js` (node tests); DOM in `asset/js/ui/leafTree.js`.
+
+### 7.3 Verification
+
+- Host: `ApiCurriculumTermsTest` (tree, pages, page cap, validation, retired terms) and `CurModelTest` against
+  `CurModel::courseSubjectQuery(...)`; `IndexControllerTest` (validation, caps, GET without CSRF);
+  `ModuleRuntimeTest` (ACL); `test/js/leafTreeModel.test.js` (tree build, selection, retired, external ids,
+  several subjects).
+- Browser stub: `test/browser/leaf-tree-smoke.html` runs the real panel modules on a stub drawer in headless
+  Chrome (30 checks: lazy load, checkboxes ↔ chips, AI chips, keyboard, two subjects, preview pairs, no chip lost).
+- Container (`test/container/curriculum-tree-check.php`, 8080, curriculum 1.1.2): SMAT01 gives 82 knowledge
+  items under 6 blocks (depth ≤ 2) and 18 criteria under 5 blocks, equal to independent queries, no retired
+  term; validation, two subjects and ACL; cold cost ~45 ms / 158 SQL (one values load per node), warm
+  ~19 ms / 9 SQL. With `--write`, a disposable REA got two depth-2 knowledge items through `RecatalogService`
+  (preview + apply, read back) and a disposable retired term came back marked with its successor; both were
+  deleted (71 REA and 0 test items afterwards).
+- **Not verified:** the panel in the real admin with a logged-in session (render with the admin's styles,
+  focus and keyboard with a screen reader, the AI pre-fill end to end). Same debt as TASK-030.
