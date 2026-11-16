@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OERManager\Test\Support;
 
 use Omeka\Api\Representation\ItemRepresentation;
+use Omeka\Api\Representation\ResourceClassRepresentation;
 use Omeka\Api\Representation\ValueRepresentation;
 use Omeka\Api\Response;
 
@@ -21,6 +22,27 @@ trait RepresentationFactory
             return !empty($options['all']) ? $result : ($result[0] ?? ($options['default'] ?? null));
         });
         $item->method('values')->willReturn(array_map(static fn ($v) => ['values' => $v], $values));
+        return $item;
+    }
+
+    /**
+     * A curriculum term of ADR-0022: an item with a `cur:` resource class and,
+     * optionally, the ids of the item sets it belongs to.
+     *
+     * @param list<int> $itemSets
+     */
+    private function curItem(
+        int $id,
+        string $class,
+        string $title = '',
+        array $values = [],
+        array $itemSets = []
+    ): ItemRepresentation {
+        $item = $this->item($id, $title, $values);
+        $resourceClass = $this->createMock(ResourceClassRepresentation::class);
+        $resourceClass->method('term')->willReturn($class);
+        $item->method('resourceClass')->willReturn($resourceClass);
+        $item->method('itemSets')->willReturn(array_fill_keys($itemSets, $item));
         return $item;
     }
 

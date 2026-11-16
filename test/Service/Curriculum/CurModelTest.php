@@ -6,8 +6,6 @@ namespace OERManager\Test\Service\Curriculum;
 
 use OERManager\Service\Curriculum\CurModel;
 use OERManager\Test\Support\RepresentationFactory;
-use Omeka\Api\Representation\ItemRepresentation;
-use Omeka\Api\Representation\ResourceClassRepresentation;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -202,13 +200,13 @@ final class CurModelTest extends TestCase
     public function testClassTermIsEmptyWithoutClass(): void
     {
         $this->assertSame('', CurModel::classTerm($this->item(1)));
-        $this->assertSame('cur:Curso', CurModel::classTerm($this->classed(1, 'cur:Curso')));
+        $this->assertSame('cur:Curso', CurModel::classTerm($this->curItem(1, 'cur:Curso')));
     }
 
     public function testCriterionBlockIsItsCompetenceBlock(): void
     {
-        $block = $this->classed(30, 'cur:BloqueCompetencial', 'Matemáticas · 1º ESO · bloque competencial C1');
-        $criterion = $this->classed(1, 'cur:CriterioEvaluacion', 'SMAT01CE1.1', [
+        $block = $this->curItem(30, 'cur:BloqueCompetencial', 'Matemáticas · 1º ESO · bloque competencial C1');
+        $criterion = $this->curItem(1, 'cur:CriterioEvaluacion', 'SMAT01CE1.1', [
             'cur:bloqueCompetencial' => [$this->value('', $block, 'resource:item')],
         ]);
         $this->assertSame('Matemáticas · 1º ESO · bloque competencial C1', CurModel::block($criterion));
@@ -216,11 +214,11 @@ final class CurModelTest extends TestCase
 
     public function testKnowledgeBlockIsItsKnowledgeBlockAtAnyDepth(): void
     {
-        $block = $this->classed(40, 'cur:BloqueSaberes', 'SMAT01SBI · I. Sentido numérico');
-        $parent = $this->classed(41, 'cur:SaberBasico', 'SMAT01SBI.1', [
+        $block = $this->curItem(40, 'cur:BloqueSaberes', 'SMAT01SBI · I. Sentido numérico');
+        $parent = $this->curItem(41, 'cur:SaberBasico', 'SMAT01SBI.1', [
             'skos:broader' => [$this->value('', $block, 'resource:item')],
         ]);
-        $leaf = $this->classed(42, 'cur:SaberBasico', 'SMAT01SBI.1.1', [
+        $leaf = $this->curItem(42, 'cur:SaberBasico', 'SMAT01SBI.1.1', [
             'skos:broader' => [$this->value('', $parent, 'resource:item')],
         ]);
         $this->assertSame('SMAT01SBI · I. Sentido numérico', CurModel::block($leaf));
@@ -229,29 +227,20 @@ final class CurModelTest extends TestCase
 
     public function testBlockIsEmptyForOtherClassesAndBrokenChains(): void
     {
-        $this->assertSame('', CurModel::block($this->classed(1, 'cur:Curso', '1º ESO')));
-        $orphan = $this->classed(2, 'cur:SaberBasico', 'X');
+        $this->assertSame('', CurModel::block($this->curItem(1, 'cur:Curso', '1º ESO')));
+        $orphan = $this->curItem(2, 'cur:SaberBasico', 'X');
         $this->assertSame('', CurModel::block($orphan));
         // A loop in skos:broader must not hang the reader.
-        $loop = $this->classed(3, 'cur:SaberBasico', 'Loop');
-        $self = $this->classed(4, 'cur:SaberBasico', 'Self', [
+        $loop = $this->curItem(3, 'cur:SaberBasico', 'Loop');
+        $self = $this->curItem(4, 'cur:SaberBasico', 'Self', [
             'skos:broader' => [$this->value('', $loop, 'resource:item')],
         ]);
         $deep = $self;
         for ($i = 0; $i < 10; $i++) {
-            $deep = $this->classed(100 + $i, 'cur:SaberBasico', 'D' . $i, [
+            $deep = $this->curItem(100 + $i, 'cur:SaberBasico', 'D' . $i, [
                 'skos:broader' => [$this->value('', $deep, 'resource:item')],
             ]);
         }
         $this->assertSame('', CurModel::block($deep));
-    }
-
-    private function classed(int $id, string $class, string $title = '', array $values = []): ItemRepresentation
-    {
-        $item = $this->item($id, $title, $values);
-        $resourceClass = $this->createMock(ResourceClassRepresentation::class);
-        $resourceClass->method('term')->willReturn($class);
-        $item->method('resourceClass')->willReturn($resourceClass);
-        return $item;
     }
 }

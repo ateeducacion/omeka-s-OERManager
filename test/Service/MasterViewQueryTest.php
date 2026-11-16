@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Test\Service;
 
-use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curriculum\CurModel;
 use OERManager\Service\MasterViewQuery;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Response;
@@ -77,7 +77,7 @@ final class MasterViewQueryTest extends TestCase
      */
     public function testEverySearchableFilterMapsToADimensionTheEndpointUnderstands(): void
     {
-        $understood = array_merge(array_keys(CurriculumSearch::TYPE_SETTINGS), ['etapa', 'dcterms:relation']);
+        $understood = array_merge(CurModel::dimensions(), ['etapa', 'dcterms:relation']);
 
         foreach (MasterViewQuery::SEARCHABLE_FILTER_DIMENSIONS as $filter => $dimension) {
             $this->assertContains($dimension, $understood, "filter $filter");

@@ -209,7 +209,8 @@ return [
             Service\CurriculumSearch::class => function ($container) {
                 return new Service\CurriculumSearch(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Service\Curation\CurationWriter::class => function ($container) {
@@ -219,7 +220,8 @@ return [
                 return new Service\RecatalogService(
                     $container->get('Omeka\ApiManager'),
                     $container->get('Omeka\Settings'),
-                    $container->get(Service\Curation\CurationWriter::class)
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Service\Workflow\WorkflowService::class => function ($container) {
