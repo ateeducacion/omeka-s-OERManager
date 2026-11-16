@@ -48,7 +48,8 @@ current terms have no `skos:changeNote`. Build every curriculum query with `CurM
 `skos:broader`. Validate a target by class and set; refuse a retired term unless already linked.
 Stage and Materia are navigation, never written to the REA. Preserve incremental search and per-level
 lazy loading; filter child choices by every selected ancestor (one query per id, merged).
-Slices 4–6 of TASK-064 still move panel, statistics, governance and classifier code off ADR-0009.
+Links to a retired term are kept and warned about (`retired_term`, compared by id with the retired set).
+Slices 4 and 6 of TASK-064 still move the leaf tree and the classifier code off ADR-0009.
 
 ## Audit and reversal
 

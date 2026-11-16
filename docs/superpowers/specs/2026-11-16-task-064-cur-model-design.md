@@ -145,3 +145,60 @@ done, and there is no production catalog).
   order, courses of a stage, course subjects of a course, knowledge/criteria of a course subject, `nex`
   exclusion, `prefLabel` filter) plus disposable REA created, marked and deleted by the script
   (rejection of a target of another class, a valid write, `nex` semantics on marked items).
+
+## 6. Slice 5 decisions (2026-11-16)
+
+Implemented on `feature/task-064-cur-model` (`f1e51b7`, `32a342f`, `a9e86d0`, `bcef474`, `bbb5184`).
+
+### 6.1 Retired-term rule: where it runs and what it costs
+
+- **Rule.** `IntegrityPolicy` emits `retired_term` (warning) for an alignment link (`lrmi:educationalLevel`,
+  `schema:about`, `lrmi:teaches`, `lrmi:assesses`) whose target is in the retired set; the message names the
+  term (`skos:prefLabel`) and its successors (`dcterms:isReplacedBy`), or says it has none. A dead link is
+  not also reported as retired.
+- **Ids, not terms.** `CurriculumTerms::retiredIds()` returns the retired set's member ids with one
+  `returnScalar` query (`CurModel::retiredMembersQuery`), cached for the request. `IntegrityChecker`
+  resolves it lazily (only once a row has an alignment target) and reads label and successors only for a
+  term that is retired. Current terms are never read for this rule.
+- **Where.** First committed behind `checkLinks` (D-7: save listener, drawer, publish gate). The container
+  measurement then showed that D-7's cost premise does not apply here: `values()`, which the column already
+  calls, loads the targets of resource values (25 REA, 85 resource values: 0 extra SQL for
+  `valueResource()`). The rule therefore runs **everywhere `IntegrityChecker` runs**, including the
+  Integrity column and the master view status filter, so the column count and the drawer agree.
+  `dead_link` keeps its gate (it is unreachable by construction).
+- **Measured** (`test/container/retired-term-check.php`, 8080, curriculum 1.1.2): real retired set 0 ids,
+  resolution 7 SQL / ~9 ms; synthetic upper bound, the same scalar query over the whole curriculum set
+  (15 438 ids), 1 SQL / ~18 ms, and 100 000 lookups against it ~1 ms; on a disposable REA with five
+  alignment links, a cold check costs 0 SQL without the rule and 13 SQL / ~7 ms with it (the per-request
+  resolution); a REA linked to a retired term costs 34 SQL / ~9 ms in the drawer (reading the retired
+  term and its successor).
+
+### 6.2 Pairs, panel and statistics
+
+- `CurModel::COURSE_EDGE` (`cur:curso`) replaces `CurricularPairs::COURSE_TERMS`,
+  `ItemPanelData::COURSE_EDGES` and `CurriculumOutline::COURSE_EDGES`. `CurModel::courseSubjectName()`
+  drops the « · <course>» suffix of a `cur:MateriaCurso` label where the course is shown next to it (pairs
+  of the Curricular column, statistics subjects); the panel keeps the full label.
+- `CurriculumOutline` reads every current `cur:Curso` and `cur:MateriaCurso` with `CurModel::termsQuery`
+  (bounded by `LEVEL_CAP`), stages by `cur:etapa`; linked terms outside the current curriculum (retired,
+  legacy, axes, projects) still come in one batch by id. `CurriculumOrder` ranks stages with `StageOrder`
+  and courses by `skos:notation`; nodes without notation follow in natural label order (the classifier's
+  label-only calls keep working until slice 6).
+
+### 6.3 Container harnesses
+
+- New `cur-fixture.php` (shared, writes nothing by itself) and `retired-term-check.php`. The disposable
+  retired term is a new private item in «Currículo · Retirados» with `skos:changeNote` and
+  `dcterms:isReplacedBy`; no curriculum item is modified, and deleting it leaves the set as it was.
+- `stats-check.php`, `columns-check.php`, `detail-panel-check.php`: `cur:` expectations; the checks that
+  need aligned REA SKIP read-only (the 71 REA of the container carry no alignment links any more) and run
+  with `--write` on disposable REA deleted at exit.
+- `materia-multi-curso-check.php` is adapted (courses by notation, labels with their course), keeping the
+  multi-course coverage. `collection-filter-check.php` is model-agnostic and passes unchanged.
+
+### 6.4 Deviations
+
+- `DeclaredAlignmentResolver` (slice 6) still resolves by `dcterms:title` on the ADR-0009 graph; its
+  edges move from `CurricularPairs::COURSE_TERMS` into a private `LEGACY_COURSE_EDGES` until slice 6.
+- `RecatalogService::QUALIFIER_TERMS` was already gone in slice 3; no copy of the ancestor edges remains
+  outside `CurModel` and that legacy constant.
