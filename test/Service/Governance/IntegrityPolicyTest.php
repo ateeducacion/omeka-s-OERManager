@@ -74,14 +74,15 @@ final class IntegrityPolicyTest extends TestCase
         $this->assertStringContainsString('sin sustituto', $issues[0]['message']);
     }
 
-    public function testRetiredRuleOnlyRunsWithLinkChecks(): void
+    public function testRetiredRuleAlsoRunsWithoutLinkChecks(): void
     {
-        // Like dead_link (D-7): the target id needs the linked resource, which
-        // the master view does not wake per row.
+        // Unlike dead_link (D-7): measured on the 4.2 container, the targets
+        // are already loaded by values(), so the master view pays only the
+        // per-request retired-id query (TASK-064 slice 5).
         $values = $this->healthy();
         $values['lrmi:assesses'] = [$this->link() + ['retired' => ['label' => 'Vieja', 'replacedBy' => []]]];
 
-        $this->assertSame([], IntegrityPolicy::issuesFor($values, [], false));
+        $this->assertSame(['retired_term'], $this->codes(IntegrityPolicy::issuesFor($values, [], false)));
     }
 
     public function testMissingLicenceIsAWarning(): void

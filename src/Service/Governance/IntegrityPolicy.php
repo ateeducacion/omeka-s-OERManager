@@ -51,8 +51,9 @@ final class IntegrityPolicy
      *        Término → sus valores. Basta con incluir los términos de anclaje,
      *        la licencia y los obligatorios de plantilla; el resto se ignora.
      *        `hasUri` solo se mira en la licencia; si falta, cuenta como false.
-     *        `retired` marca un enlace a un término retirado (TASK-064); como
-     *        el enlace vivo, solo se evalúa con $checkLinks.
+     *        `retired` marca un enlace a un término retirado (TASK-064); se
+     *        evalúa con o sin $checkLinks (el proyector solo lo rellena si
+     *        tiene el destino).
      * @param list<string> $requiredTerms Obligatorios de la plantilla, [] si no hay
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo
      * @param list<string>|null $licenceVocabUris URIs del vocabulario configurado,
@@ -108,7 +109,7 @@ final class IntegrityPolicy
                     ];
                     continue;
                 }
-                if ($checkLinks && isset($value['retired'])) {
+                if (isset($value['retired'])) {
                     $issues[] = self::retiredIssue($term, $value['retired']);
                 }
             }

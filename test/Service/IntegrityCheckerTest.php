@@ -55,13 +55,26 @@ final class IntegrityCheckerTest extends TestCase
         $this->assertStringContainsString('«SMAT01.2 · Nuevo»', $retired[0]['message']);
     }
 
-    public function testMasterViewCheckNeverResolvesTheRetiredSet(): void
+    public function testMasterViewCheckWarnsTooWithoutTheDeadLinkRule(): void
     {
         $terms = $this->createMock(CurriculumTerms::class);
-        $terms->expects($this->never())->method('retiredIds');
+        $terms->expects($this->once())->method('retiredIds')->willReturn([30]);
 
         $codes = array_column($this->checker($terms)->check($this->rea(), false)->getIssues(), 'code');
 
+        $this->assertContains('retired_term', $codes);
+        $this->assertNotContains('dead_link', $codes);
+    }
+
+    public function testADeadLinkIsNotAlsoReportedAsRetired(): void
+    {
+        $terms = $this->createMock(CurriculumTerms::class);
+        $terms->method('retiredIds')->willReturn([30]);
+        $item = $this->item(3, 'REA', ['lrmi:teaches' => [$this->value('', null, 'resource:item')]]);
+
+        $codes = array_column($this->checker($terms)->check($item)->getIssues(), 'code');
+
+        $this->assertContains('dead_link', $codes);
         $this->assertNotContains('retired_term', $codes);
     }
 
