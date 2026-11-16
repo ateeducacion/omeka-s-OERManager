@@ -2,6 +2,8 @@
 
 namespace OERManager\Service;
 
+use OERManager\Service\Curriculum\CurModel;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Governance\VocabEntries;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -27,9 +29,13 @@ class IntegrityChecker
      *        (Task 5, service key `VocabEntries\Licence`). Única fuente de
      *        `uris()`/`null`: no se duplica aquí la lectura del setting ni de
      *        CustomVocab, para no bifurcar la degradación que centraliza.
+     * @param CurriculumTerms|null $curriculum Retired-set ids for the rule
+     *        «REA linked to a retired term» (TASK-064 slice 5); null = no rule.
      */
-    public function __construct(private readonly VocabEntries $licenceVocab)
-    {
+    public function __construct(
+        private readonly VocabEntries $licenceVocab,
+        private readonly ?CurriculumTerms $curriculum = null
+    ) {
     }
 
     /**
@@ -42,6 +48,10 @@ class IntegrityChecker
      *        POR CONSTRUCCIÓN (no la FK en cascada del core, que es un nivel más
      *        débil): esa `values()` descarta los valores ocultos —enlace con
      *        destino colgante— antes de devolverlos (D-7).
+     *        The retired-term rule (TASK-064 slice 5) rides on the same flag:
+     *        it needs each target's id, which only valueResource() gives, so
+     *        it runs where the target is already woken (save listener, drawer,
+     *        publish gate) and never per row of the master view.
      */
     public function check(ItemRepresentation $item, bool $checkLinks = true): IntegrityResult
     {
@@ -72,26 +82,42 @@ class IntegrityChecker
      * mira porque no evalúa la regla de enlace vivo.
      *
      * @param list<string> $terms
-     * @return array<string, list<array{type:string, hasResource:bool, hasUri:bool, uri:string}>>
+     * @return array<string, list<array{type:string, hasResource:bool, hasUri:bool, uri:string,
+     *     retired?:array{label:string, replacedBy:list<string>}}>>
      */
     private function project(ItemRepresentation $item, array $terms, bool $checkLinks): array
     {
         $allValues = $item->values();
         $projected = [];
+        $retiredIds = null;
 
         foreach ($terms as $term) {
             $projected[$term] = [];
+            $isAlignment = in_array($term, IntegrityPolicy::ALIGNMENT_TERMS, true);
             foreach ($allValues[$term]['values'] ?? [] as $value) {
                 $type = $value->type();
-                $projected[$term][] = [
+                $target = ($checkLinks && str_starts_with($type, 'resource')) ? $value->valueResource() : null;
+                $row = [
                     'type' => $type,
                     'hasResource' => (!$checkLinks || !str_starts_with($type, 'resource'))
                         ? true
-                        : (bool) $value->valueResource(),
+                        : null !== $target,
                     // Barato: uri() es un getter de la entidad, no despierta proxies.
                     'hasUri' => '' !== trim((string) $value->uri()),
                     'uri' => trim((string) $value->uri()),
                 ];
+                if ($isAlignment && null !== $target && null !== $this->curriculum) {
+                    // One scalar query per request (ApiCurriculumTerms caches
+                    // it), resolved only once a linked target is in hand.
+                    $retiredIds ??= array_flip($this->curriculum->retiredIds());
+                    if (isset($retiredIds[(int) $target->id()])) {
+                        $row['retired'] = [
+                            'label' => CurModel::label($target),
+                            'replacedBy' => array_column(CurModel::refs($target, CurModel::IS_REPLACED_BY), 'title'),
+                        ];
+                    }
+                }
+                $projected[$term][] = $row;
             }
         }
 

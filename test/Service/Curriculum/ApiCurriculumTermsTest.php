@@ -124,6 +124,29 @@ final class ApiCurriculumTermsTest extends TestCase
         $api = $this->createMock(Manager::class);
         $api->method('search')->willReturn($this->response([]));
         $this->assertNull((new ApiCurriculumTerms($api, $this->settings))->retiredSetId());
+        $this->assertSame([], (new ApiCurriculumTerms($api, $this->settings))->retiredIds());
+    }
+
+    public function testRetiredIdsAreOneScalarQueryPerRequest(): void
+    {
+        $this->settings->set(CurriculumTerms::SCHEME_SETTING, 46259);
+        $options = [];
+        $api = $this->createMock(Manager::class);
+        $api->method('read')->willReturnCallback(fn ($resource, $id) => $this->response($this->sets[$id]));
+        $api->method('search')->willReturnCallback(function ($resource, $query, $opts = []) use (&$options) {
+            if ('item_sets' === $resource) {
+                return $this->response([$this->sets[46260]]);
+            }
+            $options[] = [$resource, $query, $opts];
+            return $this->response([12 => 12, '15' => '15']);
+        });
+        $terms = new ApiCurriculumTerms($api, $this->settings);
+        $this->assertSame([12, 15], $terms->retiredIds());
+        $this->assertSame([12, 15], $terms->retiredIds());
+        $this->assertSame(
+            [['items', CurModel::retiredMembersQuery(46260), ['returnScalar' => 'id']]],
+            $options
+        );
     }
 
     public function testClassIdsAreResolvedByTermOnce(): void

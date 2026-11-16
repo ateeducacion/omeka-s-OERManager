@@ -237,6 +237,18 @@ final class CurModel
         ];
     }
 
+    /**
+     * Every member of the retired set. Meant for `['returnScalar' => 'id']`:
+     * ids only, the whole set in one query (no page), so the integrity rule
+     * compares ids and never reads a term (TASK-064 slice 5).
+     *
+     * @return array<string,int>
+     */
+    public static function retiredMembersQuery(int $retiredSetId): array
+    {
+        return ['item_set_id' => $retiredSetId];
+    }
+
     /** @return array<string,string> resource_classes search for one term */
     public static function classQuery(string $term): array
     {

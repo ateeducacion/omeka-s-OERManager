@@ -16,6 +16,9 @@ class ApiCurriculumTerms implements CurriculumTerms
     private bool $retiredResolved = false;
     private ?int $retiredSetId = null;
 
+    /** @var list<int>|null */
+    private ?array $retiredIds = null;
+
     /** @var array<int,string> item set id → scheme URI ('' if not a scheme) */
     private array $schemeUris = [];
 
@@ -68,6 +71,19 @@ class ApiCurriculumTerms implements CurriculumTerms
             }
         }
         return $this->retiredSetId;
+    }
+
+    public function retiredIds(): array
+    {
+        if (null === $this->retiredIds) {
+            $setId = $this->retiredSetId();
+            $this->retiredIds = null === $setId ? [] : array_values(array_map('intval', (array) $this->api->search(
+                'items',
+                CurModel::retiredMembersQuery($setId),
+                ['returnScalar' => 'id']
+            )->getContent()));
+        }
+        return $this->retiredIds;
     }
 
     public function classId(string $term): ?int

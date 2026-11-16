@@ -29,6 +29,15 @@ interface CurriculumTerms
     /** The retired set `<scheme URI>/retirados`, or null. */
     public function retiredSetId(): ?int;
 
+    /**
+     * Ids of every item in the retired set, [] without one. One scalar query
+     * per request (ids only): the integrity rule «REA linked to a retired
+     * term» compares the REA's target ids against this list.
+     *
+     * @return list<int>
+     */
+    public function retiredIds(): array;
+
     /** Resource class id of a term such as `cur:Curso`, or null. */
     public function classId(string $term): ?int;
 }

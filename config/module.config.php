@@ -108,7 +108,9 @@ return [
             // degradación que la clase centraliza.
             Service\IntegrityChecker::class => function ($container) {
                 return new Service\IntegrityChecker(
-                    $container->get('OERManager\Service\Governance\VocabEntries\Licence')
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
+                    // TASK-064 slice 5: retired-set ids for «REA linked to a retired term».
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.

@@ -136,6 +136,13 @@ final class CurModelTest extends TestCase
         $this->assertSame(['term' => 'cur:Curso'], CurModel::classQuery('cur:Curso'));
     }
 
+    public function testRetiredMembersQueryListsTheWholeRetiredSet(): void
+    {
+        // No page: the caller asks for ids only (returnScalar), so the whole
+        // set is one scalar query, not a page of representations.
+        $this->assertSame(['item_set_id' => 46260], CurModel::retiredMembersQuery(46260));
+    }
+
     public function testSchemeUriIsTheIdentifierUriEndingInCurriculo(): void
     {
         $set = $this->item(46259, 'Currículo', ['dcterms:identifier' => [

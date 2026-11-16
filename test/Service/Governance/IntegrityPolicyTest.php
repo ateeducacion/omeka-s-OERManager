@@ -46,6 +46,44 @@ final class IntegrityPolicyTest extends TestCase
         $this->assertSame([], IntegrityPolicy::issuesFor($this->healthy(), [], false));
     }
 
+    public function testLinkToARetiredTermIsAWarningNamingItsReplacement(): void
+    {
+        $values = $this->healthy();
+        $values['lrmi:teaches'][] = $this->link() + ['retired' => [
+            'label' => 'SMAT01.1 · Antiguo',
+            'replacedBy' => ['SMAT01.2 · Nuevo', 'SMAT01.3 · Otro'],
+        ]];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], true);
+
+        $this->assertSame(['retired_term'], $this->codes($issues));
+        $this->assertSame('warning', $issues[0]['severity']);
+        $this->assertSame('lrmi:teaches', $issues[0]['field']);
+        $this->assertStringContainsString('«SMAT01.1 · Antiguo»', $issues[0]['message']);
+        $this->assertStringContainsString('«SMAT01.2 · Nuevo», «SMAT01.3 · Otro»', $issues[0]['message']);
+    }
+
+    public function testRetiredTermWithoutReplacementSaysSo(): void
+    {
+        $values = $this->healthy();
+        $values['schema:about'] = [$this->link() + ['retired' => ['label' => 'Vieja', 'replacedBy' => []]]];
+
+        $issues = IntegrityPolicy::issuesFor($values, [], true);
+
+        $this->assertSame(['retired_term'], $this->codes($issues));
+        $this->assertStringContainsString('sin sustituto', $issues[0]['message']);
+    }
+
+    public function testRetiredRuleOnlyRunsWithLinkChecks(): void
+    {
+        // Like dead_link (D-7): the target id needs the linked resource, which
+        // the master view does not wake per row.
+        $values = $this->healthy();
+        $values['lrmi:assesses'] = [$this->link() + ['retired' => ['label' => 'Vieja', 'replacedBy' => []]]];
+
+        $this->assertSame([], IntegrityPolicy::issuesFor($values, [], false));
+    }
+
     public function testMissingLicenceIsAWarning(): void
     {
         $values = $this->healthy();

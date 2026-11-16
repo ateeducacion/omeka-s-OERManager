@@ -46,10 +46,13 @@ final class IntegrityPolicy
     public const LICENSE_TERM = 'dcterms:license';
 
     /**
-     * @param array<string, list<array{type:string, hasResource:bool, hasUri?:bool}>> $values
+     * @param array<string, list<array{type:string, hasResource:bool, hasUri?:bool,
+     *        retired?:array{label:string, replacedBy:list<string>}}>> $values
      *        Término → sus valores. Basta con incluir los términos de anclaje,
      *        la licencia y los obligatorios de plantilla; el resto se ignora.
      *        `hasUri` solo se mira en la licencia; si falta, cuenta como false.
+     *        `retired` marca un enlace a un término retirado (TASK-064); como
+     *        el enlace vivo, solo se evalúa con $checkLinks.
      * @param list<string> $requiredTerms Obligatorios de la plantilla, [] si no hay
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo
      * @param list<string>|null $licenceVocabUris URIs del vocabulario configurado,
@@ -103,6 +106,10 @@ final class IntegrityPolicy
                             $term
                         ),
                     ];
+                    continue;
+                }
+                if ($checkLinks && isset($value['retired'])) {
+                    $issues[] = self::retiredIssue($term, $value['retired']);
                 }
             }
         }
@@ -180,5 +187,42 @@ final class IntegrityPolicy
         }
 
         return $issues;
+    }
+
+    /**
+     * ADR-0022 §6 / TASK-064 slice 5: the link stays (a retired term is never
+     * deleted, and the server keeps existing links), but the curator is told,
+     * with the successor from `dcterms:isReplacedBy` when the curriculum names
+     * one. A warning, not an error: the REA is still correctly catalogued
+     * against the version it was aligned to.
+     *
+     * @param array{label:string, replacedBy:list<string>} $retired
+     * @return array{severity:string, code:string, field:string, message:string}
+     */
+    private static function retiredIssue(string $term, array $retired): array
+    {
+        $replacements = array_values(array_filter(
+            $retired['replacedBy'],
+            static fn (string $label): bool => '' !== $label
+        ));
+        $message = [] === $replacements
+            ? sprintf(
+                'El campo "%s" enlaza con «%s», término retirado del currículo sin sustituto.', // @translate
+                $term,
+                $retired['label']
+            )
+            : sprintf(
+                'El campo "%s" enlaza con «%s», término retirado del currículo. Sustituto: «%s».', // @translate
+                $term,
+                $retired['label'],
+                implode('», «', $replacements)
+            );
+
+        return [
+            'severity' => 'warning',
+            'code' => 'retired_term',
+            'field' => $term,
+            'message' => $message,
+        ];
     }
 }
