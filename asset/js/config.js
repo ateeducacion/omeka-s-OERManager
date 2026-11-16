@@ -15,6 +15,7 @@ export function readConfig() {
         setVisibilityUrl: d.setVisibilityUrl,
         csrfToken: d.csrfToken,
         searchTermsUrl: d.searchTermsUrl,
+        curriculumTreeUrl: d.curriculumTreeUrl,
         recatalogPreviewUrl: d.recatalogPreviewUrl,
         recatalogApplyUrl: d.recatalogApplyUrl,
         recatalogLastEventUrl: d.recatalogLastEventUrl,

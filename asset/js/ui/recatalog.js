@@ -3,6 +3,7 @@ import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
+import { mountLeafTrees } from './leafTree.js';
 import { reopenDrawer } from './drawer.js';
 import { ANCHOR_SLOT } from './drawerDetails.js';
 
@@ -35,6 +36,11 @@ function buildRecatalogPanel(config, itemId, itemJson) {
         $dims.append(buildDimensionSelector(term, label, itemJson, false, valueText));
     });
     $panel.append($dims);
+    // TASK-064 slice 4: knowledge and criteria are chosen in a tree per block
+    // of the chosen course subject, loaded when the editor opens.
+    if (config.curriculumTreeUrl) {
+        mountLeafTrees($panel);
+    }
 
     const $actions = $('<div>').addClass('oer-recatalog-actions');
     // Pre-relleno IA (TASK-010): propone, el curador revisa y confirma.

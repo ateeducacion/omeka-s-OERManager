@@ -776,6 +776,97 @@
     z-index: 1100;
 }
 
+/* TASK-064 slice 4: knowledge and criteria in a tree per block of the chosen
+   course subject. No palette of its own: ink, muted text and the rule colour
+   of the panel; the admin's own checkbox and button styles. The list scrolls
+   inside the field (a course subject has up to 119 knowledge items). */
+.oer-recatalog-dim .chosen-choices:empty {
+    display: none;
+}
+
+.oer-leaf-tree {
+    max-height: 26em;
+    overflow-y: auto;
+    border: 1px solid var(--oer-rule);
+    padding: 0.4em 0.6em;
+}
+
+.oer-leaf-tree-note {
+    margin: 0.2em 0;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-leaf-tree-subject {
+    margin: 0.5em 0 0.2em;
+    font-weight: bold;
+}
+
+.oer-leaf-tree ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.oer-leaf-tree .oer-tree-children {
+    padding-left: 1.4em;
+}
+
+.oer-tree-node {
+    margin: 0.15em 0;
+    line-height: 1.35;
+}
+
+.oer-tree-node > label {
+    display: inline;
+    margin-left: 0.3em;
+    font-weight: normal;
+}
+
+/* Disclosure buttons: the admin's link look, with the state in the glyph and
+   in `aria-expanded` (not in colour). */
+.oer-leaf-tree .oer-tree-toggle {
+    background: none;
+    border: 0;
+    padding: 0.1em 0.2em;
+    margin: 0;
+    color: var(--oer-ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.oer-leaf-tree .oer-tree-toggle::before {
+    content: "\25B8";
+    display: inline-block;
+    width: 1em;
+}
+
+.oer-leaf-tree .oer-tree-toggle[aria-expanded="true"]::before {
+    content: "\25BE";
+}
+
+.oer-leaf-tree .oer-tree-block {
+    font-weight: bold;
+}
+
+.oer-leaf-tree .oer-tree-count {
+    color: var(--oer-muted);
+    font-weight: normal;
+}
+
+/* Selectable nodes without children line up with those that have a twisty. */
+.oer-tree-node:not(.oer-tree-block-node) > .oer-tree-check:first-child {
+    margin-left: 1.4em;
+}
+
+/* A retired or out-of-tree chip says so in text (ADR-0014 rule 3); the colour
+   only repeats it. */
+.oer-recatalog .search-choice .oer-chip-mark {
+    color: var(--oer-warn);
+}
+
 /* El orden del flujo, no el de construcción: primero la ayuda (IA), luego los
    dos pasos obligatorios —previsualizar y confirmar—, y «Cancelar» empujado al
    otro extremo, porque salir no es el siguiente paso de nada. */

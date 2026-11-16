@@ -544,6 +544,24 @@ return [
             ],
         ],
     ],
+    // Strings of `Omeka.jsTranslate()` that go through the translator
+    // (NFR-005). TASK-064 slice 4 registers the knowledge/criteria tree's;
+    // `// @translate` puts them in the template for the catalogues.
+    'js_translate_strings' => [
+        'Elige primero la asignatura (materia en curso) para ver sus saberes y criterios.', // @translate
+        'La asignatura elegida no es una materia en curso del currículo.', // @translate
+        'Alguna asignatura elegida no es una materia en curso del currículo y no tiene árbol.', // @translate
+        'Sin términos vigentes en esta asignatura.', // @translate
+        'No se pudo cargar el árbol del currículo.', // @translate
+        'Cargando…', // @translate
+        'Desplegar', // @translate
+        'seleccionados', // @translate
+        'retirado', // @translate
+        'fuera del árbol', // @translate
+        'Término retirado del currículo. Sustituto:', // @translate
+        'Término retirado del currículo sin sustituto.', // @translate
+        'No está en el árbol de la asignatura elegida.', // @translate
+    ],
     'translator' => [
         'translation_file_patterns' => [
             [
