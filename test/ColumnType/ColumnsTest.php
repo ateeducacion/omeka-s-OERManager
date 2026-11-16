@@ -102,7 +102,8 @@ class ColumnsTest extends TestCase
         $column = new Curricular();
         $this->assertStringContainsString('Sin anclar', $column->renderContent($view, $this->item(), []));
         $course = $this->item([], '1 ESO', 2);
-        $subject = $this->item(['lrmi:educationalLevel' => [$this->value($course)]], '<Maths>', 3);
+        // ADR-0022: a cur:MateriaCurso reaches its course by cur:curso.
+        $subject = $this->item(['cur:curso' => [$this->value($course)]], '<Maths> · 1 ESO', 3);
         $values = [
             'schema:about' => [$this->value($subject)],
             'lrmi:educationalLevel' => [$this->value($course)],
@@ -111,7 +112,9 @@ class ColumnsTest extends TestCase
         ];
         $item = $this->item($values);
         $this->assertSame(AlignmentStatus::COMPLETE, AlignmentStatus::statusFor($item));
-        $this->assertStringContainsString('&lt;Maths&gt;', $column->renderContent($view, $item, []));
+        $html = $column->renderContent($view, $item, []);
+        $this->assertStringContainsString('<span class="oer-curricular-subject">&lt;Maths&gt;</span>', $html);
+        $this->assertStringContainsString('<span class="oer-curricular-stage">1 ESO</span>', $html);
         $this->assertStringContainsString('Completo', (new AlignmentStatus())->renderContent($view, $item, []));
         $values['schema:about'] = [$this->value(null, '<Literal>')];
         $html = $column->renderContent($view, $this->item($values), []);
@@ -125,7 +128,7 @@ class ColumnsTest extends TestCase
         $view = new PhpRenderer();
         $column = new Curricular();
         $course = $this->item([], '1 ESO', 2);
-        $subject = $this->item(['lrmi:educationalLevel' => [$this->value($course)]], 'Matemáticas', 3);
+        $subject = $this->item(['cur:curso' => [$this->value($course)]], 'Matemáticas · 1 ESO', 3);
         $values = [
             'schema:about' => [$this->value($subject)],
             'lrmi:educationalLevel' => [$this->value($course)],

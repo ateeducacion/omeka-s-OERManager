@@ -2,7 +2,7 @@
 
 namespace OERManager\Service\Governance;
 
-use Omeka\Api\Representation\AbstractEntityRepresentation;
+use OERManager\Service\Curriculum\CurModel;
 use Omeka\Api\Representation\ItemRepresentation;
 
 /**
@@ -15,28 +15,16 @@ use Omeka\Api\Representation\ItemRepresentation;
  * decidir el estado (un curso huérfano degrada a `partial`, ADR-0005 §4
  * ampliado el 2026-08-10).
  *
- * Es **glue del core**, no lógica pura: recorre representaciones de Omeka, así
- * que no se puede probar en host. La decisión que alimenta sí es pura y está
- * probada — ver `AlignmentStatusValue::fromFlags()` y `CurricularSummary`.
- *
- * Sin consultas de grafo nuevas: la Asignatura declara su propio curso
- * (ADR-0009) y la arista se recorre sobre la representación ya cargada, igual
- * que `RecatalogService::qualifiedTitle()`.
+ * Sin consultas de grafo nuevas: la materia de un curso (`cur:MateriaCurso`)
+ * declara su curso por `cur:curso` (ADR-0022, `CurModel::COURSE_EDGE`) y la
+ * arista se recorre sobre la representación ya cargada, igual que
+ * `RecatalogService::qualifiedTitle()`. Su etiqueta ya lleva el curso
+ * («Matemáticas · 1º ESO»), así que el par muestra solo la materia.
  */
 final class CurricularPairs
 {
     public const SUBJECT_TERM = 'schema:about';
     public const STAGE_TERM = 'lrmi:educationalLevel';
-
-    /**
-     * Aristas por las que una Asignatura declara su curso, en orden de
-     * preferencia. Mismo juego que `RecatalogService::QUALIFIER_TERMS`.
-     */
-    public const COURSE_TERMS = [
-        'lrmi:educationalLevel',
-        'lrmi:educationalAlignment',
-        'schema:inDefinedTermSet',
-    ];
 
     /**
      * @return array{
@@ -58,13 +46,14 @@ final class CurricularPairs
             if (null === $subject) {
                 continue;
             }
-            $course = self::courseOf($subject);
+            $course = CurModel::target($subject, CurModel::COURSE_EDGE);
+            $courseLabel = null !== $course ? CurModel::label($course) : '';
             if (null !== $course) {
                 $covered[$course->id()] = true;
             }
             $pairs[] = [
-                'subject' => (string) $subject->displayTitle(''),
-                'course' => null !== $course ? (string) $course->displayTitle('') : '',
+                'subject' => CurModel::courseSubjectName(CurModel::label($subject), $courseLabel),
+                'course' => $courseLabel,
                 'isLiteral' => false,
             ];
         }
@@ -77,23 +66,10 @@ final class CurricularPairs
             }
             $level = $value->valueResource();
             if (null !== $level && !isset($covered[$level->id()])) {
-                $orphans[] = (string) $level->displayTitle('');
+                $orphans[] = CurModel::label($level);
             }
         }
 
         return ['pairs' => $pairs, 'orphanCourses' => $orphans];
-    }
-
-    /** El curso al que pertenece una Asignatura, o null si no lo declara. */
-    private static function courseOf(AbstractEntityRepresentation $subject): ?AbstractEntityRepresentation
-    {
-        foreach (self::COURSE_TERMS as $term) {
-            $value = $subject->value($term);
-            $course = $value ? $value->valueResource() : null;
-            if (null !== $course) {
-                return $course;
-            }
-        }
-        return null;
     }
 }

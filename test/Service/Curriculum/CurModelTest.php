@@ -136,6 +136,15 @@ final class CurModelTest extends TestCase
         $this->assertSame(['term' => 'cur:Curso'], CurModel::classQuery('cur:Curso'));
     }
 
+    public function testCourseSubjectNameDropsTheCourseSuffixOnly(): void
+    {
+        $this->assertSame('Matemáticas', CurModel::courseSubjectName('Matemáticas · 1º ESO', '1º ESO'));
+        $this->assertSame('Matemáticas · 1º ESO', CurModel::courseSubjectName('Matemáticas · 1º ESO', ''));
+        $this->assertSame('Matemáticas · 2º ESO', CurModel::courseSubjectName('Matemáticas · 2º ESO', '1º ESO'));
+        $this->assertSame('Matemáticas', CurModel::courseSubjectName(' Matemáticas ', '1º ESO'));
+        $this->assertSame('· 1º ESO', CurModel::courseSubjectName(' · 1º ESO', '1º ESO'));
+    }
+
     public function testRetiredMembersQueryListsTheWholeRetiredSet(): void
     {
         // No page: the caller asks for ids only (returnScalar), so the whole

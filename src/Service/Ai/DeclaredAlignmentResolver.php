@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Ai;
 
-use OERManager\Service\Governance\CurricularPairs;
 use Omeka\Api\Manager as ApiManager;
 
 /**
@@ -21,6 +20,18 @@ use Omeka\Api\Manager as ApiManager;
  */
 final class DeclaredAlignmentResolver
 {
+    /**
+     * ADR-0009 edges from a subject to its course. This resolver still looks
+     * terms up by `dcterms:title` on the old graph; TASK-064 slice 6 moves it
+     * to `skos:notation`/`skos:prefLabel` and `CurModel::COURSE_EDGE`. Kept
+     * here, not in CurricularPairs, which reads the `cur:` model since slice 5.
+     */
+    private const LEGACY_COURSE_EDGES = [
+        'lrmi:educationalLevel',
+        'lrmi:educationalAlignment',
+        'schema:inDefinedTermSet',
+    ];
+
     public function __construct(private ApiManager $api)
     {
     }
@@ -86,14 +97,14 @@ final class DeclaredAlignmentResolver
 
     /**
      * La Asignatura declara su curso por una de varias aristas
-     * (CurricularPairs::COURSE_TERMS); vale la primera que dé un único item.
+     * (LEGACY_COURSE_EDGES); vale la primera que dé un único item.
      *
      * @param list<array{kind: string, value: string, reason: string}> $unresolved
      */
     private function subjectInCourse(string $name, int $courseId, string $label, array &$unresolved): ?int
     {
         $ambiguous = false;
-        foreach (CurricularPairs::COURSE_TERMS as $edge) {
+        foreach (self::LEGACY_COURSE_EDGES as $edge) {
             $ids = $this->ids([['dcterms:title', $name, 'eq'], [$edge, (string) $courseId, 'res']]);
             if (1 === count($ids)) {
                 return $ids[0];

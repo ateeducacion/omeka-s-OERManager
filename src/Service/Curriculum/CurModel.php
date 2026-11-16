@@ -278,6 +278,25 @@ final class CurModel
         return '' !== $label ? $label : trim((string) $item->displayTitle());
     }
 
+    /**
+     * The subject part of a course subject's label: «Matemáticas · 1º ESO»
+     * with course «1º ESO» is «Matemáticas». Where the course is shown next to
+     * the subject (pairs, statistics) the suffix would repeat it. Any other
+     * label is returned trimmed and whole.
+     */
+    public static function courseSubjectName(string $label, string $courseLabel): string
+    {
+        $label = trim($label);
+        $suffix = ' · ' . trim($courseLabel);
+        if ('' !== trim($courseLabel) && str_ends_with($label, $suffix)) {
+            $name = trim(substr($label, 0, -strlen($suffix)));
+            if ('' !== $name) {
+                return $name;
+            }
+        }
+        return $label;
+    }
+
     public static function notation(AbstractResourceEntityRepresentation $item): string
     {
         return self::literal($item, self::NOTATION);
