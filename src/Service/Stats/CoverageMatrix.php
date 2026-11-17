@@ -13,7 +13,7 @@ use OERManager\Service\Governance\SubjectTint;
  * física» items make one row); columns are courses in curriculum order. A
  * cell is the number of distinct REA linked (`schema:about`) to the subject
  * item of that course — the course comes from the subject's own edge
- * (ADR-0009), not from the REA's `lrmi:educationalLevel`. A cell is null when
+ * (`cur:curso`, ADR-0022), not from the REA's `lrmi:educationalLevel`. A cell is null when
  * no subject of that name exists in that course, and 0 when it exists and no
  * REA covers it: the second is the investment signal.
  */

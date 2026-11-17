@@ -57,8 +57,64 @@ final class CurricularClassifierTest extends TestCase
         // Curso y materia DERIVADOS de las hojas (coherencia por construcción):
         $this->assertSame([12], $result['lrmi:educationalLevel']);
         $this->assertSame([22], $result['schema:about']);
-        // La etapa nunca se escribe (ADR-0009):
+        // La etapa nunca se escribe (ADR-0022: solo navegación):
         $this->assertArrayNotHasKey('etapa', $result);
+    }
+
+    /**
+     * TASK-064 slice 6: the rows of the `cur:` model, as CurriculumTermResolver
+     * gives them. The Materia name (with its stage suffix) bounds the leaves; a
+     * candidate line is «[course · block] definition (notation)», the shape of
+     * ADR-0009 prompts; course and subject derive to the `cur:Curso` and
+     * `cur:MateriaCurso` of the chosen leaves.
+     */
+    public function testRunsOnTheCurModelRows(): void
+    {
+        $resolver = new FakeTermResolver(['etapa' => [['id' => 46262, 'title' => 'Educación Secundaria Obligatoria']]]);
+        $resolver->families = [46262 => [
+            ['name' => 'Matemáticas (ESO)', 'id' => 46415, 'courses' => [['id' => 46279, 'title' => '1º ESO']]],
+        ]];
+        $resolver->leaves = [
+            'lrmi:teaches' => [[
+                'id' => 60546, 'title' => 'SMAT01SBI.1', 'notation' => 'SMAT01SBI.1', 'description' => 'Conteo.',
+                'block' => 'SMAT01SBI · I. Sentido numérico', 'courseId' => 46279, 'courseTitle' => '1º ESO',
+                'subjectId' => 46626,
+            ]],
+            'lrmi:assesses' => [[
+                'id' => 51557, 'title' => 'SMAT01CE1.1', 'notation' => 'SMAT01CE1.1',
+                'description' => 'Interpretar problemas matemáticos.',
+                'block' => 'Matemáticas · 1º ESO · bloque competencial C1 + C2', 'courseId' => 46279,
+                'courseTitle' => '1º ESO', 'subjectId' => 46626,
+            ]],
+        ];
+        $llm = new FakeLlmClient([
+            '{"selected":[1]}', // Etapa
+            '{"selected":[1]}', // Materia (one course: no course step)
+            '{"selected":[{"i":1,"why":"cuenta"}]}', // Saberes
+            '{"selected":[{"i":1,"why":"problemas"}]}', // Criterios
+        ]);
+
+        $result = $this->make($resolver, $llm)->classify(new ItemContext('contar objetos', ''));
+
+        $this->assertSame([
+            'lrmi:teaches' => [60546],
+            'lrmi:assesses' => [51557],
+            'lrmi:educationalLevel' => [46279],
+            'schema:about' => [46626],
+        ], $result);
+        $leafCalls = array_values(array_filter($resolver->calls, static fn (array $c): bool => isset($c['leaves'])));
+        $this->assertSame('Matemáticas (ESO)', $leafCalls[0]['subject']);
+        $this->assertSame(46262, $leafCalls[0]['etapa']);
+        $this->assertCount(4, $llm->calls);
+        $this->assertStringContainsString('Matemáticas (ESO) (1º ESO)', $llm->calls[1]['messages'][0]['content']);
+        $this->assertStringContainsString(
+            '[1º ESO · SMAT01SBI · I. Sentido numérico] Conteo. (SMAT01SBI.1)',
+            $llm->calls[2]['messages'][0]['content']
+        );
+        $this->assertStringContainsString(
+            '[1º ESO · Matemáticas · 1º ESO · bloque competencial C1 + C2] Interpretar problemas matemáticos. (SMAT01CE1.1)',
+            $llm->calls[3]['messages'][0]['content']
+        );
     }
 
     public function testCrossGradeSelectionDerivesMultipleCourses(): void
@@ -79,7 +135,7 @@ final class CurricularClassifierTest extends TestCase
 
     public function testEtapaStepBiasesTowardInclusivenessButLaterStepsDoNot(): void
     {
-        // La etapa solo acota (ADR-0009): ante duda de nivel se prima el recall
+        // La etapa solo acota (ADR-0022): ante duda de nivel se prima el recall
         // para no dejar fuera saberes/criterios. El sesgo NO debe contaminar la
         // materia ni las hojas (ahí la precisión sí importa: definen schema:about).
         $llm = new FakeLlmClient([

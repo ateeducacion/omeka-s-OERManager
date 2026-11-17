@@ -9,7 +9,7 @@ namespace OERManager\Service\Governance;
  * addendum de ADR-0014 del 2026-10-03).
  *
  * Se calcula sobre el NOMBRE de la materia, no sobre el id del item-término: una
- * Asignatura lleva su propio curso (ADR-0009), así que la misma materia existe
+ * Asignatura lleva su propio curso (`cur:MateriaCurso`, ADR-0022), así que la misma materia existe
  * como un item distinto por curso («Educación física» son 11 items en el
  * catálogo real) y un hash del id la pintaría de 11 colores en la misma columna.
  * El nombre se normaliza (mayúsculas, tildes, espacios) para que «Educación

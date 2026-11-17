@@ -25,7 +25,7 @@ function buildRecatalogPanel(config, itemId, itemJson) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
 
     const $dims = $('<div>').addClass('oer-recatalog-dims');
-    // Etapa: ayuda de navegación de la cascada (ADR-0009). No se escribe en
+    // Etapa: ayuda de navegación de la cascada (ADR-0022). No se escribe en
     // el REA; solo acota Curso → Asignatura → Saberes/Criterios. La advertencia
     // va en su propia línea: una etiqueta etiqueta, y antes hacía dos trabajos.
     const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), {}, true, valueText);

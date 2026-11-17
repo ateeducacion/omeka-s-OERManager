@@ -91,7 +91,7 @@ export function buildDimensionSelector(term, label, itemJson, isHelper, valueTex
 
 /**
  * Contexto de ancestros para acotar la búsqueda de una dimensión hija
- * (ADR-0009): etapa (ayuda), curso (educationalLevel) y asignatura (about).
+ * (ADR-0022): etapa (ayuda), curso (educationalLevel) y asignatura (about).
  *
  * Los CUATRO términos curriculares tienen cardinalidad múltiple (regla de
  * negocio fijada en PEND-007): un REA con 1º de Primaria y 2º de Bachillerato
@@ -191,7 +191,7 @@ export function initTermPicker(config) {
             return;
         }
         searchTimer = window.setTimeout(() => {
-            // Acotación contextual (ADR-0009): se envían los ancestros elegidos.
+            // Acotación contextual (ADR-0022): se envían los ancestros elegidos.
             const params = getContext($dim.closest('.oer-recatalog'));
             params.dimension = term;
             params.q = text;
