@@ -4,6 +4,8 @@
 
 Aceptado (2026-08-28)
 
+**2026-11-17: points 1 and 6 and the addendum are replaced by [ADR-0023](0023-profiles-workflow-shared-mediateca.md)** (dedicated roles `rea_proponente`/`rea_curador` in the shared mediateca; the states of point 3 are extended with Descartado and Publicado).
+
 ## Contexto
 
 El propietario pide un flujo de trabajo nuevo: un **autor de REA** propone un recurso que ha creado o adaptado como candidato al catálogo; un **curador de REA** lo verifica, lo cataloga curricularmente si procede, y lo publica. Ninguno de los dos actores existía antes en el gobierno del módulo — solo "curador" como término genérico para quien ya cura vía ACL `editor`+. El módulo, hasta ahora, solo *gestiona* items ya existentes (RF-001); no tiene ningún flujo de creación o propuesta propio.
