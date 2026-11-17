@@ -72,6 +72,8 @@
   **Check a format against real files, not only its docs.** The upstream docs say `content.xml` is in the ODE namespace and DataGame payloads are `encodeURIComponent` JSON; the upstream fixtures show every export writes a bare `<ode>` and most quizzes use `escape()` + XOR 146. Detecting by namespace alone would have missed every SCORM/IMS/web export.
   **`jsonProperties.textTextarea` repeats `htmlView`.** Read one source per iDevice or the budget is spent twice.
 
+- **Backlog review (2026-11-17, with the owner).** TASK-013 closed, superseded by ADR-0022 (RF-013 not pursued); TASK-017 closed, its phase 2 was TASK-012/TASK-019; TASK-049 blocked until there is a second creation year or `dcterms:created`; TASK-055 text brought up to date with the `cur:` resolution of TASK-064. New: TASK-065 (panel usability and design pass), TASK-066 (decide proposer/curator/administrator profiles, permissions and workflow) and TASK-067 (implement and verify them). Order agreed: TASK-035 before TASK-065; TASK-052 after TASK-064 merges.
+
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
 Tomadas por el propietario y documentadas en `docs/referencia/contexto-modulo-rea.md` §2; pendientes de formalizar como ADR cuando se toquen:
