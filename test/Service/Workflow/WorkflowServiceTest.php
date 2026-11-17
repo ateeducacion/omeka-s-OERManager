@@ -34,14 +34,17 @@ final class WorkflowServiceTest extends TestCase
             $id = $propertyIds[$query['term']] ?? null;
             return $this->response(null === $id ? [] : [$this->item($id)]);
         });
-        $api->method('update')->willReturnCallback(function ($resource, $id, $data, $files, $options) {
+        $api->method('update')->willReturnCallback(function ($resource, $id, $data, $files, $options) use (&$guard) {
+            // The write runs inside the guard's flag, so the status guard lets it through.
+            $this->assertFalse($guard->rejects([], ['curation:status' => ['x']], true, 'rea_curador'));
             $this->assertSame('items', $resource);
             $this->assertSame(1, $id);
             // WorkflowService's isPartial trap: targeted clear + append, never a bare isPartial.
             $this->assertSame(['isPartial' => true, 'collectionAction' => 'append'], $options);
             $this->writes[] = $data;
         });
-        return new WorkflowService($api, new CurationWriter($api));
+        $guard = new \OERManager\Service\Workflow\StatusGuard();
+        return new WorkflowService($api, new CurationWriter($api), $guard);
     }
 
     private function rea(?string $status, bool $isPublic = false)
@@ -64,6 +67,8 @@ final class WorkflowServiceTest extends TestCase
             'note' => $data[WorkflowStatus::NOTE_TERM][0]['@value'] ?? null,
             'public' => $data['o:is_public'] ?? null,
             'annotation' => $status['@annotation'],
+            'statusPublic' => $status['is_public'] ?? true,
+            'notePublic' => $data[WorkflowStatus::NOTE_TERM][0]['is_public'] ?? null,
         ];
     }
 
@@ -105,6 +110,16 @@ final class WorkflowServiceTest extends TestCase
         );
         $this->assertSame('OERManager flujo: Publicado', $annotation['dcterms:provenance'][0]['@value']);
         $this->assertSame('Ana', $this->written(0)['annotation']['dcterms:contributor'][0]['@value']);
+
+        // Security review: workflow data is never public — not the status, not
+        // the reason, not who moved it (the public API must not show names).
+        foreach (array_keys($expected) as $index) {
+            $this->assertFalse($this->written($index)['statusPublic'], "status $index");
+        }
+        $this->assertFalse($this->written(1)['notePublic']);
+        foreach ($annotation as $term => $values) {
+            $this->assertFalse($values[0]['is_public'], $term);
+        }
     }
 
     public function testPublicOutOfFlowReaCanBeRegularisedEitherWay(): void

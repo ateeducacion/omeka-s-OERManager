@@ -154,7 +154,34 @@ curation:status "Publicado"
 curation:note  "<reason>"            (Rechazado, Descartado, Despublicar only)
 ```
 
-Publicado is therefore recorded (who and when) instead of deleting the status as before. The
+The status value, the note and every annotation value are written **private** (`is_public => false`,
+security review of slice 2): the public API must not show who published a REA or why it was
+rejected. Readers keep working: curators and proposers inherit `view-all` from `site_editor`, and
+Omeka's value visibility filter also shows an owner the private values of their own items (the
+`author` fallback). The re-cataloguer's ADR-0002 annotations (`CurationWriter::annotation()`) stay
+public as before and expose cataloguers' names on published REA — **for the owner to decide**, not
+changed here.
+
+Publicado is therefore recorded (who and when) instead of deleting the status as before.
+
+### Who may change the workflow values (security review)
+
+`curation:status`/`curation:note` are plain literals, so anyone with item update — a
+`rea_proponente` inherits it from `site_editor` — could write «Publicado» by hand in the native form
+or the API, make the REA public and skip the curator without raising «Publicado fuera del flujo».
+A listener on `ItemAdapter` `api.hydrate.post` (`Module::guardWorkflowValues`, rules in
+`Workflow\StatusGuard`) rejects with a validation error any create or update whose resulting status
+or note differs from the stored ones, unless:
+
+- the write comes from `WorkflowService` (a request-scoped flag around its own commit), or
+- the user is `global_admin` (the initial import, TASK-072).
+
+Compared as text, order-insensitive, so the native form resubmitting unchanged values passes.
+It applies to items that are or were `lrmi:LearningResource`; an item that only now becomes one
+counts as having no previous values, so a status cannot be written under another class and kept by
+switching the class back. Covers the API, the native form and batch update (each sub-update hydrates
+the same way). One small query per item save (old class and workflow values). Other items keep
+`curation:status` free for other modules. Not covered: hand edits of the annotations themselves. The
 annotation of the previous state disappears with its value; the full history of who moved a REA is
 not kept (out of scope: ADR-0015 events are for reversible curation, not for workflow).
 

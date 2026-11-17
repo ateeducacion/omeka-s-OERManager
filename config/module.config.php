@@ -85,6 +85,8 @@ return [
     'service_manager' => [
         'invokables' => [
             Service\ItemPanelData::class => Service\ItemPanelData::class,
+            // TASK-067 security review: one shared flag per request.
+            Service\Workflow\StatusGuard::class => Service\Workflow\StatusGuard::class,
             // Patrón de filtros computados (ADR-0013, D4).
             Service\ComputedFilter::class => Service\ComputedFilter::class,
             // Catalogación IA (TASK-010): núcleo puro sin dependencias.
@@ -238,7 +240,8 @@ return [
                 // with the re-cataloguer's writer, and written by its targeted commit.
                 return new Service\Workflow\WorkflowService(
                     $container->get('Omeka\ApiManager'),
-                    $container->get(Service\Curation\CurationWriter::class)
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\Workflow\StatusGuard::class)
                 );
             },
             // Gobernanza (TASK-028 slice 3b, RF-015): lee y escribe las cinco

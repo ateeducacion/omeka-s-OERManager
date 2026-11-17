@@ -117,6 +117,16 @@ class Module extends AbstractModule implements InitProviderInterface
             'api.update.post',
             [$this, 'handleItemPostSave']
         );
+        // Security review of TASK-067: curation:status/curation:note of a REA
+        // change only through WorkflowService or by global_admin. hydrate.post
+        // sees the hydrated values; the database still holds the old ones, and
+        // an error here makes the core refresh the entity and refuse the write
+        // (create, update, batch update, API and native form alike).
+        $sharedEventManager->attach(
+            'Omeka\Api\Adapter\ItemAdapter',
+            'api.hydrate.post',
+            [$this, 'guardWorkflowValues']
+        );
         // Columnas y orden por defecto de la vista maestra, configurables por
         // cada curador desde su perfil (TASK-028). Se usa la clave propia
         // `oer_items`: compartir la de `items` haría que configurar esta tabla
@@ -325,6 +335,77 @@ class Module extends AbstractModule implements InitProviderInterface
             'unpublishUrl' => $view->url('admin/oer-manager', ['action' => 'unpublish']),
             'reopenUrl' => $view->url('admin/oer-manager', ['action' => 'reopen']),
         ]);
+    }
+
+    /** Old class and workflow values of an item, in one query (guardWorkflowValues). */
+    private const WORKFLOW_VALUES_SQL = <<<'SQL'
+        SELECT CONCAT(cv.prefix, ':', rc.local_name) AS class, p.local_name AS term, v.value AS value
+        FROM resource r
+        LEFT JOIN resource_class rc ON rc.id = r.resource_class_id
+        LEFT JOIN vocabulary cv ON cv.id = rc.vocabulary_id
+        LEFT JOIN value v ON v.resource_id = r.id AND v.property_id IN (
+            SELECT p2.id FROM property p2 JOIN vocabulary v2 ON v2.id = p2.vocabulary_id
+            WHERE v2.prefix = 'curation' AND p2.local_name IN ('status', 'note')
+        )
+        LEFT JOIN property p ON p.id = v.property_id
+        WHERE r.id = ?
+        SQL;
+
+    /**
+     * Rejects a hand-made change of `curation:status`/`curation:note` on a
+     * REA (security review of TASK-067; rules in `Workflow\StatusGuard`).
+     *
+     * A REA is an item that is or was `lrmi:LearningResource`; when it only
+     * becomes one now, its old values count as empty, so a status cannot be
+     * smuggled in under another class and kept when the class changes back.
+     */
+    public function guardWorkflowValues(Event $event): void
+    {
+        $entity = $event->getParam('entity');
+        if (!is_object($entity) || !method_exists($entity, 'getValues')) {
+            return;
+        }
+        $services = $this->getServiceLocator();
+        $class = static function ($resourceClass): ?string {
+            return $resourceClass
+                ? $resourceClass->getVocabulary()->getPrefix() . ':' . $resourceClass->getLocalName()
+                : null;
+        };
+        $lr = Service\MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM;
+
+        $after = [];
+        foreach ($entity->getValues() as $value) {
+            $term = $class($value->getProperty());
+            if (in_array($term, Service\Workflow\StatusGuard::TERMS, true)) {
+                $after[$term][] = (string) $value->getValue();
+            }
+        }
+        $isLearningResource = $lr === $class($entity->getResourceClass());
+
+        $before = [];
+        $wasLearningResource = false;
+        if (null !== $entity->getId()) {
+            $rows = $services->get('Omeka\Connection')
+                ->fetchAllAssociative(self::WORKFLOW_VALUES_SQL, [(int) $entity->getId()]);
+            foreach ($rows as $row) {
+                $wasLearningResource = $wasLearningResource || $lr === $row['class'];
+                if (null !== $row['term']) {
+                    $before['curation:' . $row['term']][] = (string) $row['value'];
+                }
+            }
+        }
+        if (!$wasLearningResource) {
+            $before = [];
+        }
+
+        $identity = $services->get('Omeka\AuthenticationService')->getIdentity();
+        /** @var Service\Workflow\StatusGuard $guard */
+        $guard = $services->get(Service\Workflow\StatusGuard::class);
+        if ($guard->rejects($before, $after, $isLearningResource || $wasLearningResource, $identity?->getRole())) {
+            $message = 'El estado y el motivo del flujo de curación de un REA solo cambian con '
+                . 'sus acciones (proponer, rechazar, publicar…), no a mano.'; // @translate
+            $event->getParam('errorStore')->addError(Service\Workflow\WorkflowStatus::STATUS_TERM, $message);
+        }
     }
 
     /**

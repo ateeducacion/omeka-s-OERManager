@@ -19,6 +19,11 @@ use Omeka\Api\Representation\ItemRepresentation;
  * (ADR-0002): `dcterms:contributor`, `dcterms:modified` con la misma marca de
  * microsegundos que el re-catalogador y `dcterms:provenance`. Así «Publicado»
  * dice quién publicó y cuándo, en vez de borrarse como antes.
+ *
+ * Revisión de seguridad (TASK-067): estado, motivo y anotación se escriben
+ * PRIVADOS — el API público no debe enseñar el nombre de quien publicó ni el
+ * motivo de un rechazo —, y la escritura corre dentro del flag de
+ * `StatusGuard`, el único camino (con global_admin) que puede cambiarlos.
  */
 final class WorkflowService
 {
@@ -27,7 +32,8 @@ final class WorkflowService
 
     public function __construct(
         private readonly ApiManager $api,
-        private readonly CurationWriter $writer
+        private readonly CurationWriter $writer,
+        private readonly StatusGuard $guard = new StatusGuard()
     ) {
     }
 
@@ -146,7 +152,9 @@ final class WorkflowService
         $statusValue['@annotation'] = $this->writer->annotation(
             $contributor,
             $this->writer->stamp(),
-            sprintf(self::PROVENANCE, $status)
+            sprintf(self::PROVENANCE, $status),
+            '',
+            false
         );
         $data = [WorkflowStatus::STATUS_TERM => [$statusValue]];
         $notePropertyId = $this->writer->propertyId(WorkflowStatus::NOTE_TERM);
@@ -157,17 +165,18 @@ final class WorkflowService
         if (null !== $isPublic) {
             $data['o:is_public'] = $isPublic;
         }
-        $this->writer->commit((int) $item->id(), $clear, $data);
+        $this->guard->run(fn () => $this->writer->commit((int) $item->id(), $clear, $data));
         return ['updated' => true, 'status' => $status];
     }
 
-    /** @return array{type:string, property_id:int, '@value':string} */
+    /** @return array{type:string, property_id:int, '@value':string, is_public:false} */
     private function literal(int $propertyId, string $value): array
     {
         return [
             'type' => 'literal',
             'property_id' => $propertyId,
             '@value' => $value,
+            'is_public' => false,
         ];
     }
 
