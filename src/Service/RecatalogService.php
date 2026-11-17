@@ -3,6 +3,8 @@
 namespace OERManager\Service;
 
 use OERManager\Service\Curation\CurationWriter;
+use OERManager\Service\Curriculum\CurModel;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\CurationHistory;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
@@ -38,34 +40,17 @@ class RecatalogService
     /** Dimensiones cuyo valor puede llevar justificación de la IA (TASK-023). */
     private const JUSTIFIABLE_TERMS = ['lrmi:teaches', 'lrmi:assesses'];
 
-    /**
-     * Aristas al ancestro que desambigua un item-término (D7), en orden de
-     * preferencia: el Curso cuando existe —Asignatura vía lrmi:educationalLevel,
-     * Saber/Criterio vía la denormalizada lrmi:educationalAlignment (ADR-0009)— y,
-     * si no, el conjunto al que pertenece (Curso→Etapa, Eje→su DefinedTermSet).
-     */
-    private const QUALIFIER_TERMS = [
-        'lrmi:educationalLevel',
-        'lrmi:educationalAlignment',
-        'schema:inDefinedTermSet',
-    ];
-
-    /**
-     * Dimensión que NO se califica: los ejes son un vocabulario plano y todos
-     * cuelgan del mismo DefinedTermSet, así que el sufijo sería constante («…
-     * (Categorías de REAs)») y alargaría cada línea sin desambiguar nada.
-     */
-    private const UNQUALIFIED_TERM = 'dcterms:relation';
-
     private ApiManager $api;
     private Settings $settings;
     private CurationWriter $writer;
+    private CurriculumTerms $terms;
 
-    public function __construct(ApiManager $api, Settings $settings, CurationWriter $writer)
+    public function __construct(ApiManager $api, Settings $settings, CurationWriter $writer, CurriculumTerms $terms)
     {
         $this->api = $api;
         $this->settings = $settings;
         $this->writer = $writer;
+        $this->terms = $terms;
     }
 
     /**
@@ -86,7 +71,7 @@ class RecatalogService
             $current = $currentTargets['ids'];
             $titles = $currentTargets['titles'];
             $next = $this->normalizeIds($proposed[$term]);
-            $invalid = $this->invalidTargets($term, $next, $titles);
+            $invalid = $this->invalidTargets($term, $next, $current, $titles);
             $diff[$term] = [
                 'current' => $current,
                 'next' => $next,
@@ -141,18 +126,19 @@ class RecatalogService
                 continue;
             }
             $ids = $this->normalizeIds($proposed[$term]);
-            $invalid = $this->invalidTargets($term, $ids);
+            // El estado previo se lee ANTES de escribir: es lo único que una
+            // value annotation no puede registrar, porque al borrarse el valor
+            // se borra con él (ADR-0015). También decide qué retirados se
+            // conservan: los que ya estaban enlazados.
+            $current = $this->currentTargets($item, $term);
+            $invalid = $this->invalidTargets($term, $ids, $current['ids']);
             if ($invalid) {
                 throw new \RuntimeException(sprintf(
-                    'Destinos inválidos para %s (inexistentes o de otra dimensión): %s',
+                    'Destinos inválidos para %s (inexistentes, de otra dimensión o retirados): %s',
                     $term,
                     implode(', ', $invalid)
                 ));
             }
-            // El estado previo se lee ANTES de escribir: es lo único que una
-            // value annotation no puede registrar, porque al borrarse el valor
-            // se borra con él (ADR-0015).
-            $current = $this->currentTargets($item, $term);
             $dimensions[$term] = [
                 'before' => $current['ids'],
                 'after' => $ids,
@@ -257,10 +243,9 @@ class RecatalogService
      * Dimensión (término) de la que viene cada id referenciado en los eventos.
      *
      * `titlesFor()` necesita el término real, no una constante, porque
-     * `qualifiedTitle()` trata `UNQUALIFIED_TERM` (`dcterms:relation`, los ejes
-     * temáticos) como caso especial: no le añade sufijo de ancestro. Pasar
-     * siempre `lrmi:teaches` calificaría los ejes con el sufijo constante de su
-     * `DefinedTermSet`, justo lo que ese caso especial existe para evitar.
+     * `qualifiedTitle()` califica según la dimensión (CurModel::qualifierEdges):
+     * los ejes (`dcterms:relation`), cursos y materias en curso no llevan
+     * sufijo. Pasar siempre `lrmi:teaches` daría a todos el sufijo de saberes.
      *
      * Un id que apareciera en más de una dimensión conserva la primera que lo
      * referencia; en la práctica no colisiona porque cada dimensión resuelve
@@ -347,7 +332,7 @@ class RecatalogService
         $targets = CurationEvent::restoreTargets($payload);
         $dropped = [];
         foreach ($targets as $term => $ids) {
-            $invalid = $this->invalidTargets($term, $ids);
+            $invalid = $this->invalidTargets($term, $ids, $this->currentTargets($item, $term)['ids']);
             if ($invalid) {
                 $dropped = array_merge($dropped, $invalid);
                 $targets[$term] = array_values(array_diff($ids, $invalid));
@@ -494,26 +479,19 @@ class RecatalogService
     }
 
     /**
-     * Título del item-término con su ancestro entre paréntesis (D7). El currículo
-     * repite el mismo título de asignatura en cada curso (p. ej. «Conocimiento del
-     * Medio Natural, Social y cultural» existe en 3º, 4º y 5º de Primaria), así que
-     * un diff que liste solo títulos le muestra al curador líneas idénticas que no
-     * puede distinguir. Sin lecturas nuevas por id: la arista se recorre sobre la
-     * representación que ya se tenía.
+     * Título del término con su ancestro entre paréntesis (D7). Con ADR-0022
+     * solo lo necesitan saberes y criterios, cuyo `skos:prefLabel` empieza por
+     * la notación: se califican con su materia en curso («… (Matemáticas · 1º
+     * ESO)»). Cursos y materias en curso ya tienen rótulos únicos, y los ejes
+     * son un vocabulario plano (CurModel::qualifierEdges() no da aristas). Sin
+     * lecturas nuevas por id: la arista se recorre sobre la representación.
      */
     private function qualifiedTitle(AbstractResourceEntityRepresentation $target, string $dimension): string
     {
-        $title = (string) $target->displayTitle();
-        if (self::UNQUALIFIED_TERM === $dimension) {
-            return $title;
-        }
-        foreach (self::QUALIFIER_TERMS as $term) {
-            $value = $target->value($term);
-            $ancestor = $value ? $value->valueResource() : null;
-            if (null === $ancestor) {
-                continue;
-            }
-            $ancestorTitle = trim((string) $ancestor->displayTitle());
+        $title = CurModel::label($target);
+        foreach (CurModel::qualifierEdges($dimension) as $edge) {
+            $ancestor = CurModel::target($target, $edge);
+            $ancestorTitle = $ancestor ? CurModel::label($ancestor) : '';
             if ('' !== $ancestorTitle) {
                 return $title . ' (' . $ancestorTitle . ')';
             }
@@ -534,17 +512,20 @@ class RecatalogService
     }
 
     /**
-     * Destinos inválidos para una dimensión: los que no existen como item o no
-     * son del tipo esperado (skill recatalogador: validar que el destino existe
-     * y es del tipo esperado). El POST es manipulable, así que no basta con que
-     * el id exista: debe ser un término de ESA dimensión.
+     * Destinos inválidos para una dimensión: los que no existen como item, no
+     * son del tipo esperado o están retirados y no estaban ya enlazados (skill
+     * recatalogador: validar que el destino existe y es del tipo esperado). El
+     * POST es manipulable, así que no basta con que el id exista: debe ser un
+     * término de ESA dimensión. Un enlace a un término retirado se conserva
+     * (TASK-064, decisión 5): la regla de integridad lo señalará.
      *
      * @param int[] $ids
+     * @param int[] $linked destinos que el REA ya tiene en esta dimensión
      * @param array<int,string> $titles se rellena por referencia con el título de
      *   los destinos que sí existen, para no releerlos luego (D7)
      * @return int[]
      */
-    private function invalidTargets(string $term, array $ids, array &$titles = []): array
+    private function invalidTargets(string $term, array $ids, array $linked = [], array &$titles = []): array
     {
         $invalid = [];
         foreach ($ids as $id) {
@@ -555,7 +536,8 @@ class RecatalogService
                 continue;
             }
             $titles[(int) $id] = $this->qualifiedTitle($item, $term);
-            if (!$this->matchesDimension($term, $item)) {
+            $retiredAnew = CurModel::isRetired($item) && !in_array((int) $id, $linked, true);
+            if ($retiredAnew || !$this->matchesDimension($term, $item)) {
                 $invalid[] = $id;
             }
         }
@@ -563,10 +545,11 @@ class RecatalogService
     }
 
     /**
-     * ¿El item-término pertenece a la dimensión $term? Curriculares: su
-     * dcterms:type coincide con el valor configurado (ADR-0009). Ejes: pertenece
-     * al DefinedTermSet de ejes configurado (ADR-0006). Si la dimensión no está
-     * configurada, no se puede validar el tipo y no se bloquea (solo existencia).
+     * ¿El término pertenece a la dimensión $term? Currículo (ADR-0022): su
+     * clase es la de la dimensión y está en el conjunto del currículo (si no
+     * se puede resolver el conjunto, decide solo la clase). Ejes: pertenece al
+     * DefinedTermSet de ejes configurado (ADR-0006); sin configurar, no se
+     * bloquea.
      */
     private function matchesDimension(string $term, ItemRepresentation $item): bool
     {
@@ -584,15 +567,10 @@ class RecatalogService
             return false;
         }
 
-        $setting = CurriculumSearch::TYPE_SETTINGS[$term] ?? null;
-        if (null === $setting) {
-            return true;
+        if (CurModel::classTerm($item) !== CurModel::classOf($term)) {
+            return false;
         }
-        $expected = trim((string) $this->settings->get($setting));
-        if ('' === $expected) {
-            return true;
-        }
-        $typeValue = $item->value(CurriculumSearch::TYPE_TERM);
-        return null !== $typeValue && trim((string) $typeValue) === $expected;
+        $schemeId = $this->terms->schemeId();
+        return null === $schemeId || array_key_exists($schemeId, $item->itemSets());
     }
 }

@@ -1,0 +1,216 @@
+<!doctype html>
+<!--
+  Browser smoke test of the knowledge/criteria tree of the re-cataloguing
+  panel (TASK-064 slice 4). Not an admin session: the module's real
+  ui/termPicker.js, ui/recatalog.js and ui/leafTree.js run on a stub drawer,
+  with $.getJSON/$.post replaced by fixtures. It checks wiring the node tests
+  cannot reach (DOM, chips <-> checkboxes, keyboard, preview pairs).
+
+  Run from the repository root (jQuery comes from the 8080 dev container):
+    python3 -m http.server 8765 --bind 127.0.0.1 &
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+      --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/test/browser/leaf-tree-smoke.html
+  The <pre id="out"> holds the JSON result; "failures" must be [].
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Leaf tree smoke</title>
+<link rel="stylesheet" href="/asset/css/oer-master-view.css">
+<script src="http://localhost:8080/application/asset/vendor/jquery/jquery.min.js"></script>
+<script>window.Omeka = { jsTranslate: (s) => s };</script>
+</head>
+<body>
+<div class="oer-area-alignment" data-mode="read">
+  <div class="oer-anchor-slot"></div>
+  <div class="oer-anchor-bar"></div>
+</div>
+<pre id="out">pending</pre>
+<script type="module">
+import { initTermPicker, addChip } from '/asset/js/ui/termPicker.js';
+import { initRecatalog } from '/asset/js/ui/recatalog.js';
+import { initLeafTree } from '/asset/js/ui/leafTree.js';
+import { ANCHOR_SLOT } from '/asset/js/ui/drawerDetails.js';
+
+const leaf = (id, n, children = []) => ({
+    id, parentId: 0, notation: n, title: n + ' · texto',
+    definition: 'Definición completa de ' + n, selectable: true, children
+});
+const block = (id, n, children) => ({
+    id, parentId: 0, notation: n, title: n + ' · bloque', definition: '', selectable: false, children
+});
+const TREES = {
+    500: {
+        subject: { id: 500, title: 'Matemáticas · 1º ESO' },
+        'lrmi:teaches': [
+            block(10, 'SMAT01SBI', [leaf(20, 'SMAT01SBI.1', [leaf(21, 'SMAT01SBI.1.1')]), leaf(22, 'SMAT01SBI.2')]),
+            block(11, 'SMAT01SBII', [leaf(24, 'SMAT01SBII.1')])
+        ],
+        'lrmi:assesses': [block(30, 'SMAT01C1', [leaf(40, 'SMAT01CE1.1')])]
+    },
+    600: {
+        subject: { id: 600, title: 'Física · 1º BAC' },
+        'lrmi:teaches': [block(70, 'BFIS01SBI', [leaf(80, 'BFIS01SBI.1')])],
+        'lrmi:assesses': []
+    }
+};
+const calls = [];
+const posts = [];
+$.getJSON = (url, params) => {
+    calls.push(JSON.parse(JSON.stringify(params)));
+    const d = $.Deferred();
+    const trees = params.about.map((id) => TREES[id]).filter(Boolean);
+    const retired = params.linked.includes('90')
+        ? [{ id: 90, title: 'SMAT01SBI.9 · viejo', replacedBy: ['SMAT01SBI.2 · texto'] }]
+        : [];
+    setTimeout(() => d.resolve({ trees, invalid: [], retired }), 0);
+    return d.promise();
+};
+$.post = (url, data) => {
+    posts.push([url, typeof data === 'string' ? decodeURIComponent(data) : data]);
+    return $.Deferred().promise();
+};
+
+const config = {
+    canRecatalog: true, curriculumTreeUrl: '/tree', searchTermsUrl: '/s',
+    recatalogPreviewUrl: '/preview', recatalogLastEventUrl: '/last'
+};
+initTermPicker(config);
+initRecatalog(config);
+initLeafTree(config);
+// What ui/drawerDetails.js does on the edit click.
+document.addEventListener('click', (e) => {
+    const b = e.target.closest('.oer-anchor-edit');
+    if (b) {
+        b.closest('.oer-area-alignment').dataset.mode = 'edit';
+    }
+});
+
+const failures = [];
+let checks = 0;
+const expect = (name, actual, expected) => {
+    checks += 1;
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        failures.push({ name, actual, expected });
+    }
+};
+const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+const res = (v) => ({ value_resource_id: v, display_title: 'T' + v });
+document.dispatchEvent(new CustomEvent(ANCHOR_SLOT, { detail: {
+    itemId: 7,
+    itemJson: { 'schema:about': [res(500)], 'lrmi:teaches': [res(21), res(90)], 'lrmi:assesses': [] },
+    slot: document.querySelector('.oer-anchor-slot'),
+    bar: document.querySelector('.oer-anchor-bar')
+} }));
+const $panel = $('.oer-recatalog');
+const $teach = $panel.find('.oer-recatalog-dim[data-term="lrmi:teaches"]');
+const $assess = $panel.find('.oer-recatalog-dim[data-term="lrmi:assesses"]');
+const $about = $panel.find('.oer-recatalog-dim[data-term="schema:about"]');
+const chips = ($dim) => $dim.find('.search-choice').map(function () { return $(this).attr('data-id'); }).get();
+const check = (id) => $teach.find(`.oer-tree-check[value="${id}"]`);
+const toggleOf = (id) => $teach.find(`.oer-tree-node[data-id="${id}"] > .oer-tree-toggle`);
+
+expect('lazy: no request before the editor opens', calls.length, 0);
+expect('knowledge has no autocomplete; subject keeps it',
+    [$teach.find('.oer-term-search').length, $about.find('.oer-term-search').length], [0, 1]);
+
+$('.oer-anchor-edit').trigger('click');
+await tick();
+expect('request: subject and linked', calls[0], { about: ['500'], linked: ['21', '90'] });
+expect('linked knowledge is checked', check(21).prop('checked'), true);
+expect('its block opens', toggleOf(10).attr('aria-expanded'), 'true');
+expect('its parent opens', toggleOf(20).attr('aria-expanded'), 'true');
+expect('other block stays closed', $('#' + toggleOf(11).attr('aria-controls')).prop('hidden'), true);
+expect('block counter', toggleOf(10).find('.oer-tree-count').text(), ' (1 seleccionados)');
+expect('a block has no checkbox', $teach.find('.oer-tree-node[data-id="10"] > .oer-tree-check').length, 0);
+const id22 = check(22).attr('id');
+expect('label tied to its checkbox', $teach.find(`label[for="${id22}"]`).text(), 'SMAT01SBI.2 · texto');
+expect('definition as tooltip', $teach.find(`label[for="${id22}"]`).attr('title'), 'Definición completa de SMAT01SBI.2');
+expect('definition as description', $('#' + check(22).attr('aria-describedby')).text(),
+    'Definición completa de SMAT01SBI.2');
+expect('retired chip kept and marked', [chips($teach).includes('90'),
+    $teach.find('.search-choice[data-id="90"]').hasClass('oer-chip-retired'),
+    $teach.find('.search-choice[data-id="90"]').attr('title')],
+    [true, true, 'Término retirado del currículo. Sustituto: SMAT01SBI.2 · texto']);
+expect('criteria tree rendered', $assess.find('.oer-tree-check').length, 1);
+expect('list is labelled', $teach.find('.oer-tree-root').attr('aria-label'),
+    'Saberes básicos · Matemáticas · 1º ESO');
+
+check(22).prop('checked', true).trigger('change');
+check(21).prop('checked', false).trigger('change');
+expect('checkboxes drive chips', chips($teach), ['90', '22']);
+expect('dimension marked dirty', $teach.attr('data-dirty'), '1');
+
+addChip($teach, 24, 'SMAT01SBII.1 · texto', 'why');
+addChip($teach, 555, 'Otro saber', 'why');
+expect('AI chip in the tree is checked', check(24).prop('checked'), true);
+expect('AI chip outside the tree is kept and marked', $teach.find('.search-choice[data-id="555"]').hasClass('oer-chip-external'), true);
+expect('knowledge changes do not reload', calls.length, 1);
+
+const $toggle = toggleOf(10);
+$toggle.trigger($.Event('keydown', { key: 'ArrowLeft' }));
+expect('ArrowLeft closes', [$toggle.attr('aria-expanded'), $('#' + $toggle.attr('aria-controls')).prop('hidden')], ['false', true]);
+$toggle.trigger($.Event('keydown', { key: 'ArrowRight' }));
+expect('ArrowRight opens', $toggle.attr('aria-expanded'), 'true');
+$toggle.trigger('click');
+expect('click toggles', $toggle.attr('aria-expanded'), 'false');
+
+// Text filter (owner decision 2026-11-17): client side, no request.
+const $filter = $teach.find('.oer-leaf-tree-filter');
+const $input = $filter.find('input');
+const $status = $filter.find('.oer-leaf-tree-filter-status');
+const shown = () => $teach.find('.oer-tree-node').filter(function () {
+    return !this.hidden && !$(this).parents('[hidden]').length;
+}).map(function () { return $(this).attr('data-id'); }).get();
+const typeFilter = (text) => $input.val(text).trigger('input');
+expect('filter shown with a tree', $filter.prop('hidden'), false);
+expect('filter input labelled', $teach.find(`label[for="${$input.attr('id')}"]`).text(), 'Filtrar: Saberes básicos');
+expect('count is a polite live region', [$status.attr('aria-live'), $status.attr('role')], ['polite', 'status']);
+expect('state before filtering', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded')], ['false', 'true']);
+const before = calls.length;
+typeFilter('SMAT01SBI.1.1');
+expect('match shown with its ancestors opened', shown(), ['10', '20', '21']);
+expect('ancestors opened', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded')], ['true', 'true']);
+expect('count announced', $status.text(), '1 coincidencia');
+expect('hidden boxes keep their check', [check(22).prop('checked'), check(24).prop('checked')], [true, true]);
+typeFilter('DEFINICIÓN COMPLETA de smat01sbii');
+expect('definition, case and accents', shown(), ['11', '24']);
+typeFilter('nada parecido');
+expect('no match message', [$status.text(), shown()], ['Ningún término coincide con el filtro.', []]);
+expect('criteria tree not filtered', $assess.find('.oer-tree-node:not([hidden])').length, 2);
+typeFilter('');
+expect('clearing restores the open state', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded'),
+    toggleOf(11).attr('aria-expanded')], ['false', 'true', 'false']);
+expect('clearing shows every node and empties the count', [$teach.find('.oer-tree-node[hidden]').length, $status.text()], [0, '']);
+expect('filtering sends no request', calls.length, before);
+expect('selection intact after filtering', chips($teach), ['90', '22', '24', '555']);
+typeFilter('bfis');
+
+addChip($about, 600, 'Física · 1º BAC');
+await tick();
+expect('second subject reloads', calls[calls.length - 1].about, ['500', '600']);
+expect('one tree per subject', $teach.find('.oer-leaf-tree-subject').map(function () { return $(this).text(); }).get(),
+    ['Matemáticas · 1º ESO', 'Física · 1º BAC']);
+expect('selection survives the reload', [check(22).prop('checked'), check(24).prop('checked')], [true, true]);
+expect('filter re-applied to the new trees', [shown(), $status.text()], [['70', '80'], '2 coincidencias']);
+expect('subject without matches hidden', $teach.find('.oer-leaf-tree-group:not([hidden]) .oer-leaf-tree-subject').text(), 'Física · 1º BAC');
+typeFilter('');
+expect('clear after reload restores the drawn state', toggleOf(70).attr('aria-expanded'), 'false');
+
+$panel.find('.oer-recatalog-preview').trigger('click');
+const preview = posts.filter((p) => '/preview' === p[0]).map((p) => p[1])[0] || '';
+expect('preview sends the chips', preview.includes('alignment[lrmi:teaches][]=22')
+    && preview.includes('alignment[lrmi:teaches][]=555') && preview.includes('alignment[lrmi:teaches][]=90')
+    && !preview.includes('alignment[lrmi:teaches][]=21'), true);
+
+$about.find('.search-choice-close').each(function () { $(this).trigger('click'); });
+await tick();
+expect('no subject asks for one', $teach.find('.oer-leaf-tree').text(),
+    'Elige primero la asignatura (materia en curso) para ver sus saberes y criterios.');
+expect('retired still marked without a tree', $teach.find('.search-choice[data-id="90"]').hasClass('oer-chip-retired'), true);
+expect('no chip lost', chips($teach), ['90', '22', '24', '555']);
+
+document.getElementById('out').textContent = JSON.stringify({ checks, failures }, null, 1);
+</script>
+</body>
+</html>

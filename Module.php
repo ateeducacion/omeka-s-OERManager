@@ -88,6 +88,9 @@ class Module extends AbstractModule implements InitProviderInterface
                 'index',
                 'search',
                 'search-terms',
+                // TASK-064 slice 4: knowledge/criteria tree of a course
+                // subject for the panel; read only, like `search-terms`.
+                'curriculum-tree',
                 'set-visibility',
                 'recatalog-preview',
                 'recatalog-apply',
@@ -171,7 +174,13 @@ class Module extends AbstractModule implements InitProviderInterface
 
     public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $serviceLocator)
     {
-        // Sin migraciones de esquema (NFR-002).
+        // Sin migraciones de esquema (NFR-002). TASK-064 (ADR-0022): fuera los
+        // ajustes del grafo de ADR-0009; la clase cur: fija la dimensión. Borrar
+        // un ajuste que no existe no hace nada, así que se repite sin daño.
+        $settings = $serviceLocator->get('Omeka\Settings');
+        foreach (Service\ConfigPayload::LEGACY_SETTINGS as $legacy) {
+            $settings->delete($legacy);
+        }
     }
 
     public function attachListeners(SharedEventManagerInterface $sharedEventManager)

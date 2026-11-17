@@ -10,12 +10,19 @@ use OERManager\Service\Ai\TermResolverInterface;
  * Resolutor de términos falso para TDD del flujo bottom-up: candidatos por
  * dimensión (etapa/ejes), familias de materia por etapa, y hojas por dimensión.
  * Registra las llamadas para verificar la delimitación y la derivación.
+ *
+ * Las filas tienen la forma que entrega CurriculumTermResolver sobre el modelo
+ * `cur:` (TASK-064 rebanada 6): familia = `cur:Materia` {name, id, courses};
+ * hoja = {id, title (= `skos:notation`), notation, description (=
+ * `skos:definition`), block (bloque de saberes o competencial), courseId
+ * (`cur:Curso`), courseTitle, subjectId (`cur:MateriaCurso`)}. Las pruebas
+ * antiguas omiten campos opcionales; el clasificador no los exige.
  */
 final class FakeTermResolver implements TermResolverInterface
 {
     /** @var array<string,array<int,array<string,mixed>>> */
     public array $byDimension;
-    /** @var array<int,array<int,array{name:string,courses?:list<array{id:int,title:string}>}>> */
+    /** @var array<int,array<int,array{name:string,id?:int,courses?:list<array{id:int,title:string}>}>> */
     public array $families = [];
     /** @var array<string,array<int,array<string,mixed>>> */
     public array $leaves = [];

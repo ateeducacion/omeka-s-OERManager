@@ -119,8 +119,14 @@ final class ApiProjectionTest extends TestCase
 
     public function testCurricularPairsDistinguishLiteralsBrokenLinksAndOrphanCourses(): void
     {
-        $course = $this->item(1, 'Course');
-        $subject = $this->item(2, 'Math', ['lrmi:educationalAlignment' => [$this->value(
+        // ADR-0022: a cur:MateriaCurso reaches its cur:Curso by cur:curso and
+        // its label already carries the course («Matemáticas · 1º ESO»).
+        $course = $this->item(1, '1º ESO', ['skos:prefLabel' => [$this->value('1º ESO')]]);
+        $subject = $this->item(2, 'Matemáticas · 1º ESO', [
+            'skos:prefLabel' => [$this->value('Matemáticas · 1º ESO')],
+            'cur:curso' => [$this->value('', $course, 'resource:item')],
+        ]);
+        $legacy = $this->item(5, 'Old subject', ['lrmi:educationalAlignment' => [$this->value(
             '',
             $course,
             'resource:item'
@@ -130,15 +136,21 @@ final class ApiProjectionTest extends TestCase
                 '',
                 $subject,
                 'resource:item'
-            ), $this->value('', $this->item(3, 'No course'), 'resource:item')],
+            ), $this->value('', $this->item(3, 'No course'), 'resource:item'),
+                $this->value('', $legacy, 'resource:item')],
             'lrmi:educationalLevel' => [$this->value('', $course, 'resource:item'), $this->value('Orphan literal'),
                 $this->value('', $this->item(4, 'Other'), 'resource:item')],
         ]);
         $result = CurricularPairs::of($item);
         $this->assertSame(['Orphan literal', 'Other'], $result['orphanCourses']);
         $this->assertSame(['subject' => 'Legacy', 'course' => '', 'isLiteral' => true], $result['pairs'][0]);
-        $this->assertSame('Course', $result['pairs'][1]['course']);
-        $this->assertSame('', $result['pairs'][2]['course']);
+        $this->assertSame(
+            ['subject' => 'Matemáticas', 'course' => '1º ESO', 'isLiteral' => false],
+            $result['pairs'][1]
+        );
+        $this->assertSame(['subject' => 'No course', 'course' => '', 'isLiteral' => false], $result['pairs'][2]);
+        // The ADR-0009 edges are no longer read.
+        $this->assertSame('', $result['pairs'][3]['course']);
     }
 
     public function testIntegrityResultOrdersSeverityAndFiltersIssues(): void

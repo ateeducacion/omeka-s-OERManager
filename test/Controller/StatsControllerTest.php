@@ -3,6 +3,7 @@
 namespace OERManager\Test\Controller;
 
 use OERManager\Controller\Admin\StatsController;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Stats\CatalogSnapshot;
@@ -17,7 +18,6 @@ use Omeka\Api\Manager;
 use Omeka\Api\Response;
 use Omeka\Api\Representation\ItemRepresentation;
 use Omeka\Api\Representation\ValueRepresentation;
-use Omeka\Settings\Settings;
 use PHPUnit\Framework\TestCase;
 
 class StatsControllerTest extends TestCase
@@ -33,6 +33,7 @@ class StatsControllerTest extends TestCase
         $term = $this->createMock(ItemRepresentation::class);
         $term->method('id')->willReturn(7);
         $term->method('displayTitle')->willReturn('Course');
+        $term->method('value')->willReturnCallback(static fn ($t, $options = []) => $options['default'] ?? null);
         $value = $this->createMock(ValueRepresentation::class);
         $value->method('valueResource')->willReturn($term);
         $value->method('value')->willReturn('CC BY');
@@ -66,7 +67,7 @@ class StatsControllerTest extends TestCase
             new CompletenessAggregator(),
             new CsvExport(),
             $checker,
-            new CurriculumOutline($api, new Settings())
+            new CurriculumOutline($api, $this->createMock(CurriculumTerms::class))
         );
         $controller->plugins = ['response' => new \Laminas\Http\Response(), 'params' => new class {
             public array $query = [];
@@ -113,7 +114,7 @@ class StatsControllerTest extends TestCase
         $this->assertCount(20, $data['cross']);
         $this->assertSame(['rows', 'columns', 'cells'], array_keys($data['cross']['materia/etapa']));
         $this->assertSame([[1]], $data['cross']['materia/etapa']['cells']);
-        // No type settings: the term is not a known course, so it lands in «Sin etapa».
+        // No curriculum item set: the term is not a known course, so it lands in «Sin etapa».
         $this->assertSame('Sin etapa', $data['stageCounts'][0]['label']);
         $this->assertSame('Course', $data['stageCounts'][0]['courses'][0]['label']);
         $this->assertSame(1, $data['completeness']['ok']);

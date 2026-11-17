@@ -6,7 +6,7 @@ namespace OERManager\Service\Stats;
 
 /**
  * «Etapa y curso» card (TASK-047, spec D9). Pure. The REA's
- * `lrmi:educationalLevel` points at a course (ADR-0009 §5); courses are
+ * `lrmi:educationalLevel` points at a `cur:Curso` (ADR-0022); courses are
  * grouped under their stage in curriculum order, each stage with its number
  * of distinct REA. Every curriculum course is listed, with 0 when it has none.
  * Linked terms that are not a known course go to a last, stageless group.

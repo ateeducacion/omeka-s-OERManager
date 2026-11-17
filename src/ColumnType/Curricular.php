@@ -27,7 +27,7 @@ use Omeka\ColumnType\ColumnTypeInterface;
  *   ⚠ anclaje incompleto · ✗ sin anclar · ⚠ valor literal donde debería enlazar.
  *
  * El par se deriva sin consultas de grafo nuevas: la Asignatura lleva su propio
- * curso (ADR-0009) y esa arista se recorre sobre la representación que ya se
+ * curso (`cur:curso`, ADR-0022) y esa arista se recorre sobre la representación que ya se
  * tenía — el mismo camino que `RecatalogService::qualifiedTitle()`.
  */
 class Curricular implements ColumnTypeInterface

@@ -36,6 +36,10 @@ class ModuleRuntimeTest extends TestCase
         $module->init($this->createMock(\Laminas\ModuleManager\ModuleManagerInterface::class));
         $module->onBootstrap(new \Laminas\Mvc\MvcEvent());
         $this->assertCount(6, $calls);
+        // TASK-064 slice 4: the read-only tree goes with the other curation reads.
+        $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[0][0]);
+        $this->assertContains('curriculum-tree', $calls[0][2]);
+        $this->assertContains('search-terms', $calls[0][2]);
         $this->assertSame(['site_admin'], $calls[2][0]);
         $this->assertSame(['config'], $calls[2][2]);
         $this->assertContains('author', $calls[1][0]);
@@ -52,8 +56,22 @@ class ModuleRuntimeTest extends TestCase
         $module->attachListeners($events);
         $module->install($module->getServiceLocator());
         $module->uninstall($module->getServiceLocator());
-        $module->upgrade('1', '2', $module->getServiceLocator());
         $this->assertIsArray($module->getConfig());
+    }
+
+    /** TASK-064 (ADR-0022): the upgrade removes the settings of the ADR-0009 graph, and only those. */
+    public function testUpgradeDeletesTheLegacyCurriculumSettings(): void
+    {
+        $settings = new \Omeka\Settings\Settings();
+        foreach (\OERManager\Service\ConfigPayload::LEGACY_SETTINGS as $legacy) {
+            $settings->set($legacy, 'Curso');
+        }
+        $settings->set('oermanager_axis_termset_item_id', 9);
+        $module = $this->module(['Omeka\Settings' => $settings]);
+        $module->upgrade('0.9.0', '1.0.0', $module->getServiceLocator());
+        $this->assertSame(['oermanager_axis_termset_item_id' => 9], $settings->values);
+        $module->upgrade('1.0.0', '1.0.1', $module->getServiceLocator());
+        $this->assertSame(['oermanager_axis_termset_item_id' => 9], $settings->values);
     }
 
     public function testSearchFilterChipsResolveTitlesAndKeepMissingIds(): void

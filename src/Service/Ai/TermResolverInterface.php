@@ -12,8 +12,16 @@ namespace OERManager\Service\Ai;
  * La acotación contextual (RF-014) viaja en $context: ids de los ancestros ya
  * elegidos (etapa, level=curso, about=asignatura), de modo que Saberes/Criterios
  * solo se enumeran entre los hijos de la Asignatura fijada (cascada top-down).
- * Nunca devuelve el árbol completo: cada dimensión queda acotada por su tipo y su
+ * Nunca devuelve el árbol completo: cada dimensión queda acotada por su clase y su
  * ancestro.
+ *
+ * Modelo `cur:` (ADR-0022, TASK-064 rebanada 6). La materia viaja por NOMBRE
+ * (`cur:Materia`, único dentro de su etapa, con el sufijo de etapa: «Biología y
+ * Geología (ESO)») y siempre junto a la etapa, así que el par (etapa, nombre)
+ * identifica una sola materia. Se conserva el nombre y no el id porque el
+ * clasificador agrupa por él (cupo por materia y curso, bloques, trazas e
+ * informes del conjunto de evaluación): pasar ids cambiaría el clasificador más
+ * allá del modelo sin ganar exactitud.
  */
 interface TermResolverInterface
 {
@@ -27,20 +35,23 @@ interface TermResolverInterface
     public function listCandidates(string $dimension, array $context = []): array;
 
     /**
-     * Nombres distintos de materia (asignatura) de una etapa (Fase A.2), con los
-     * cursos en que existe cada una (TASK-056): delimita la materia sin fijar el
-     * curso, pero deja ver a cuál pertenece.
+     * Materias (`cur:Materia`) de una etapa (Fase A.2), con los cursos en que
+     * existe cada una (TASK-056): delimita la materia sin fijar el curso, pero
+     * deja ver a cuál pertenece.
      *
-     * @return array<int,array{name:string,courses?:list<array{id:int,title:string}>}>
+     * @return array<int,array{name:string,id?:int,courses?:list<array{id:int,title:string}>}>
      */
     public function listSubjectFamilies(int $etapaId): array;
 
     /**
-     * Saberes ('lrmi:teaches') o criterios ('lrmi:assesses') de una materia
-     * cruzando todos sus cursos (Fase B/C), con linaje para derivar curso+materia.
+     * Saberes ('lrmi:teaches') o criterios ('lrmi:assesses') vigentes de una
+     * materia cruzando todos sus cursos (Fase B/C), con linaje para derivar
+     * curso (`cur:curso`) y materia en curso (`cur:materiaCurso`). `title` es el
+     * código (`skos:notation`), `description` la `skos:definition` y `block` el
+     * bloque de saberes o el bloque competencial.
      *
      * @param int[] $courseIds acota a esos cursos (paso A.3, TASK-056); vacío = todos
-     * @return array<int,array{id:int,title:string,description:string,block:string,courseId:int,courseTitle:string,subjectId:int}>
+     * @return array<int,array{id:int,title:string,notation?:string,description:string,block:string,courseId:int,courseTitle:string,subjectId:int}>
      */
     public function listLeaves(string $dimension, int $etapaId, string $subjectName, array $courseIds = []): array;
 }

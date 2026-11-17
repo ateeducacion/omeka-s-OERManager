@@ -15,11 +15,18 @@
  * `CurricularGrouping` hace en su propio docblock ("nada se pierde"),
  * verificada contra el catálogo real, no contra datos fabricados.
  *
- * SOLO LECTURA: no escribe nada en el catálogo. Solo lee items vía la API y
- * ejercita ItemPanelData y CurricularGrouping sobre ellos.
+ * SOLO LECTURA por defecto: no escribe nada en el catálogo. Solo lee items vía
+ * la API y ejercita ItemPanelData y CurricularGrouping sobre ellos.
+ *
+ * TASK-064 slice 5: the panel groups by the `cur:` course (cur:curso). Check 6
+ * used REA #40437 of the ADR-0009 graph (four Primaria courses with «Educación
+ * Física»), which no longer carries alignment links; with `<userEmail>
+ * --write` it uses a disposable private REA aligned to 1º ESO / Matemáticas ·
+ * 1º ESO and 2º ESO / Matemáticas · 2º ESO instead, deleted at exit, also on
+ * failure (test/container/cur-fixture.php).
  *
  * Uso, desde el contenedor:
- *   php /var/www/html/modules/OERManager/test/container/detail-panel-check.php
+ *   php /var/www/html/modules/OERManager/test/container/detail-panel-check.php [<userEmail> [--write]]
  *
  * Sale 1 si alguna comprobación falla, para poder encadenarlo en un smoke test.
  */
@@ -35,6 +42,39 @@ $application = Omeka\Mvc\Application::init(require '/var/www/html/application/co
 $services = $application->getServiceManager();
 $api = $services->get('Omeka\ApiManager');
 $panelData = $services->get(ItemPanelData::class);
+
+require __DIR__ . '/cur-fixture.php';
+$email = (string) ($argv[1] ?? '');
+$write = ($argv[2] ?? '') === '--write';
+$disposable = [];
+$disposableId = 0;
+$fixture = [];
+$marker = curMarker('detail-panel-check');
+if ('' !== $email) {
+    $user = curAuthenticate($services, $email);
+}
+if ($write) {
+    if ('' === $email) {
+        fwrite(STDERR, "--write needs <userEmail>\n");
+        exit(2);
+    }
+    register_shutdown_function(static function () use ($services, &$disposable, $marker): void {
+        $left = curDeleteAll($services, $disposable, $marker);
+        echo "\n  " . (0 === $left ? 'OK  ' : 'FAIL') . " disposable REA deleted ($left left)\n";
+        if ($left > 0) {
+            exit(1);
+        }
+    });
+    $fixture = curFixture($services);
+    $disposableId = curCreateRea($services, $marker, [
+        'lrmi:educationalLevel' => [$fixture['S01'], $fixture['S02']],
+        'schema:about' => [$fixture['SMAT01'], $fixture['SMAT02']],
+        'lrmi:teaches' => [$fixture['saber']],
+        'lrmi:assesses' => [$fixture['criterio']],
+    ], $user->getName(), $disposable);
+    echo "disposable REA #$disposableId\n";
+    curClear($services, $email);
+}
 
 $passed = 0;
 $failed = 0;
@@ -286,37 +326,26 @@ if ([] === $unsupportedCourseItems) {
     );
 }
 
-// --- 6. #40437 produce 4 grupos, cada uno con «Educación Física» -----------
-echo "\n6. #40437 produce 4 grupos, uno por curso, cada uno con «Educación Física»\n";
-$item40437 = null;
-foreach ($items as $item) {
-    if (40437 === (int) $item->id()) {
-        $item40437 = $item;
-        break;
-    }
-}
-if (null === $item40437) {
-    skip('#40437 produce 4 grupos con «Educación Física»', 'el item #40437 no está en este catálogo');
-} else {
-    $groups = $panelData->forItem($item40437)['alignment']['groups'];
-    check(
-        '#40437 produce exactamente 4 grupos (uno por curso de Primaria)',
-        4 === count($groups),
-        'grupos encontrados: ' . count($groups)
+// --- 6. A REA in two courses produces one group per course (cur:) ---------
+echo "\n6. A REA aligned to two cur: courses produces one group per course\n";
+if (0 === $disposableId) {
+    skip(
+        'one group per course, each with its course subject',
+        'needs --write (#40437 of the ADR-0009 graph no longer carries alignment links)'
     );
-    $allHaveEducacionFisica = [] !== $groups;
-    foreach ($groups as $group) {
-        if (!in_array('Educación Física', $group['subjects'], true)) {
-            $allHaveEducacionFisica = false;
-        }
-    }
+} else {
+    $groups = $panelData->forItem($api->read('items', $disposableId)->getContent())['alignment']['groups'];
     check(
-        'cada uno de los 4 grupos trae «Educación Física» entre sus materias',
-        $allHaveEducacionFisica,
-        'materias por grupo: ' . implode(' | ', array_map(
-            static fn (array $g): string => implode(',', $g['subjects']),
-            $groups
-        ))
+        'two groups, 1º ESO then 2º ESO',
+        [$fixture['S01'], $fixture['S02']] === array_column($groups, 'courseId'),
+        json_encode(array_column($groups, 'courseTitle'), JSON_UNESCAPED_UNICODE)
+    );
+    check(
+        'each group holds its own Matemáticas, and 1º ESO also its knowledge item and criterion',
+        [['Matemáticas · 1º ESO'], ['Matemáticas · 2º ESO']] === array_column($groups, 'subjects')
+            && 1 === count($groups[0]['teaches'] ?? []) && 1 === count($groups[0]['assesses'] ?? [])
+            && [] === ($groups[1]['teaches'] ?? null),
+        json_encode($groups, JSON_UNESCAPED_UNICODE)
     );
 }
 

@@ -4,7 +4,7 @@
 
 ## Estado
 
-Aceptado (2026-06-16)
+Aceptado (2026-06-16). Punto 2 (raíces curriculares por `lrmi:educationalFramework`) reemplazado por ADR-0022 (2026-11-09); el punto 1 sigue vigente.
 
 ## Contexto
 

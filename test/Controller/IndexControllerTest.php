@@ -11,6 +11,7 @@ use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
 use OERManager\Service\Curation\UndoRouter;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\Workflow\WorkflowService;
@@ -314,6 +315,53 @@ class IndexControllerTest extends TestCase
         }
     }
 
+    public function testCurriculumTreeValidatesEachCourseSubjectAndMarksRetiredLinks(): void
+    {
+        $terms = $this->dependencies['curriculumTerms'];
+        $tree = ['subject' => ['id' => 500, 'title' => 'Matemáticas · 1º ESO'],
+            'lrmi:teaches' => [], 'lrmi:assesses' => []];
+        $asked = [];
+        $terms->method('courseSubjectTree')->willReturnCallback(function (int $id) use ($tree, &$asked) {
+            $asked[] = $id;
+            return 500 === $id ? $tree : null;
+        });
+        $retiredAsked = [];
+        $terms->method('retiredTerms')->willReturnCallback(function (array $ids) use (&$retiredAsked) {
+            $retiredAsked[] = $ids;
+            return in_array(60, $ids, true) ? [['id' => 60, 'title' => 'Viejo', 'replacedBy' => []]] : [];
+        });
+
+        // Read only: works on GET, needs no CSRF.
+        $this->request->post = false;
+        $this->params->query = ['about' => ['500', 'x', '77', '500', '-1'], 'linked' => ['60', '61']];
+        $data = $this->data('curriculumTree');
+        $this->assertSame([$tree], $data['trees']);
+        $this->assertSame([77], $data['invalid']);
+        $this->assertSame([['id' => 60, 'title' => 'Viejo', 'replacedBy' => []]], $data['retired']);
+        $this->assertSame([500, 77], $asked);
+        $this->assertSame([[60, 61]], $retiredAsked);
+
+        // A scalar id works; no course subject means no tree, retired still checked.
+        $this->params->query = ['about' => '500'];
+        $this->assertCount(1, $this->data('curriculumTree')['trees']);
+        $this->params->query = ['linked' => '60'];
+        $data = $this->data('curriculumTree');
+        $this->assertSame([], $data['trees']);
+        $this->assertSame(60, $data['retired'][0]['id']);
+
+        // Bounded: too many course subjects are refused without a query.
+        $asked = [];
+        $this->params->query = ['about' => range(1, 11)];
+        $data = $this->data('curriculumTree');
+        $this->assertSame('too_many', $data['error']);
+        $this->assertSame([], $asked);
+        // Linked ids are capped.
+        $retiredAsked = [];
+        $this->params->query = ['linked' => range(1, 600)];
+        $this->data('curriculumTree');
+        $this->assertCount(500, $retiredAsked[0]);
+    }
+
     public function testRecatalogPayloadAndExceptionMapping(): void
     {
         $this->params->post['alignment'] = ['lrmi:teaches' => [1], 'unknown' => [2]];
@@ -512,6 +560,42 @@ class IndexControllerTest extends TestCase
         $valid = false;
         $this->assertSame($form, $this->controller->configAction()->getVariable('form'));
         $this->assertContains('invalid form', $this->messages->messages);
+    }
+
+    /**
+     * TASK-064 (ADR-0022, ADR-0006): the curriculum is one item set, by id,
+     * accepted only if its identifier is `<base>id/curriculo`; left empty, the
+     * single such item set is detected and stored.
+     */
+    public function testConfigValidatesOrDetectsTheCurriculumItemSet(): void
+    {
+        $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();
+        $form->init();
+        $form->method('isValid')->willReturn(true);
+        $this->dependencies['formElementManager']->method('get')->willReturn($form);
+        $terms = $this->dependencies['curriculumTerms'];
+        $terms->method('isScheme')->willReturnCallback(static fn (int $id): bool => 46259 === $id);
+        $terms->method('detectSchemeId')->willReturn(46259);
+        $settings = $this->dependencies['settings'];
+        $this->request->post = true;
+
+        $settings->set(CurriculumTerms::SCHEME_SETTING, 46259);
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => '7'];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
+        $this->assertContains(
+            'El conjunto 7 no es el currículo: su dcterms:identifier no acaba en id/curriculo.',
+            array_map('strval', $this->messages->messages)
+        );
+
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => ''];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
+
+        $settings->set(CurriculumTerms::SCHEME_SETTING, null);
+        $this->params->post = [CurriculumTerms::SCHEME_SETTING => '46259'];
+        $this->controller->configAction();
+        $this->assertSame(46259, $settings->get(CurriculumTerms::SCHEME_SETTING));
     }
 
     public function testDrawerDetailsHandlesUnavailableAndReadableItems(): void
