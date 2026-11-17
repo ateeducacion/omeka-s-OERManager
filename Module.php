@@ -50,115 +50,25 @@ class Module extends AbstractModule implements InitProviderInterface
     }
 
     /**
-     * ACL (NFR-003). Se concede **por privilegio**, nunca por controlador.
+     * ACL (NFR-003, TASK-067/ADR-0023 §1). Se concede **por privilegio**,
+     * nunca por controlador, y solo a los roles `rea_proponente` y
+     * `rea_curador` (más `global_admin`, al que el core ya concede todo). La
+     * matriz entera vive en `Permissions\ReaAcl` y la fija `ReaAclTest`.
      *
-     * Hasta TASK-029 esto era un `allow(['editor','site_admin'], [Controller])`
-     * sin lista de privilegios, o sea el controlador entero: cualquier acción
-     * nueva quedaba alcanzable por `editor` —y por `site_editor`, que el módulo
-     * IsolatedSites añade heredando de `editor`— con solo escribirla. Con la
-     * configuración colgando de este mismo controlador eso habría abierto la
-     * clave API del LLM y los vocabularios del catálogo a un editor.
+     * Hasta TASK-067 la curación se concedía a `editor`/`site_admin`/`reviewer`
+     * y proponer también a `author`; por herencia, un `site_editor` de
+     * IsolatedSites recibía todo, incluida la propuesta IA de pago. En la
+     * mediateca compartida eso son ~1 200 editores de centro.
      *
-     * La lista va dentro del método a propósito, por el mismo motivo que
-     * `governanceIdSettings()` lo era: Laminas instancia este Module antes de
-     * registrar el autoloading PSR-4 del módulo. Aquí solo hay literales, pero
-     * el criterio se mantiene para no invitar a meter una referencia de clase.
-     *
-     * Los privilegios son los nombres de acción tal cual llegan en la ruta —con
-     * guiones—, que es lo que compara el core al despachar
-     * (`Mvc\MvcListeners::authorizeUserAgainstController`).
+     * Orden de carga: los roles REA heredan de `site_editor`, que IsolatedSites
+     * añade en su propio onBootstrap(). El core ordena los módulos por id con
+     * `ksort()` (`Module\Manager::sortModules()`), así que IsolatedSites arranca
+     * antes; sin IsolatedSites se usan los padres de respaldo (ReaAcl).
      */
     public function onBootstrap(MvcEvent $event): void
     {
         parent::onBootstrap($event);
-        /** @var \Omeka\Permissions\Acl $acl */
-        $acl = $this->getServiceLocator()->get('Omeka\Acl');
-
-        // Curación: vista maestra, re-catalogador, gobernanza, propuesta IA y
-        // visibilidad. RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto
-        // a los roles que ya curaban — es el rol nativo que hace de curador de
-        // REA en el flujo autor→curador. No sustituye a editor/site_admin.
-        // `governance-apply` (TASK-028 rebanada 3b) entra al mismo nivel que
-        // `recatalog-apply`: escribir las cinco properties de gobernanza no es
-        // más privilegiado que re-catalogar, y `author` no lo tiene.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\IndexController::class],
-            [
-                'index',
-                'search',
-                'search-terms',
-                // TASK-064 slice 4: knowledge/criteria tree of a course
-                // subject for the panel; read only, like `search-terms`.
-                'curriculum-tree',
-                'set-visibility',
-                'recatalog-preview',
-                'recatalog-apply',
-                'governance-apply',
-                'recatalog-last-event',
-                'drawer-details',
-                'drawer-history',
-                'recatalog-undo',
-                'ai-propose',
-                'ai-propose-status',
-                'ai-propose-cancel',
-                'ai-evaluate',
-                'reject-proposal',
-                'publish-proposal',
-            ]
-        );
-
-        // Proponer (RF-016): abierto también a `author`, a diferencia del
-        // resto de acciones de curación. El controlador solo es la puerta de
-        // entrada — quién puede tocar CADA item lo decide el permiso nativo
-        // de edición dentro de WorkflowService::propose() (OwnsEntityAssertion
-        // para author, view-all para el resto), no este ACL.
-        $acl->allow(
-            ['author', 'editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\IndexController::class],
-            ['propose']
-        );
-
-        // Configuración: solo Supervisor (site_admin) y superior, decisión del
-        // propietario (2026-07-28). Gobierna la clave API del LLM y los
-        // vocabularios de todo el catálogo, así que no es tarea de curación.
-        // `global_admin` no se lista porque el core ya le concede todo
-        // (`Service\AclFactory::addRulesForGlobalAdmin`, `$acl->allow('global_admin')`).
-        $acl->allow(
-            ['site_admin'],
-            [Controller\Admin\IndexController::class],
-            ['config']
-        );
-
-        // Estadísticas: mismo nivel que la curación (spec TASK-006 §2.1). Datos
-        // agregados de solo lectura, no gobernanza sensible como `config`.
-        // RF-016: `reviewer` se añade por el mismo motivo que arriba.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\StatsController::class],
-            // `layout`: guarda la disposición propia de la página (ajuste de usuario).
-            ['index', 'export', 'layout']
-        );
-
-        // Lote de licencia y autoría (TASK-028 slice 4): los mismos roles que
-        // `governance-apply`. Escribir en lote no es más privilegiado que
-        // escribir en un item; el ACL nativo de edición decide item a item
-        // dentro del Job, que corre como su dueño.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\GovernanceBatchController::class],
-            ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo']
-        );
-
-        // Deshacer un lote ajeno (TASK-028 slice 5a): solo site_admin, para
-        // cuando el autor del lote no está. `global_admin` ya lo tiene todo.
-        // El Job de deshacer corre como quien lo lanza: el ACL nativo de cada
-        // item sigue decidiendo.
-        $acl->allow(
-            ['site_admin'],
-            [Controller\Admin\GovernanceBatchController::class],
-            [Controller\Admin\GovernanceBatchController::PRIVILEGE_UNDO_ANY]
-        );
+        Permissions\ReaAcl::register($this->getServiceLocator()->get('Omeka\Acl'));
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -167,9 +77,20 @@ class Module extends AbstractModule implements InitProviderInterface
         // Los datos del módulo viven como valores RDF y settings nativos.
     }
 
+    /**
+     * Sin tablas propias (NFR-002). Los usuarios con un rol REA vuelven al rol
+     * padre (ADR-0023 §1.6): sin el módulo la ACL ya no conoce `rea_*` y
+     * Laminas lanzaría una excepción en cada petición suya. Los valores
+     * `curation:status`/`curation:note` se quedan: son RDF nativo.
+     */
     public function uninstall(ServiceLocatorInterface $serviceLocator)
     {
-        // Sin tablas ni settings persistidos todavía: no hay nada que limpiar.
+        $acl = $serviceLocator->get('Omeka\Acl');
+        $connection = $serviceLocator->get('Omeka\Connection');
+        $targets = Permissions\ReaAcl::uninstallTargets($acl->hasRole(Permissions\ReaAcl::SITE_EDITOR));
+        foreach ($targets as $role => $target) {
+            $connection->executeStatement('UPDATE user SET role = ? WHERE role = ?', [$target, $role]);
+        }
     }
 
     public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $serviceLocator)
@@ -356,17 +277,19 @@ class Module extends AbstractModule implements InitProviderInterface
 
         /** @var \Omeka\Permissions\Acl $acl */
         $acl = $services->get('Omeka\Acl');
-        $isCurator = $acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
+        $index = Controller\Admin\IndexController::class;
         $canEditItem = $item->userIsAllowed('update');
 
-        // Revisión final RF-016 (hallazgo 6): antes excluía al curador
-        // (`!$isCurator`), pero el ACL SÍ concede `propose` a
-        // editor/site_admin/reviewer (ver el bloque de arriba en
-        // onBootstrap()) precisamente para poder reproponer algo en nombre de
-        // otro. La UI no puede contradecir lo que el ACL ya permite.
-        $canPropose = $canEditItem && Service\Workflow\WorkflowStatus::canPropose($status);
-        $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
-        $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
+        // TASK-067: cada botón exige el privilegio de SU acción. Antes «es
+        // curador» era `view-all`, que `site_editor` hereda de `editor`: un
+        // proponente habría visto los botones del curador. La UI no puede
+        // ofrecer lo que el ACL deniega, ni ocultar lo que concede.
+        $canPropose = $canEditItem && $acl->userIsAllowed($index, 'propose')
+            && Service\Workflow\WorkflowStatus::canPropose($status);
+        $canReject = $acl->userIsAllowed($index, 'reject-proposal')
+            && Service\Workflow\WorkflowStatus::canReject($status);
+        $canPublish = $acl->userIsAllowed($index, 'publish-proposal')
+            && Service\Workflow\WorkflowStatus::canPublish($status);
 
         /** @var \Laminas\View\Renderer\PhpRenderer $view */
         $view = $event->getTarget();

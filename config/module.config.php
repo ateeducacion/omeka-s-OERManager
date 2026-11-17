@@ -1,12 +1,11 @@
 <?php
 
 /**
- * OERManager — configuración del módulo (FASE 1: scaffolding).
+ * OERManager — configuración del módulo.
  *
- * ACL: punto de extensión pendiente. Los privilegios propios de curación se
- * declararán programáticamente (Omeka\Permissions\Acl) en fases posteriores,
- * cuando exista la matriz rol×acción (PEND-007). En FASE 1 no se concede
- * ningún privilegio: solo el global admin ve la entrada de navegación.
+ * ACL: la concede `Module::onBootstrap()` por privilegio, con la matriz de
+ * `Permissions\ReaAcl` (TASK-067, ADR-0023): solo `rea_proponente`,
+ * `rea_curador` y `global_admin`.
  */
 
 namespace OERManager;

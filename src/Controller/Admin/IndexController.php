@@ -511,7 +511,7 @@ class IndexController extends AbstractActionController
      * del menú lateral, junto a la vista maestra que es donde se trabaja.
      *
      * La ACL la impone `Module::onBootstrap` con el privilegio `config`, que
-     * solo tienen Supervisor (site_admin) y global_admin: aquí se gobiernan la
+     * desde TASK-067 solo tiene global_admin (ADR-0023): aquí se gobiernan la
      * clave API del LLM y los vocabularios de todo el catálogo, así que no es
      * una acción de curación.
      *
@@ -668,12 +668,11 @@ class IndexController extends AbstractActionController
 
         // Rechazar/publicar desde el drawer (extensión RF-016 post-PR#38):
         // mismo criterio que `Module::addWorkflowActions()` en la página
-        // nativa del item — `view-all` es la señal de "es curador", no un
-        // nombre de rol propio.
+        // nativa del item — el privilegio de cada acción (TASK-067), no
+        // `view-all`, que `site_editor` hereda.
         $status = $this->workflowService->statusOf($item);
-        $isCurator = $this->acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
-        $canReject = $isCurator && WorkflowStatus::canReject($status);
-        $canPublish = $isCurator && WorkflowStatus::canPublish($status);
+        $canReject = $this->acl->userIsAllowed(self::class, 'reject-proposal') && WorkflowStatus::canReject($status);
+        $canPublish = $this->acl->userIsAllowed(self::class, 'publish-proposal') && WorkflowStatus::canPublish($status);
 
         return $view->setVariables([
             'panel' => $panel,
@@ -1205,8 +1204,8 @@ class IndexController extends AbstractActionController
 
     /**
      * Un curador rechaza un REA propuesto, con motivo (RF-016). Acción de
-     * curación: ACL restringida a `editor`/`reviewer`/`site_admin`
-     * (`Module::onBootstrap`), a diferencia de `proposeAction`.
+     * curación: ACL restringida a `rea_curador` (`Permissions\ReaAcl`), a
+     * diferencia de `proposeAction`, que también tiene `rea_proponente`.
      *
      * El motivo es obligatorio (revisión final RF-016, hallazgo 3): un
      * rechazo sin motivo deja al autor sin saber qué corregir, que es

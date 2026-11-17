@@ -27,36 +27,56 @@ class ModuleRuntimeTest extends TestCase
 
     public function testLifecycleAclAndListenerContracts(): void
     {
-        $acl = $this->createMock(\Omeka\Permissions\Acl::class);
-        $calls = [];
-        $acl->method('allow')->willReturnCallback(static function ($roles, $resources, $privileges) use (&$calls) {
-            $calls[] = [$roles, $resources, $privileges];
-        });
+        // TASK-067: the bootstrap adds the REA roles under IsolatedSites'
+        // site_editor and grants the module only to them (matrix: ReaAclTest).
+        $acl = \Omeka\Permissions\Acl::core();
+        $acl->addRole('site_editor', 'editor');
         $module = $this->module(['Omeka\Acl' => $acl]);
         $module->init($this->createMock(\Laminas\ModuleManager\ModuleManagerInterface::class));
         $module->onBootstrap(new \Laminas\Mvc\MvcEvent());
-        $this->assertCount(6, $calls);
-        // TASK-064 slice 4: the read-only tree goes with the other curation reads.
-        $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[0][0]);
-        $this->assertContains('curriculum-tree', $calls[0][2]);
-        $this->assertContains('search-terms', $calls[0][2]);
-        $this->assertSame(['site_admin'], $calls[2][0]);
-        $this->assertSame(['config'], $calls[2][2]);
-        $this->assertContains('author', $calls[1][0]);
-        // TASK-028 slice 4: lote de gobernanza, mismos roles que governance-apply.
-        $this->assertSame(['editor', 'site_admin', 'reviewer'], $calls[4][0]);
-        $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[4][1]);
-        $this->assertSame(['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'], $calls[4][2]);
-        // TASK-028 slice 5a: deshacer el lote de otro usuario, solo site_admin.
-        $this->assertSame(['site_admin'], $calls[5][0]);
-        $this->assertSame([\OERManager\Controller\Admin\GovernanceBatchController::class], $calls[5][1]);
-        $this->assertSame(['undo-any-batch'], $calls[5][2]);
+        $index = \OERManager\Controller\Admin\IndexController::class;
+        $this->assertTrue($acl->inheritsRole('rea_curador', 'site_editor', true));
+        $this->assertTrue($acl->isAllowed('rea_curador', $index, 'recatalog-apply'));
+        $this->assertTrue($acl->isAllowed('rea_proponente', $index, 'propose'));
+        foreach (['editor', 'site_editor', 'site_admin', 'reviewer', 'author'] as $role) {
+            $this->assertFalse($acl->isAllowed($role, $index, 'index'), $role);
+            $this->assertFalse($acl->isAllowed($role, $index, 'propose'), $role);
+        }
+        $this->assertFalse($acl->isAllowed('rea_curador', $index, 'config'));
+        $this->assertTrue($acl->isAllowed('global_admin', $index, 'config'));
         $events = $this->createMock(\Laminas\EventManager\SharedEventManagerInterface::class);
         $events->expects($this->exactly(5))->method('attach');
         $module->attachListeners($events);
         $module->install($module->getServiceLocator());
-        $module->uninstall($module->getServiceLocator());
         $this->assertIsArray($module->getConfig());
+    }
+
+    /**
+     * ADR-0023 §1.6: on uninstall the users of a REA role go back to its
+     * parent, so nobody keeps a role the ACL will no longer know.
+     */
+    public function testUninstallMovesReaUsersBackToTheParentRole(): void
+    {
+        foreach ([true => ['site_editor', 'site_editor'], false => ['author', 'editor']] as $isolated => $targets) {
+            $acl = \Omeka\Permissions\Acl::core();
+            if ($isolated) {
+                $acl->addRole('site_editor', 'editor');
+            }
+            $connection = new class {
+                public array $statements = [];
+                public function executeStatement($sql, array $params = [])
+                {
+                    $this->statements[] = [$sql, $params];
+                    return 1;
+                }
+            };
+            $module = $this->module(['Omeka\Acl' => $acl, 'Omeka\Connection' => $connection]);
+            $module->uninstall($module->getServiceLocator());
+            $this->assertSame([
+                ['UPDATE user SET role = ? WHERE role = ?', [$targets[0], 'rea_proponente']],
+                ['UPDATE user SET role = ? WHERE role = ?', [$targets[1], 'rea_curador']],
+            ], $connection->statements);
+        }
     }
 
     /** TASK-064 (ADR-0022): the upgrade removes the settings of the ADR-0009 graph, and only those. */

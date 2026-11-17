@@ -63,7 +63,9 @@ cascade, tree and AI find nothing.
 
 OERManager grants **only** to `rea_proponente`, `rea_curador` and `global_admin` (which the core
 allows everything). `author`, `editor`, `reviewer`, `site_admin`, `site_editor` and `researcher`
-get nothing. The matrix lives in one pure class (`Permissions\ReaAcl::GRANTS`); `onBootstrap()`
+get nothing. The core allows `site_admin` («Supervisor») everything (`AclFactory::addRulesForSiteAdmin`),
+so it is denied OERManager's three controllers explicitly; `global_admin` keeps everything. The matrix
+lives in one pure class (`Permissions\ReaAcl::GRANTS`); `onBootstrap()`
 applies it and a host test pins it, including that every `*Action` of the three controllers has a
 decision.
 
