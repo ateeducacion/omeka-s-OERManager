@@ -5,6 +5,7 @@ namespace OERManager\Form;
 use Laminas\Form\Form;
 use Laminas\InputFilter\InputFilterProviderInterface;
 use OERManager\Service\CurriculumSearch;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\GovernanceSettings;
 use OERManager\Service\Llm\LlmSettings;
 
@@ -16,10 +17,9 @@ use OERManager\Service\Llm\LlmSettings;
  * menú lateral, con privilegio ACL propio. El mapeo settings↔POST vive en
  * `Service\ConfigPayload`; aquí solo están los campos.
  *
- * Localización de los DefinedTermSet raíz (ADR-0006): el propietario fija el
- * item-raíz de ejes temáticos y el valor de lrmi:educationalFramework de los
- * marcos curriculares. La conexión LLM (RF-010/ADR-0008) se añade en la
- * entrega 4b (TASK-010).
+ * Localización de las raíces (ADR-0006): el propietario fija el item-raíz de
+ * ejes temáticos y el conjunto de ítems del currículo (ADR-0022, TASK-064).
+ * La conexión LLM (RF-010/ADR-0008) se añade en la entrega 4b (TASK-010).
  */
 class ConfigForm extends Form implements InputFilterProviderInterface
 {
@@ -62,43 +62,23 @@ class ConfigForm extends Form implements InputFilterProviderInterface
             ],
         ]);
 
+        // Currículo con el modelo cur: (TASK-064, ADR-0022): un solo ajuste, el
+        // conjunto de ítems del currículo, por id (ADR-0006). La clase de cada
+        // término fija su dimensión: ya no hay literales dcterms:type ni marco.
         $this->add([
-            'name' => CurriculumSearch::FRAMEWORK_SETTING,
-            'type' => 'Text',
+            'name' => CurriculumTerms::SCHEME_SETTING,
+            'type' => 'Number',
             'options' => [
-                'label' => 'Marco curricular (lrmi:educationalFramework)', // @translate
-                'info' => 'Valor que delimita los DefinedTermSet curriculares (p. ej. LOMLOE).', // @translate
+                'label' => 'Conjunto de ítems del currículo', // @translate
+                'info' => 'ID del conjunto «Currículo LOMLOE de Canarias» (su dcterms:identifier acaba en '
+                    . 'id/curriculo). Si se deja vacío, se detecta solo.', // @translate
             ],
             'attributes' => [
-                'id' => CurriculumSearch::FRAMEWORK_SETTING,
+                'id' => CurriculumTerms::SCHEME_SETTING,
+                'min' => 1,
+                'step' => 1,
             ],
         ]);
-
-        // Valor de dcterms:type que distingue cada dimensión curricular dentro
-        // del marco (ADR-0006 + docs/referencia/curriculo-modelo-rdf.md). El
-        // re-catalogador acota cada input a los términos de su dcterms:type.
-        // El lrmi:educationalLevel del REA referencia un Curso, no la Etapa
-        // (ADR-0009). Valores reales de referencia: Curso, Asignatura,
-        // Saber básico, Criterio de evaluación.
-        $typeLabels = [
-            'lrmi:educationalLevel' => 'dcterms:type de Curso (lrmi:educationalLevel)', // @translate
-            'schema:about' => 'dcterms:type de Asignatura (schema:about)', // @translate
-            'lrmi:teaches' => 'dcterms:type de Saberes (lrmi:teaches)', // @translate
-            'lrmi:assesses' => 'dcterms:type de Criterios (lrmi:assesses)', // @translate
-        ];
-        foreach (CurriculumSearch::TYPE_SETTINGS as $dimension => $setting) {
-            $this->add([
-                'name' => $setting,
-                'type' => 'Text',
-                'options' => [
-                    'label' => $typeLabels[$dimension],
-                    'info' => 'Valor de dcterms:type de los términos de esta dimensión.', // @translate
-                ],
-                'attributes' => [
-                    'id' => $setting,
-                ],
-            ]);
-        }
 
         $this->addGovernanceFields();
         $this->addLlmFields();

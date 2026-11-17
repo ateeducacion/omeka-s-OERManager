@@ -50,7 +50,9 @@ return [
                     $container->get(Service\Curation\UndoRouter::class),
                     // Estado/cancelación del propose IA: dueño leído de la
                     // entidad Job, no de la API de jobs (vetada a editor/reviewer).
-                    $container->get(Service\Governance\BatchJobLookup::class)
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    // TASK-064: valida o detecta el conjunto del currículo al guardar.
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -106,18 +108,21 @@ return [
             // degradación que la clase centraliza.
             Service\IntegrityChecker::class => function ($container) {
                 return new Service\IntegrityChecker(
-                    $container->get('OERManager\Service\Governance\VocabEntries\Licence')
+                    $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
+                    // TASK-064 slice 5: retired-set ids for «REA linked to a retired term».
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {
                 return new Service\Stats\CatalogSnapshot($container->get('Omeka\ApiManager'));
             },
-            // TASK-047: stages, courses and subjects of the curriculum, read-only.
+            // TASK-047: stages, courses and subjects of the curriculum, read-only
+            // (on the cur: model since TASK-064 slice 5).
             Service\Stats\CurriculumOutline::class => function ($container) {
                 return new Service\Stats\CurriculumOutline(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             // Vocabulario de tipos de recurso (D1). Dependencia BLANDA de
@@ -195,11 +200,20 @@ return [
                     }
                 );
             },
+            // Currículo con el modelo cur: (TASK-064, ADR-0022): conjunto del
+            // currículo, retirados y clases, resueltos una vez por petición.
+            Service\Curriculum\CurriculumTerms::class => function ($container) {
+                return new Service\Curriculum\ApiCurriculumTerms(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
+            },
             // Re-catalogador (TASK-004, RF-004/RF-005).
             Service\CurriculumSearch::class => function ($container) {
                 return new Service\CurriculumSearch(
                     $container->get('Omeka\ApiManager'),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Service\Curation\CurationWriter::class => function ($container) {
@@ -209,7 +223,8 @@ return [
                 return new Service\RecatalogService(
                     $container->get('Omeka\ApiManager'),
                     $container->get('Omeka\Settings'),
-                    $container->get(Service\Curation\CurationWriter::class)
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
             Service\Workflow\WorkflowService::class => function ($container) {
@@ -528,6 +543,29 @@ return [
                 ],
             ],
         ],
+    ],
+    // Strings of `Omeka.jsTranslate()` that go through the translator
+    // (NFR-005). TASK-064 slice 4 registers the knowledge/criteria tree's;
+    // `// @translate` puts them in the template for the catalogues.
+    'js_translate_strings' => [
+        'Elige primero la asignatura (materia en curso) para ver sus saberes y criterios.', // @translate
+        'La asignatura elegida no es una materia en curso del currículo.', // @translate
+        'Alguna asignatura elegida no es una materia en curso del currículo y no tiene árbol.', // @translate
+        'Sin términos vigentes en esta asignatura.', // @translate
+        'No se pudo cargar el árbol del currículo.', // @translate
+        'Cargando…', // @translate
+        'Desplegar', // @translate
+        'seleccionados', // @translate
+        'retirado', // @translate
+        'fuera del árbol', // @translate
+        'Término retirado del currículo. Sustituto:', // @translate
+        'Término retirado del currículo sin sustituto.', // @translate
+        'No está en el árbol de la asignatura elegida.', // @translate
+        // Text filter of each tree (owner decision 2026-11-17).
+        'Filtrar:', // @translate
+        'Ningún término coincide con el filtro.', // @translate
+        '1 coincidencia', // @translate
+        'coincidencias', // @translate
     ],
     'translator' => [
         'translation_file_patterns' => [

@@ -16,7 +16,7 @@ final class ItemPanelDataTest extends TestCase
     public function testPanelIncludesPrivateIdentityMetadataGroupedAlignmentAndNativeMedia(): void
     {
         $course = $this->item(2, 'Course');
-        $subject = $this->item(3, 'Math', ['lrmi:educationalAlignment' => [$this->value(
+        $subject = $this->item(3, 'Math', ['cur:curso' => [$this->value(
             '',
             $course,
             'resource:item'
@@ -49,5 +49,8 @@ final class ItemPanelDataTest extends TestCase
         $this->assertSame('<img>', $result['media'][0]['renderedHtml']);
         $this->assertStringContainsString('Math', json_encode($result['alignment']));
         $this->assertStringContainsString('Unassigned', json_encode($result['alignment']));
+        // ADR-0022: the subject hangs from its course by cur:curso.
+        $this->assertSame(['Math'], $result['alignment']['groups'][0]['subjects']);
+        $this->assertSame(2, $result['alignment']['groups'][0]['courseId']);
     }
 }

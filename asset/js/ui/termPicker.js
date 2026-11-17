@@ -9,6 +9,13 @@
  * como modificada es este widget, y el panel solo lo consume.
  */
 
+/**
+ * Fired (jQuery) on a dimension whenever its chips change: the knowledge and
+ * criteria trees (ui/leafTree.js, TASK-064 slice 4) follow the chips, which
+ * stay the only selection the apply reads.
+ */
+export const CHIPS_CHANGED = 'oer:chips-changed';
+
 export function disableApply($panel) {
     $panel.find('.oer-recatalog-apply').prop('disabled', true);
 }
@@ -84,7 +91,7 @@ export function buildDimensionSelector(term, label, itemJson, isHelper, valueTex
 
 /**
  * Contexto de ancestros para acotar la búsqueda de una dimensión hija
- * (ADR-0009): etapa (ayuda), curso (educationalLevel) y asignatura (about).
+ * (ADR-0022): etapa (ayuda), curso (educationalLevel) y asignatura (about).
  *
  * Los CUATRO términos curriculares tienen cardinalidad múltiple (regla de
  * negocio fijada en PEND-007): un REA con 1º de Primaria y 2º de Bachillerato
@@ -154,8 +161,17 @@ export function addChip($dim, id, title, justification) {
     if ($dim.find(`.chosen-choices .search-choice[data-id="${id}"]`).length) {
         return false;
     }
-    $dim.find('.search-field').before(buildSearchChoice(id, title, justification));
+    const $choice = buildSearchChoice(id, title, justification);
+    const $field = $dim.find('.search-field');
+    // Knowledge and criteria have no search field since TASK-064 slice 4:
+    // their chips are appended and chosen in the tree.
+    if ($field.length) {
+        $field.before($choice);
+    } else {
+        $dim.find('.chosen-choices').append($choice);
+    }
     markDirty($dim);
+    $dim.trigger(CHIPS_CHANGED);
     return true;
 }
 
@@ -175,7 +191,7 @@ export function initTermPicker(config) {
             return;
         }
         searchTimer = window.setTimeout(() => {
-            // Acotación contextual (ADR-0009): se envían los ancestros elegidos.
+            // Acotación contextual (ADR-0022): se envían los ancestros elegidos.
             const params = getContext($dim.closest('.oer-recatalog'));
             params.dimension = term;
             params.q = text;
@@ -209,7 +225,9 @@ export function initTermPicker(config) {
     $(document).on('click', '.oer-recatalog .search-choice-close', function (e) {
         e.preventDefault();
         const $choice = $(this).closest('.search-choice');
-        markDirty($choice.closest('.oer-recatalog-dim'));
+        const $dim = $choice.closest('.oer-recatalog-dim');
+        markDirty($dim);
         $choice.remove();
+        $dim.trigger(CHIPS_CHANGED);
     });
 }

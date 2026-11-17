@@ -10,6 +10,13 @@
  * subject, basic knowledge, criteria. Thematic axes are not scored: packages do
  * not declare them.
  *
+ * Curriculum model: `cur:` (ADR-0022; TASK-064 slice 6). The truth is resolved
+ * by `skos:notation` (leaves), `skos:prefLabel` (courses) and «<subject> ·
+ * <course>» (course subjects); cycle keys read `cur:curso`. Reports written
+ * before slice 6 hold ids of the ADR-0009 graph: `--rescore` or `--resume` on
+ * them compares old ids with new ones and means nothing. Regenerate the truth
+ * with `--no-llm` (free) and a new baseline with a normal run (paid, on demand).
+ *
  * READ-ONLY: runs `propose`, never `apply`; writes nothing to the catalogue.
  * It CALLS THE CONFIGURED LLM (paid tokens), so it runs on demand, never in CI.
  *
@@ -55,6 +62,8 @@ use OERManager\Service\Ai\DeclaredAlignmentResolver;
 use OERManager\Service\Ai\EvaluationMetrics;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ElpxDeclaredAlignment;
+use OERManager\Service\Curriculum\CurModel;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\Ai\ContextDistiller;
@@ -95,7 +104,7 @@ foreach ((array) ($options['price'] ?? []) as $spec) {
 }
 
 $reader = new ElpxDeclaredAlignment();
-$resolver = new DeclaredAlignmentResolver($api);
+$resolver = new DeclaredAlignmentResolver($api, $services->get(CurriculumTerms::class));
 $scorer = new EvaluationScorer();
 $mediaSource = $services->get(MediaSourceInterface::class);
 $store = $services->get('Omeka\File\Store');
@@ -173,16 +182,17 @@ function declaredFor($item, $store, ElpxDeclaredAlignment $reader): ?array
     return null;
 }
 
-/** dcterms:identifier (leaves) or title (courses) of a curriculum item, cached. */
+/**
+ * skos:notation (leaves) or skos:prefLabel (courses) of a curriculum item,
+ * cached (`cur:` model, ADR-0022; TASK-064 slice 6).
+ */
 function labelOf(int $id, $api, string $what): string
 {
     static $cache = [];
     if (!isset($cache[$what][$id])) {
         try {
             $item = $api->read('items', $id)->getContent();
-            $cache[$what][$id] = 'course' === $what
-                ? trim((string) $item->displayTitle(''))
-                : trim((string) ($item->value('dcterms:identifier') ?? ''));
+            $cache[$what][$id] = 'course' === $what ? CurModel::label($item) : CurModel::notation($item);
         } catch (\Exception $e) {
             $cache[$what][$id] = '';
         }
@@ -192,7 +202,9 @@ function labelOf(int $id, $api, string $what): string
 
 /**
  * Cycle key of a subject (TASK-061): its name plus the cycle of its course, so
- * Matemáticas of 3º and of 4º Primaria match; without a cycle, its own id.
+ * Matemáticas of 3º and of 4º Primaria match; without a cycle, its own id. A
+ * `cur:MateriaCurso` reaches its course by `cur:curso` and its label carries
+ * the course («Matemáticas · 4º Primaria»), which the key drops.
  */
 function subjectCycleKey(int $id, $api): string
 {
@@ -201,12 +213,10 @@ function subjectCycleKey(int $id, $api): string
         $cache[$id] = 'id:' . $id;
         try {
             $item = $api->read('items', $id)->getContent();
-            $course = $item->value('lrmi:educationalLevel');
-            $cycle = $course && $course->valueResource()
-                ? CurriculumCycle::courseKey((string) $course->valueResource()->displayTitle(''))
-                : null;
+            $course = CurModel::ref($item, CurModel::COURSE_EDGE)['title'];
+            $cycle = '' === $course ? null : CurriculumCycle::courseKey($course);
             if (null !== $cycle) {
-                $cache[$id] = trim((string) $item->displayTitle('')) . '|' . $cycle;
+                $cache[$id] = CurModel::courseSubjectName(CurModel::label($item), $course) . '|' . $cycle;
             }
         } catch (\Exception $e) {
             // unreadable subject: compared by id
@@ -350,8 +360,8 @@ function rethreshold(array $run, float $threshold, $api): array
         static $cache = [];
         if (!array_key_exists($leafId, $cache)) {
             try {
-                $value = $api->read('items', $leafId)->getContent()->value('lrmi:educationalAlignment');
-                $cache[$leafId] = $value && $value->valueResource() ? $value->valueResource()->id() : null;
+                $course = CurModel::refId($api->read('items', $leafId)->getContent(), CurModel::COURSE_EDGE);
+                $cache[$leafId] = $course > 0 ? $course : null;
             } catch (\Exception $e) {
                 $cache[$leafId] = null;
             }

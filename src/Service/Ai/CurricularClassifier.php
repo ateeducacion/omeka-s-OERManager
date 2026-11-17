@@ -15,7 +15,13 @@ use OERManager\Service\Llm\LlmClientInterface;
  * (más precisos; fallback sin saberes → criterios de la materia). Curso
  * (lrmi:educationalLevel) y materia (schema:about) se DERIVAN de las hojas
  * elegidas (Fase D) → subgrafo coherente por construcción. La etapa solo acota:
- * nunca se escribe (ADR-0009).
+ * nunca se escribe (ADR-0022: navegación).
+ *
+ * Modelo `cur:` (ADR-0022, TASK-064 rebanada 6): familias = `cur:Materia` de
+ * la etapa; hojas = `cur:SaberBasico`/`cur:CriterioEvaluacion` vigentes con su
+ * `skos:definition` y su bloque; curso derivado = `cur:curso` de la hoja y
+ * materia derivada = su `cur:materiaCurso`. Lo resuelve TermResolverInterface;
+ * aquí no hay ninguna consulta al grafo.
  */
 final class CurricularClassifier implements ClassifierInterface, TraceableInterface
 {
@@ -128,7 +134,7 @@ final class CurricularClassifier implements ClassifierInterface, TraceableInterf
         $coarse = $context->coarseText();
         $fine = $context->fineText();
 
-        // Fase A.1 — Etapas (multi; acotan, no se escriben, ADR-0009).
+        // Fase A.1 — Etapas (multi; acotan, no se escriben, ADR-0022).
         $etapaIds = $this->pickEtapaIds($this->resolver->listCandidates('etapa'), $coarse);
         if (!$etapaIds) {
             return [];

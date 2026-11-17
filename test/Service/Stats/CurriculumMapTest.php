@@ -13,13 +13,13 @@ final class CurriculumMapTest extends TestCase
     {
         return new CurriculumMap(
             [
-                3 => ['label' => 'ESO', 'position' => 3],
-                2 => ['label' => 'Primaria', 'position' => 2],
+                3 => ['label' => 'ESO', 'notation' => 'ESO'],
+                2 => ['label' => 'Primaria', 'notation' => 'PRI'],
             ],
             [
-                31 => ['label' => '2º ESO', 'stage' => 3],
-                30 => ['label' => '1º ESO', 'stage' => 3],
-                20 => ['label' => '1º Primaria', 'stage' => 2],
+                31 => ['label' => '2º ESO', 'stage' => 3, 'notation' => 'S02'],
+                30 => ['label' => '1º ESO', 'stage' => 3, 'notation' => 'S01'],
+                20 => ['label' => '1º Primaria', 'stage' => 2, 'notation' => 'P01'],
                 99 => ['label' => 'Curso suelto', 'stage' => null],
             ],
             [

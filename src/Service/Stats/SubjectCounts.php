@@ -6,7 +6,7 @@ namespace OERManager\Service\Stats;
 
 /**
  * «Materia» card (TASK-047, spec D10). Pure. A subject item belongs to one
- * course (ADR-0009), and the same name exists in many courses («Educación
+ * course (`cur:MateriaCurso` → `cur:curso`, ADR-0022), and the same name exists in many courses («Educación
  * física» is 11 items), so subjects are grouped stage → course and never
  * listed without their course. Within a course, by count then name. Subjects
  * whose course is unknown go to a last group.

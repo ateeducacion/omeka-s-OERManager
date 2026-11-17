@@ -83,6 +83,13 @@ final class ModuleConfigTest extends TestCase
         $this->assertArrayHasKey(\OERManager\Service\Curation\UndoRouter::class, $factories);
     }
 
+    /** TASK-064: the curriculum port is a shared service, so its cache lives per request. */
+    public function testCurriculumTermsServiceIsRegistered(): void
+    {
+        $factories = $this->config['service_manager']['factories'] ?? [];
+        $this->assertArrayHasKey(\OERManager\Service\Curriculum\CurriculumTerms::class, $factories);
+    }
+
     public function testAlignmentStatusColumnTypeIsRegistered(): void
     {
         $invokables = $this->config['column_types']['invokables'] ?? [];

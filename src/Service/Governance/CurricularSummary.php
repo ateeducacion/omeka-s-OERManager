@@ -15,7 +15,7 @@ namespace OERManager\Service\Governance;
  * y la celda plana los mezclaba insinuando que Biología estaba en Infantil.
  *
  * El par es derivable sin coste de grafo: la Asignatura lleva su propio curso
- * (ADR-0009), y esa arista se recorre sobre la representación ya cargada —el
+ * (`cur:curso`, ADR-0022), y esa arista se recorre sobre la representación ya cargada —el
  * mismo recorrido que `RecatalogService::qualifiedTitle()` ya hacía para el
  * diff del re-catalogador.
  *

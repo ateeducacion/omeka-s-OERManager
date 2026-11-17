@@ -6,6 +6,7 @@ namespace OERManager\Service;
 
 use Omeka\Api\Representation\AbstractResourceEntityRepresentation;
 use Omeka\Api\Representation\ItemRepresentation;
+use OERManager\Service\Curriculum\CurModel;
 use OERManager\Service\Governance\CurricularGrouping;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Governance\ValueText;
@@ -20,9 +21,6 @@ use OERManager\Service\Governance\ValueText;
  */
 class ItemPanelData
 {
-    /** Aristas al curso ancestro, en orden de preferencia (ADR-0009). */
-    private const COURSE_EDGES = ['lrmi:educationalLevel', 'lrmi:educationalAlignment'];
-
     /**
      * @return array{
      *     identity: array{id:int, title:string, isPublic:bool, thumbnail:?string, editUrl:string},
@@ -127,17 +125,14 @@ class ItemPanelData
         return $this->courseIdOf($target);
     }
 
-    /** Id del curso del que cuelga un item-término, o null si no se resuelve. */
+    /**
+     * Id del curso del que cuelga un item-término (`cur:curso`, ADR-0022), o
+     * null si no se resuelve.
+     */
     private function courseIdOf(AbstractResourceEntityRepresentation $target): ?int
     {
-        foreach (self::COURSE_EDGES as $edge) {
-            $value = $target->value($edge);
-            $ancestor = $value ? $value->valueResource() : null;
-            if (null !== $ancestor) {
-                return (int) $ancestor->id();
-            }
-        }
-        return null;
+        $id = CurModel::ref($target, CurModel::COURSE_EDGE)['id'];
+        return $id > 0 ? $id : null;
     }
 
     /**

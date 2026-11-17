@@ -9,11 +9,17 @@
  * y deben pasar a aviso (D2/D-3), y el recuento de dead_link que quedó sin
  * medir al escribir el spec.
  *
- * SOLO LECTURA: no escribe nada en el catálogo. Solo lee items vía la API y
- * ejercita IntegrityChecker y ColumnType\Curricular sobre ellos.
+ * SOLO LECTURA por defecto: no escribe nada en el catálogo. Solo lee items vía
+ * la API y ejercita IntegrityChecker y ColumnType\Curricular sobre ellos.
+ *
+ * TASK-064 slice 5: the pairs come from the `cur:` model (cur:MateriaCurso →
+ * cur:curso). With `<userEmail> --write` the harness creates one disposable
+ * private REA aligned to 1º ESO + 2º ESO with only Matemáticas · 1º ESO (an
+ * orphan course, so «parcial» has data), checks its cell, and deletes it at
+ * exit, also on failure (test/container/cur-fixture.php).
  *
  * Uso, desde el contenedor:
- *   php /var/www/html/modules/OERManager/test/container/columns-check.php
+ *   php /var/www/html/modules/OERManager/test/container/columns-check.php [<userEmail> [--write]]
  *
  * Sale 1 si alguna comprobación falla, para poder encadenarlo en un smoke test.
  */
@@ -24,6 +30,38 @@ $application = Omeka\Mvc\Application::init(require '/var/www/html/application/co
 $services = $application->getServiceManager();
 $api = $services->get('Omeka\ApiManager');
 $checker = $services->get(OERManager\Service\IntegrityChecker::class);
+
+require __DIR__ . '/cur-fixture.php';
+$email = (string) ($argv[1] ?? '');
+$write = ($argv[2] ?? '') === '--write';
+$disposable = [];
+$disposableId = 0;
+$marker = curMarker('columns-check');
+if ('' !== $email) {
+    $user = curAuthenticate($services, $email);
+}
+if ($write) {
+    if ('' === $email) {
+        fwrite(STDERR, "--write needs <userEmail>\n");
+        exit(2);
+    }
+    register_shutdown_function(static function () use ($services, &$disposable, $marker): void {
+        $left = curDeleteAll($services, $disposable, $marker);
+        echo "\n  " . (0 === $left ? 'OK  ' : 'FAIL') . " disposable REA deleted ($left left)\n";
+        if ($left > 0) {
+            exit(1);
+        }
+    });
+    $fixture = curFixture($services);
+    $disposableId = curCreateRea($services, $marker, [
+        'lrmi:educationalLevel' => [$fixture['S01'], $fixture['S02']],
+        'schema:about' => [$fixture['SMAT01']],
+        'lrmi:teaches' => [$fixture['saber']],
+        'lrmi:assesses' => [$fixture['criterio']],
+    ], $user->getName(), $disposable);
+    echo "disposable REA #$disposableId\n";
+    curClear($services, $email);
+}
 
 $passed = 0;
 $failed = 0;
@@ -315,6 +353,20 @@ if (0 === $unaligned) {
         'hoy todos los REA tienen criterios o saberes: solo se ha verificado que la insignia no sobra');
 }
 
+if ($disposableId > 0) {
+    $disposableItem = $api->read('items', $disposableId)->getContent();
+    $html = (string) $curricular->renderContent($services->get('ViewRenderer'), $disposableItem, []);
+    check(
+        'REA desechable (cur:): píldora «Matemáticas» con «1º ESO» y «Sin materia» 2º ESO',
+        str_contains($html, '<span class="oer-curricular-subject">Matemáticas</span>'
+            . '<span class="oer-curricular-stage">1º ESO</span>')
+            && str_contains($html, 'oer-curricular-orphan') && str_contains($html, '2º ESO'),
+        strip_tags($html)
+    );
+} else {
+    skip('celda de un REA alineado a cur:', 'sin --write no hay REA alineado al modelo cur:');
+}
+
 echo "\n5. Curso huérfano ⇒ anclaje parcial (ADR-0005 §4 ampliado 2026-08-10)\n";
 
 // Un nivel educativo que ninguna materia del REA sostiene es un anclaje MAL
@@ -340,11 +392,15 @@ check(
 
 // Guarda contra la regresión que motivó la regla: si TODOS volvieran a estar en
 // complete, el filtro «parcial» habría vuelto a quedarse sin datos reales.
-check(
-    'el filtro «parcial» tiene datos con los que ejercitarse',
-    $statuses['partial'] > 0,
-    'los ' . count($items) . ' REA vuelven a estar en complete/none'
-);
+if ($statuses['partial'] > 0 || $write) {
+    check(
+        'el filtro «parcial» tiene datos con los que ejercitarse',
+        $statuses['partial'] > 0,
+        'los ' . count($items) . ' REA vuelven a estar en complete/none'
+    );
+} else {
+    skip('el filtro «parcial» tiene datos con los que ejercitarse', 'ningún REA parcial hoy (usa --write)');
+}
 
 echo "\n" . str_repeat('-', 60) . "\n";
 echo "$passed OK, $failed FAIL, $skipped SKIP\n";

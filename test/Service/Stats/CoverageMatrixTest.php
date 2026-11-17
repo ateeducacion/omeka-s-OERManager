@@ -40,7 +40,7 @@ final class CoverageMatrixTest extends TestCase
     public function testRowsMergeSpellingVariantsOfTheSameName(): void
     {
         $map = new CurriculumMap(
-            [1 => ['label' => 'ESO', 'position' => 1]],
+            [1 => ['label' => 'ESO', 'notation' => 'ESO']],
             [10 => ['label' => '1º ESO', 'stage' => 1], 11 => ['label' => '2º ESO', 'stage' => 1]],
             [100 => ['label' => 'Educación Física', 'course' => 10], 101 => ['label' => 'educacion  fisica', 'course' => 11]],
             []

@@ -9,6 +9,11 @@ class ItemRepresentation extends AbstractResourceEntityRepresentation
         return [];
     }
 
+    public function itemSets()
+    {
+        return [];
+    }
+
     public function url()
     {
         return "";

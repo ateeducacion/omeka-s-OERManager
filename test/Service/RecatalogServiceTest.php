@@ -7,6 +7,8 @@ namespace OERManager\Test\Service;
 use OERManager\Service\CurationEvent;
 use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Curation\CurationWriter;
+use OERManager\Service\Curriculum\CurModel;
+use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\RecatalogService;
 use OERManager\Test\Support\RepresentationFactory;
 use Omeka\Api\Manager;
@@ -20,6 +22,8 @@ final class RecatalogServiceTest extends TestCase
 
     private $api;
     private $settings;
+    private $terms;
+    private ?int $schemeId = 46259;
     private $service;
     private array $items;
     private array $missingProperties = [];
@@ -29,8 +33,19 @@ final class RecatalogServiceTest extends TestCase
     {
         $this->api = $this->createMock(Manager::class);
         $this->settings = $this->createMock(Settings::class);
-        $this->service = new RecatalogService($this->api, $this->settings, new CurationWriter($this->api));
-        $this->items = [1 => $this->item(1), 2 => $this->item(2, 'Target'), 3 => $this->item(3, 'Other')];
+        $this->terms = $this->createMock(CurriculumTerms::class);
+        $this->terms->method('schemeId')->willReturnCallback(fn () => $this->schemeId);
+        $this->service = new RecatalogService(
+            $this->api,
+            $this->settings,
+            new CurationWriter($this->api),
+            $this->terms
+        );
+        $this->items = [
+            1 => $this->item(1),
+            2 => $this->curItem(2, CurModel::SABER, 'Target', [], [46259]),
+            3 => $this->curItem(3, CurModel::SABER, 'Other', [], [46259]),
+        ];
         $this->api->method('read')->willReturnCallback(function ($resource, $id) {
             if (!isset($this->items[$id])) {
                 throw new \RuntimeException('Missing target');
@@ -78,12 +93,12 @@ final class RecatalogServiceTest extends TestCase
 
     public function testPreviewNormalizesIdsAndQualifiesTitlesWithoutWriting(): void
     {
-        $course = $this->item(10, 'Course');
-        $this->items[2] = $this->item(2, 'Target', ['lrmi:educationalLevel' => [$this->value(
+        $subject = $this->curItem(10, CurModel::MATERIA_CURSO, 'Matemáticas · 1º ESO');
+        $this->items[2] = $this->curItem(2, CurModel::SABER, 'Target', ['cur:materiaCurso' => [$this->value(
             '',
-            $course,
+            $subject,
             'resource:item'
-        )]]);
+        )]], [46259]);
         $linked = $this->value('', $this->items[2], 'resource:item');
         $linked->method('valueAnnotation')->willReturn($this->annotation(['dcterms:description' => 'Original reason']));
         $this->items[1] = $this->item(1, '', ['lrmi:teaches' => [$linked, $this->value('legacy')]]);
@@ -91,7 +106,7 @@ final class RecatalogServiceTest extends TestCase
         $this->assertSame([2], $diff['lrmi:teaches']['current']);
         $this->assertSame([3, 99], $diff['lrmi:teaches']['next']);
         $this->assertSame([99], $diff['lrmi:teaches']['invalid']);
-        $this->assertSame('Target (Course)', $diff['lrmi:teaches']['titles'][2]);
+        $this->assertSame('Target (Matemáticas · 1º ESO)', $diff['lrmi:teaches']['titles'][2]);
         $this->assertSame([], $this->writes);
     }
 
@@ -140,22 +155,70 @@ final class RecatalogServiceTest extends TestCase
 
     public function testWrongDimensionAndUnknownTargetsAreRejectedBeforeWrite(): void
     {
-        $this->settings->method('get')->willReturn('Knowledge');
         $this->expectException(\RuntimeException::class);
         $this->service->apply(1, ['lrmi:teaches' => [2, 99]], 'Curator');
     }
 
-    public function testDimensionTypeAndAxisMembershipAreValidated(): void
+    public function testATargetOfAnotherClassIsRejectedBeforeWrite(): void
+    {
+        $this->items[5] = $this->curItem(5, CurModel::CRITERIO, 'Criterion', [], [46259]);
+        try {
+            $this->service->apply(1, ['lrmi:teaches' => [2, 5]], 'Curator');
+            $this->fail('A criterion is not knowledge');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('5', $e->getMessage());
+        }
+        $this->assertSame([], $this->writes);
+    }
+
+    /** ADR-0022: the dimension is the target's cur: class, inside the curriculum item set. */
+    public function testClassSchemeAndAxisMembershipAreValidated(): void
     {
         $this->settings->method('get')
-            ->willReturnCallback(static fn ($key) => $key === CurriculumSearch::AXIS_SETTING ? 8 : 'Knowledge');
+            ->willReturnCallback(static fn ($key) => $key === CurriculumSearch::AXIS_SETTING ? 8 : null);
         $axisSet = $this->item(8, 'Axis set');
-        $this->items[2] = $this->item(2, 'Target', ['dcterms:type' => [$this->value('Knowledge')],
-            'schema:inDefinedTermSet' => [$this->value('', $axisSet, 'resource:item')]]);
-        $this->assertSame([], $this->service->preview(1, ['lrmi:teaches' => [2]])['lrmi:teaches']['invalid']);
-        $axes = $this->service->preview(1, ['dcterms:relation' => [2, 3]])['dcterms:relation'];
-        $this->assertSame([3], $axes['invalid']);
-        $this->assertSame('Target', $axes['titles'][2]);
+        $this->items[2] = $this->curItem(2, CurModel::SABER, 'Target', [
+            'schema:inDefinedTermSet' => [$this->value('', $axisSet, 'resource:item')],
+        ], [46259]);
+        $this->items[4] = $this->curItem(4, CurModel::SABER, 'Elsewhere', [], [7]);
+        $this->items[5] = $this->curItem(5, CurModel::CURSO, '1º ESO', [], [46259]);
+        $diff = $this->service->preview(1, [
+            'lrmi:teaches' => [2, 4, 5],
+            'lrmi:educationalLevel' => [5, 2],
+            'dcterms:relation' => [2, 3],
+        ]);
+        $this->assertSame([4, 5], $diff['lrmi:teaches']['invalid']);
+        $this->assertSame([2], $diff['lrmi:educationalLevel']['invalid']);
+        $this->assertSame([3], $diff['dcterms:relation']['invalid']);
+        $this->assertSame('Target', $diff['dcterms:relation']['titles'][2]);
+        $this->assertSame('1º ESO', $diff['lrmi:educationalLevel']['titles'][5]);
+
+        // Unconfigured axes are not blocked (ADR-0006 degrades, it does not fail).
+        $this->settings = $this->createMock(\Omeka\Settings\Settings::class);
+        $this->service = new RecatalogService($this->api, $this->settings, new CurationWriter($this->api), $this->terms);
+        $this->assertSame([], $this->service->preview(1, ['dcterms:relation' => [3]])['dcterms:relation']['invalid']);
+
+        // Without a resolvable curriculum the class still decides, membership cannot.
+        $this->schemeId = null;
+        $this->assertSame([5], $this->service->preview(1, ['lrmi:teaches' => [4, 5]])['lrmi:teaches']['invalid']);
+    }
+
+    /** TASK-064 (owner decision 5): a retired term cannot be linked anew, an existing link stays. */
+    public function testRetiredTargetsCannotBeLinkedAnewButExistingLinksAreKept(): void
+    {
+        $this->items[6] = $this->curItem(6, CurModel::SABER, 'Old', [
+            'skos:changeNote' => [$this->value('Retirado en la versión 1.2.0')],
+        ], [46259]);
+        $this->assertSame([6], $this->service->preview(1, ['lrmi:teaches' => [2, 6]])['lrmi:teaches']['invalid']);
+
+        $this->items[1] = $this->item(1, '', ['lrmi:teaches' => [$this->value('', $this->items[6], 'resource:item')]]);
+        $this->assertSame([], $this->service->preview(1, ['lrmi:teaches' => [2, 6]])['lrmi:teaches']['invalid']);
+        $this->assertTrue($this->service->apply(1, ['lrmi:teaches' => [6, 2]], 'Curator')['updated']);
+        $this->assertSame([2, 6], array_column($this->writes[0]['lrmi:teaches'], 'value_resource_id'));
+
+        $this->items[1] = $this->item(1);
+        $this->expectException(\RuntimeException::class);
+        $this->service->apply(1, ['lrmi:teaches' => [6]], 'Curator');
     }
 
     public function testHistorySortsEventsIgnoresForeignAnnotationsAndToleratesDeletedTargets(): void

@@ -3,6 +3,7 @@ import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valueText } from '../core/values.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
+import { mountLeafTrees } from './leafTree.js';
 import { reopenDrawer } from './drawer.js';
 import { ANCHOR_SLOT } from './drawerDetails.js';
 
@@ -24,7 +25,7 @@ function buildRecatalogPanel(config, itemId, itemJson) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
 
     const $dims = $('<div>').addClass('oer-recatalog-dims');
-    // Etapa: ayuda de navegación de la cascada (ADR-0009). No se escribe en
+    // Etapa: ayuda de navegación de la cascada (ADR-0022). No se escribe en
     // el REA; solo acota Curso → Asignatura → Saberes/Criterios. La advertencia
     // va en su propia línea: una etiqueta etiqueta, y antes hacía dos trabajos.
     const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), {}, true, valueText);
@@ -35,6 +36,11 @@ function buildRecatalogPanel(config, itemId, itemJson) {
         $dims.append(buildDimensionSelector(term, label, itemJson, false, valueText));
     });
     $panel.append($dims);
+    // TASK-064 slice 4: knowledge and criteria are chosen in a tree per block
+    // of the chosen course subject, loaded when the editor opens.
+    if (config.curriculumTreeUrl) {
+        mountLeafTrees($panel);
+    }
 
     const $actions = $('<div>').addClass('oer-recatalog-actions');
     // Pre-relleno IA (TASK-010): propone, el curador revisa y confirma.

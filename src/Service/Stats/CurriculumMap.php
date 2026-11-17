@@ -7,15 +7,15 @@ namespace OERManager\Service\Stats;
 /**
  * The two upper levels of the curriculum graph that the statistics need
  * (TASK-047): stages, courses with their stage, subjects with their course
- * (ADR-0009: a subject item declares its own course), plus the labels of any
+ * (ADR-0022: a cur:MateriaCurso declares its cur:curso), plus the labels of any
  * other linked term (axes, projects). Pure value object; built in the
  * container by CurriculumOutline.
  */
 final class CurriculumMap
 {
-    /** @var array<int, array{label:string, position:?int}> */
+    /** @var array<int, array{label:string, notation?:string}> */
     private array $stages;
-    /** @var array<int, array{label:string, stage:?int, position?:?int}> */
+    /** @var array<int, array{label:string, stage:?int, notation?:string}> */
     private array $courses;
     /** @var array<int, array{label:string, course:?int}> */
     private array $subjects;
@@ -24,8 +24,8 @@ final class CurriculumMap
     private bool $hasUniverse;
 
     /**
-     * @param array<int, array{label:string, position:?int}> $stages
-     * @param array<int, array{label:string, stage:?int, position?:?int}> $courses
+     * @param array<int, array{label:string, notation?:string}> $stages
+     * @param array<int, array{label:string, stage:?int, notation?:string}> $courses
      * @param array<int, array{label:string, course:?int}> $subjects
      * @param array<int, string> $labels Labels of other linked terms.
      * @param bool $hasUniverse False when the subject list is only what REA use
