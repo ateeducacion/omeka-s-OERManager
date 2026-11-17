@@ -50,7 +50,8 @@ Stage and Materia are navigation, never written to the REA. Preserve incremental
 lazy loading; filter child choices by every selected ancestor (one query per id, merged).
 Links to a retired term are kept and warned about (`retired_term`, compared by id with the retired set).
 The panel chooses knowledge and criteria in a tree per block (`curriculum-tree`, TASK-064 slice 4) and
-still writes chips; slice 6 still moves the classifier code off ADR-0009.
+still writes chips, with a client-side text filter per tree. The AI classifier and the declared-alignment
+resolver also read `cur:` (slice 6): codes by `skos:notation`, courses and course subjects by `skos:prefLabel`.
 
 ## Audit and reversal
 

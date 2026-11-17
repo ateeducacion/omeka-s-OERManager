@@ -291,3 +291,94 @@ criteria; the owner asked for a text filter inside each tree instead.
   (48 checks, 18 new: label, live region, ancestors opened, definition/case/accents, no match, criteria tree
   untouched, restore on clear, no request, selection intact, re-filter after a change of subjects, subject
   without matches hidden). **Not verified:** the filter in the real admin with a screen reader (same debt as §7.3).
+
+## 9. Slice 6 decisions (2026-11-17)
+
+Implemented on `feature/task-064-cur-model` (`7f7f984`, `df29b78`, `67d7dfa`).
+
+### 9.1 Classifier port: subject names, not ids
+
+`TermResolverInterface::listLeaves()` keeps the subject **name** (`cur:Materia` label). Reasons:
+
+- The name is unique within its stage (138 Materia, 138 distinct labels in 1.1.2, each with the stage suffix,
+  «Matemáticas (ESO)»), and every leaf query is also bound by `cur:etapa`, so (stage, name) is one Materia.
+  `cur:materia eq <name>` matches the linked resource's title; it was verified on the container in slice 3 and
+  again here (82 knowledge and 18 criteria for Matemáticas (ESO) in 1º ESO).
+- The classifier keys on the name: families are merged by name across stages, the leaf cap is shared per
+  (subject, course), block candidates are (subject, block) pairs, and traces and the TASK-057/059 evaluation
+  reports show it. Switching to ids would change the classifier beyond the model and gain no exactness.
+- Cost is the same either way: one query per (stage, subject[, course]).
+`listSubjectFamilies()` already returns the Materia id (slice 3) for callers that need it; the interface
+documents it as optional.
+
+### 9.2 What the classifier sees
+
+- Families = `cur:Materia` of the stage with their courses; leaves = current `cur:SaberBasico` or
+  `cur:CriterioEvaluacion` of stage + Materia (+ courses), text = `skos:definition`, block = label of
+  `cur:BloqueSaberes` (knowledge, any depth, via `skos:broader`) or `cur:BloqueCompetencial` (criteria),
+  course = `cur:curso`, course subject = `cur:materiaCurso` (derived in phase D). All built by `CurModel`
+  in `CurriculumSearch` (slice 3); slice 6 adds no query to the classifier.
+- **The code in a candidate line is the leaf's `skos:notation`** (`CurriculumTermResolver`). The
+  `skos:prefLabel` («<notation> · <truncated text…>») repeated the definition in every «[course · block]
+  text (code)» line; the notation restores the ADR-0009 shape (code in parentheses) and its token cost. This is
+  the only change in what the model reads; phases, guidance and prompt templates are unchanged.
+- Block labels come as the curriculum writes them («SMAT01SBI · I. Sentido numérico», «Matemáticas · 1º ESO ·
+  bloque competencial C1 + C2»); they were not shortened (owner decision: block = the block node).
+- Course order in the «Curso» step still sorts course labels (`CurriculumOrder` without notation), which is the
+  notation order within a stage («1º ESO» … «4º ESO»); a mix of stages would interleave by ordinal. Not
+  changed: it only orders a candidate list and the families do not carry course notations.
+
+### 9.3 Declared alignment
+
+Checked on the container (52 packages of the TASK-057 set, read only): packages declare the course as
+`nivel` («4º Primaria», «6º Infantil de 5 años», «3º ESO»), the subject as `denominacion` without the stage
+suffix («Matemáticas», «Conocimiento del Medio Natural, Social y cultural») and clean codes
+(«PMAT04CE4.1»). Against 1.1.2: 11/11 courses equal a `cur:Curso` `skos:prefLabel`, 25/25 (course, subject)
+pairs equal a `cur:MateriaCurso` labelled «<subject> · <course>», 129/129 knowledge and 55/55 criteria codes
+equal exactly one current `skos:notation` of their class. Hence `DeclaredAlignmentResolver`:
+
+- courses by `skos:prefLabel`, course subjects by `skos:prefLabel` = `CurModel::courseSubjectLabel(name, course)`
+  **and** `cur:curso` = the resolved course, knowledge/criteria by `skos:notation` in their class;
+- every query is `CurModel::exactQuery` (curriculum set, class, `nex`, two rows to tell unique from ambiguous);
+  a prefixed identifier (`crit:SMAT01CE1.1`) does not match, by design;
+- `LEGACY_COURSE_EDGES` and every `dcterms:title` lookup are gone; without a curriculum or a class the reason is
+  `no_curriculum` and nothing is searched.
+
+`test/container/evaluation-set.php` follows: the resolver gets `CurriculumTerms`; leaf keys read
+`skos:notation`, subject cycle keys reach the course by `cur:curso` and drop the course from the MateriaCurso
+label, and `--threshold` re-derivation reads `cur:curso`. With `--no-llm` the 52 REA now resolve fully
+(55 courses, 56 course subjects, 168 knowledge, 81 criteria, 0 unresolved; before slice 6 every REA was 100 %
+unresolved). **Stored reports from before slice 6 hold ADR-0009 ids**: `--rescore`/`--resume` on them mean
+nothing. Regenerate the truth with `--no-llm` (free) and a new baseline with a normal run (paid, on demand,
+owner's call).
+
+### 9.4 References to the ADR-0009 model left in `src/`
+
+`grep -rn "dcterms:type|inDefinedTermSet|educationalAlignment|dcterms:isPartOf|oermanager_type_|educational_framework|ADR-0009" src Module.php config`:
+
+| Where | Why it stays |
+| --- | --- |
+| `ConfigPayload::LEGACY_SETTINGS`, `Module::upgrade()`, comment in `ConfigForm` | The upgrade deletes the old settings by name (slice 2). |
+| `CurriculumSearch::IN_TERMSET_TERM` (`schema:inDefinedTermSet`) and its axes query (`dcterms:title`) | Thematic axes are not curriculum: ADR-0006 §1 keeps them as a `DefinedTermSet`. |
+| `AlignmentStatus` comment (`lrmi:educationalAlignment`) | Explains the name of the column's query parameter; not a graph edge. |
+| `CurModel::COURSE_EDGE`, `CurriculumOrder`, `CurriculumTermResolver` comments | Historical: what `cur:` replaced. |
+
+No query in `src/` uses `dcterms:type` on terms, `schema:inDefinedTermSet` for the curriculum,
+`lrmi:educationalAlignment` as an edge or `dcterms:isPartOf` to a stage. Comments that cited ADR-0009 for facts
+now given by `cur:` (a course subject belongs to one course) cite ADR-0022. Outside `src/`,
+`test/container/preview-harness.php` still reads `dcterms:type` (obsolete ADR-0009 harness, not run).
+
+### 9.5 Verification
+
+- Host: `DeclaredAlignmentResolverTest` (7 tests, queries compared with `CurModel::exactQuery`),
+  `CurriculumTermResolverTest` (new, 3), `CurricularClassifierTest::testRunsOnTheCurModelRows` (prompt lines and
+  derivation on `cur:` rows), `CurModelTest` (2 new). 806 PHP tests, 178 JS tests, line coverage 97.95 %.
+- Container (`test/container/classifier-cur-check.php`, 8080, curriculum 1.1.2, read only, no LLM): 16 OK —
+  stages INF, PRI, ESO, BAC; 30 ESO families, all `cur:Materia`; Matemáticas (ESO) with 1º–3º ESO; 82 knowledge
+  and 18 criteria of 1º ESO with definition, block and notation (~75 ms, 156 SQL for both lists); the classifier
+  end to end with an in-memory scripted LLM (phases stage → subject → course → blocks → knowledge → criteria,
+  proposes SMAT01SBI.1 and SMAT01CE1.1, derives 1º ESO and Matemáticas · 1º ESO); the declared resolver on
+  `1º ESO`, `Matemáticas`, `SMAT01SBI.1`, `SMAT01CE1.1` (7 ms, 18 SQL for 6 lookups), an unknown code and
+  `crit:SMAT01CE1.1` unresolved. Catalogue afterwards (public API): 71 REA, no item titled with the test marker.
+- **Not verified:** a real classifier run (paid LLM, not authorised in this task) and the new evaluation
+  baseline; the panel in the admin with a logged-in session (§7.3, §8).
