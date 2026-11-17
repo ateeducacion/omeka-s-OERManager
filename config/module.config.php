@@ -51,7 +51,9 @@ return [
                     // entidad Job, no de la API de jobs (vetada a editor/reviewer).
                     $container->get(Service\Governance\BatchJobLookup::class),
                     // TASK-064: valida o detecta el conjunto del currículo al guardar.
-                    $container->get(Service\Curriculum\CurriculumTerms::class)
+                    $container->get(Service\Curriculum\CurriculumTerms::class),
+                    // TASK-067: validates the REA site on save.
+                    $container->get(Service\ReaSite::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -109,8 +111,13 @@ return [
                 return new Service\IntegrityChecker(
                     $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
                     // TASK-064 slice 5: retired-set ids for «REA linked to a retired term».
-                    $container->get(Service\Curriculum\CurriculumTerms::class)
+                    $container->get(Service\Curriculum\CurriculumTerms::class),
+                    // TASK-067: «REA sin sitio REA», one id-only search per request.
+                    $container->get(Service\ReaSite::class)
                 );
+            },
+            Service\ReaSite::class => function ($container) {
+                return new Service\ReaSite($container->get('Omeka\ApiManager'), $container->get('Omeka\Settings'));
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {

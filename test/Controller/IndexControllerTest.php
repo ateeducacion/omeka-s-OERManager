@@ -152,6 +152,10 @@ class IndexControllerTest extends TestCase
             {
                 $this->messages[] = $message;
             }
+            public function addWarning($message)
+            {
+                $this->messages[] = $message;
+            }
             public function addFormErrors($form)
             {
                 $this->messages[] = 'invalid form';
@@ -578,6 +582,32 @@ class IndexControllerTest extends TestCase
      * accepted only if its identifier is `<base>id/curriculo`; left empty, the
      * single such item set is detected and stored.
      */
+    /** TASK-067: the REA site is validated on save, and the page says when the rule is off. */
+    public function testConfigValidatesTheReaSite(): void
+    {
+        $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();
+        $form->init();
+        $form->method('isValid')->willReturn(true);
+        $this->dependencies['formElementManager']->method('get')->willReturn($form);
+        $this->dependencies['reaSite']->method('exists')->willReturnCallback(static fn (int $id): bool => 1 === $id);
+        $settings = $this->dependencies['settings'];
+        $off = 'Sin sitio REA configurado: el aviso «REA sin sitio REA» no se evalúa.';
+
+        $this->request->post = false;
+        $this->controller->configAction();
+        $this->assertContains($off, array_map('strval', $this->messages->messages));
+
+        $this->request->post = true;
+        $this->params->post = [\OERManager\Service\ReaSite::SETTING => '1'];
+        $this->controller->configAction();
+        $this->assertSame(1, $settings->get(\OERManager\Service\ReaSite::SETTING));
+
+        $this->params->post = [\OERManager\Service\ReaSite::SETTING => '99'];
+        $this->controller->configAction();
+        $this->assertSame(1, $settings->get(\OERManager\Service\ReaSite::SETTING));
+        $this->assertContains('El sitio 99 no existe: no se guarda como sitio REA.', array_map('strval', $this->messages->messages));
+    }
+
     public function testConfigValidatesOrDetectsTheCurriculumItemSet(): void
     {
         $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();

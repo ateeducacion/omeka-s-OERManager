@@ -29,6 +29,7 @@ use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\PanelAreas;
+use OERManager\Service\ReaSite;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
 use OERManager\Service\Workflow\WorkflowService;
@@ -81,6 +82,7 @@ class IndexController extends AbstractActionController
     private UndoRouter $undoRouter;
     private BatchJobLookup $jobLookup;
     private CurriculumTerms $curriculumTerms;
+    private ReaSite $reaSite;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -103,7 +105,8 @@ class IndexController extends AbstractActionController
         GovernanceService $governanceService,
         UndoRouter $undoRouter,
         BatchJobLookup $jobLookup,
-        CurriculumTerms $curriculumTerms
+        CurriculumTerms $curriculumTerms,
+        ReaSite $reaSite
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -126,6 +129,7 @@ class IndexController extends AbstractActionController
         $this->undoRouter = $undoRouter;
         $this->jobLookup = $jobLookup;
         $this->curriculumTerms = $curriculumTerms;
+        $this->reaSite = $reaSite;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -531,7 +535,8 @@ class IndexController extends AbstractActionController
             $post = $this->params()->fromPost();
             $form->setData($post);
             if ($form->isValid()) {
-                foreach ($this->withCurriculumScheme(ConfigPayload::write($post)) as $key => $value) {
+                $toSave = $this->withReaSite($this->withCurriculumScheme(ConfigPayload::write($post)));
+                foreach ($toSave as $key => $value) {
                     $settings->set($key, $value);
                 }
                 $this->messenger()->addSuccess('Configuración guardada.'); // @translate
@@ -542,9 +547,35 @@ class IndexController extends AbstractActionController
             $this->messenger()->addFormErrors($form);
         }
 
+        if (null === $this->reaSite->siteId()) {
+            $this->messenger()->addWarning(
+                'Sin sitio REA configurado: el aviso «REA sin sitio REA» no se evalúa.' // @translate
+            );
+        }
+
         $view = new ViewModel();
         $view->setVariable('form', $form);
         return $view;
+    }
+
+    /**
+     * REA site (TASK-067): an id is stored only if the site exists; otherwise
+     * the stored value stays and the admin is told. Empty clears it.
+     *
+     * @param array<string,mixed> $settings
+     * @return array<string,mixed>
+     */
+    private function withReaSite(array $settings): array
+    {
+        $id = $settings[ReaSite::SETTING] ?? null;
+        if (null !== $id && !$this->reaSite->exists($id)) {
+            unset($settings[ReaSite::SETTING]);
+            $this->messenger()->addError(new Message(
+                'El sitio %d no existe: no se guarda como sitio REA.', // @translate
+                $id
+            ));
+        }
+        return $settings;
     }
 
     /**

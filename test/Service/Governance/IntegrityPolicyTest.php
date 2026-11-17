@@ -314,4 +314,25 @@ final class IntegrityPolicyTest extends TestCase
 
         $this->assertSame(['license_not_uri'], $this->codes($issues));
     }
+
+    /** TASK-067 (ADR-0023 §1.4, §2): two warnings, each evaluated only when it can be. */
+    public function testWorkflowAndReaSiteWarnings(): void
+    {
+        $codes = static fn (array $flow): array => array_column(
+            \OERManager\Service\Governance\IntegrityPolicy::issuesFor([], [], false, null, $flow),
+            'code'
+        );
+        $this->assertContains('published_out_of_flow', $codes(['isPublic' => true, 'status' => null]));
+        $this->assertContains('published_out_of_flow', $codes(['isPublic' => true, 'status' => 'Propuesto']));
+        $this->assertNotContains('published_out_of_flow', $codes(['isPublic' => true, 'status' => 'Publicado']));
+        $this->assertNotContains('published_out_of_flow', $codes(['isPublic' => false, 'status' => null]));
+        $this->assertNotContains('published_out_of_flow', $codes([]));
+        $this->assertContains('missing_rea_site', $codes(['inReaSite' => false]));
+        $this->assertNotContains('missing_rea_site', $codes(['inReaSite' => true]));
+        // No REA site configured: the rule is not evaluated.
+        $this->assertNotContains('missing_rea_site', $codes(['inReaSite' => null]));
+        $issue = \OERManager\Service\Governance\IntegrityPolicy::issuesFor([], [], false, null, ['inReaSite' => false]);
+        $last = end($issue);
+        $this->assertSame('warning', $last['severity']);
+    }
 }
