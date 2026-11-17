@@ -3,7 +3,9 @@ import {
     treeRequest,
     requestKey,
     treeViews,
-    chipMarks
+    chipMarks,
+    filterTrees,
+    filterStatus
 } from '../core/leafTreeModel.js';
 import { addChip, chipIdsByTerm, markDirty, CHIPS_CHANGED } from './termPicker.js';
 
@@ -22,9 +24,16 @@ import { addChip, chipIdsByTerm, markDirty, CHIPS_CHANGED } from './termPicker.j
  * Tab and Space work natively; ArrowRight/ArrowLeft open and close a branch
  * from its button. Loaded lazily (NFR-004): only when the editor opens and
  * the course subjects change, one bounded request per change.
+ *
+ * Each tree has a text filter (owner decision 2026-11-17) that works on the
+ * tree already loaded, without requests: matches stay with their ancestors
+ * opened, the rest is hidden, and clearing it restores the open/closed state
+ * it found. Hiding a checked box never unchecks it. The count goes to a
+ * polite live region.
  */
 
 const TREE_LOADED = 'oerTreeKey';
+const FILTER_SNAPSHOT = 'oerFilterSnapshot';
 
 let requestSeq = 0;
 
@@ -41,6 +50,14 @@ export function mountLeafTrees($panel) {
         }
         $dim.find('.search-field').remove();
         $dim.find('.chosen-drop').remove();
+        const inputId = domId($panel, [term.replace(/\W/g, ''), 'filter']);
+        $dim.append($('<div>').addClass('oer-leaf-tree-filter').prop('hidden', true)
+            .append($('<label>').attr('for', inputId)
+                .text(t('Filtrar:') + ' ' + $dim.children('label').first().text()))
+            .append($('<input>').attr({ type: 'search', id: inputId, autocomplete: 'off', spellcheck: 'false' })
+                .addClass('oer-leaf-tree-filter-input'))
+            .append($('<p>').addClass('oer-leaf-tree-filter-status')
+                .attr({ role: 'status', 'aria-live': 'polite' })));
         $dim.append($('<div>').addClass('oer-leaf-tree')
             .append($('<p>').addClass('oer-leaf-tree-note').text(t(
                 'Elige primero la asignatura (materia en curso) para ver sus saberes y criterios.'
@@ -120,6 +137,10 @@ function renderDimension($panel, term, response) {
         return;
     }
     const selected = chipIdsByTerm($panel)[term] || [];
+    // A new tree is drawn closed or open from its selection: the state the
+    // filter must restore is that one, not the previous tree's.
+    $host.removeData(FILTER_SNAPSHOT);
+    $dim.find('.oer-leaf-tree-filter').prop('hidden', true);
     if (response.error) {
         setNote($host, t('No se pudo cargar el árbol del currículo.'));
         return;
@@ -152,6 +173,56 @@ function renderDimension($panel, term, response) {
         $host.append($('<p>').addClass('oer-leaf-tree-note')
             .text(t('Alguna asignatura elegida no es una materia en curso del currículo y no tiene árbol.')));
     }
+    if ($host.find('.oer-tree-node').length) {
+        $dim.find('.oer-leaf-tree-filter').prop('hidden', false);
+    }
+    applyFilter($panel, term);
+}
+
+/**
+ * Applies the dimension's text filter to the drawn trees. The first keystroke
+ * remembers which branches were open; an empty filter puts them back.
+ */
+function applyFilter($panel, term) {
+    const $dim = $panel.find(`.oer-recatalog-dim[data-term="${term}"]`);
+    const $host = $dim.find('.oer-leaf-tree');
+    const $input = $dim.find('.oer-leaf-tree-filter-input');
+    if (!$host.length || !$input.length) {
+        return;
+    }
+    const result = filterTrees($panel.data('oerTreeResponse'), term, $input.val());
+    const $toggles = $host.find('.oer-tree-toggle');
+    if (result.active) {
+        if (!$host.data(FILTER_SNAPSHOT)) {
+            const snapshot = {};
+            $toggles.each(function () {
+                snapshot[$(this).attr('aria-controls')] = 'true' === $(this).attr('aria-expanded');
+            });
+            $host.data(FILTER_SNAPSHOT, snapshot);
+        }
+        $host.find('.oer-tree-node').each(function () {
+            this.hidden = !result.visible.has(String($(this).attr('data-id')));
+        });
+        $toggles.each(function () {
+            toggleBranch($(this), result.expanded.has(String($(this).closest('.oer-tree-node').attr('data-id'))));
+        });
+        $host.find('.oer-leaf-tree-group').each(function () {
+            this.hidden = 0 === $(this).find('.oer-tree-root > .oer-tree-node:not([hidden])').length;
+        });
+    } else {
+        const snapshot = $host.data(FILTER_SNAPSHOT);
+        $host.find('.oer-tree-node, .oer-leaf-tree-group').prop('hidden', false);
+        if (snapshot) {
+            $toggles.each(function () {
+                const key = $(this).attr('aria-controls');
+                if (Object.prototype.hasOwnProperty.call(snapshot, key)) {
+                    toggleBranch($(this), snapshot[key]);
+                }
+            });
+        }
+        $host.removeData(FILTER_SNAPSHOT);
+    }
+    $dim.find('.oer-leaf-tree-filter-status').text(filterStatus(result, t));
 }
 
 /**
@@ -286,6 +357,18 @@ export function initLeafTree(config) {
         }).remove();
         markDirty($dim);
         $dim.trigger(CHIPS_CHANGED);
+    });
+
+    $(document).on('input', '.oer-recatalog .oer-leaf-tree-filter-input', function () {
+        const $dim = $(this).closest('.oer-recatalog-dim');
+        applyFilter($dim.closest('.oer-recatalog'), $dim.data('term'));
+    });
+
+    // Enter in the filter must not submit the surrounding form.
+    $(document).on('keydown', '.oer-recatalog .oer-leaf-tree-filter-input', function (event) {
+        if ('Enter' === event.key) {
+            event.preventDefault();
+        }
     });
 
     $(document).on('click', '.oer-recatalog .oer-tree-toggle', function () {

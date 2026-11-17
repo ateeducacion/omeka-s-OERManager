@@ -561,6 +561,11 @@ return [
         'Término retirado del currículo. Sustituto:', // @translate
         'Término retirado del currículo sin sustituto.', // @translate
         'No está en el árbol de la asignatura elegida.', // @translate
+        // Text filter of each tree (owner decision 2026-11-17).
+        'Filtrar:', // @translate
+        'Ningún término coincide con el filtro.', // @translate
+        '1 coincidencia', // @translate
+        'coincidencias', // @translate
     ],
     'translator' => [
         'translation_file_patterns' => [

@@ -87,7 +87,9 @@ document.addEventListener('click', (e) => {
 });
 
 const failures = [];
+let checks = 0;
 const expect = (name, actual, expected) => {
+    checks += 1;
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
         failures.push({ name, actual, expected });
     }
@@ -153,12 +155,47 @@ expect('ArrowRight opens', $toggle.attr('aria-expanded'), 'true');
 $toggle.trigger('click');
 expect('click toggles', $toggle.attr('aria-expanded'), 'false');
 
+// Text filter (owner decision 2026-11-17): client side, no request.
+const $filter = $teach.find('.oer-leaf-tree-filter');
+const $input = $filter.find('input');
+const $status = $filter.find('.oer-leaf-tree-filter-status');
+const shown = () => $teach.find('.oer-tree-node').filter(function () {
+    return !this.hidden && !$(this).parents('[hidden]').length;
+}).map(function () { return $(this).attr('data-id'); }).get();
+const typeFilter = (text) => $input.val(text).trigger('input');
+expect('filter shown with a tree', $filter.prop('hidden'), false);
+expect('filter input labelled', $teach.find(`label[for="${$input.attr('id')}"]`).text(), 'Filtrar: Saberes básicos');
+expect('count is a polite live region', [$status.attr('aria-live'), $status.attr('role')], ['polite', 'status']);
+expect('state before filtering', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded')], ['false', 'true']);
+const before = calls.length;
+typeFilter('SMAT01SBI.1.1');
+expect('match shown with its ancestors opened', shown(), ['10', '20', '21']);
+expect('ancestors opened', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded')], ['true', 'true']);
+expect('count announced', $status.text(), '1 coincidencia');
+expect('hidden boxes keep their check', [check(22).prop('checked'), check(24).prop('checked')], [true, true]);
+typeFilter('DEFINICIÓN COMPLETA de smat01sbii');
+expect('definition, case and accents', shown(), ['11', '24']);
+typeFilter('nada parecido');
+expect('no match message', [$status.text(), shown()], ['Ningún término coincide con el filtro.', []]);
+expect('criteria tree not filtered', $assess.find('.oer-tree-node:not([hidden])').length, 2);
+typeFilter('');
+expect('clearing restores the open state', [toggleOf(10).attr('aria-expanded'), toggleOf(20).attr('aria-expanded'),
+    toggleOf(11).attr('aria-expanded')], ['false', 'true', 'false']);
+expect('clearing shows every node and empties the count', [$teach.find('.oer-tree-node[hidden]').length, $status.text()], [0, '']);
+expect('filtering sends no request', calls.length, before);
+expect('selection intact after filtering', chips($teach), ['90', '22', '24', '555']);
+typeFilter('bfis');
+
 addChip($about, 600, 'Física · 1º BAC');
 await tick();
 expect('second subject reloads', calls[calls.length - 1].about, ['500', '600']);
 expect('one tree per subject', $teach.find('.oer-leaf-tree-subject').map(function () { return $(this).text(); }).get(),
     ['Matemáticas · 1º ESO', 'Física · 1º BAC']);
 expect('selection survives the reload', [check(22).prop('checked'), check(24).prop('checked')], [true, true]);
+expect('filter re-applied to the new trees', [shown(), $status.text()], [['70', '80'], '2 coincidencias']);
+expect('subject without matches hidden', $teach.find('.oer-leaf-tree-group:not([hidden]) .oer-leaf-tree-subject').text(), 'Física · 1º BAC');
+typeFilter('');
+expect('clear after reload restores the drawn state', toggleOf(70).attr('aria-expanded'), 'false');
 
 $panel.find('.oer-recatalog-preview').trigger('click');
 const preview = posts.filter((p) => '/preview' === p[0]).map((p) => p[1])[0] || '';
@@ -173,7 +210,7 @@ expect('no subject asks for one', $teach.find('.oer-leaf-tree').text(),
 expect('retired still marked without a tree', $teach.find('.search-choice[data-id="90"]').hasClass('oer-chip-retired'), true);
 expect('no chip lost', chips($teach), ['90', '22', '24', '555']);
 
-document.getElementById('out').textContent = JSON.stringify({ checks: 30, failures }, null, 1);
+document.getElementById('out').textContent = JSON.stringify({ checks, failures }, null, 1);
 </script>
 </body>
 </html>

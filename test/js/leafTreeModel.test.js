@@ -9,7 +9,10 @@ import {
     treeStats,
     treeViews,
     retiredById,
-    chipMarks
+    chipMarks,
+    normalizeFilterText,
+    filterTrees,
+    filterStatus
 } from '../../asset/js/core/leafTreeModel.js';
 
 const leaf = (id, notation, children = []) => ({
@@ -138,4 +141,77 @@ test('without a course subject only retired terms are marked', () => {
     assert.equal(marks.get('90').retired.title, 'Viejo');
     assert.equal(marks.has('555'), false);
     assert.equal(chipMarks(null, 'lrmi:teaches', ['90']).size, 0);
+});
+
+// Text filter inside each tree (owner decision 2026-11-17).
+
+test('filter text ignores case, accents and extra spaces', () => {
+    assert.equal(normalizeFilterText('  Ácidos  y BASES Ñ '), 'acidos y bases n');
+    assert.equal(normalizeFilterText(null), '');
+});
+
+test('an empty filter is inactive and hides nothing', () => {
+    const result = filterTrees({ trees: [maths()] }, 'lrmi:teaches', '   ');
+    assert.equal(result.active, false);
+    assert.equal(result.matches, 0);
+    assert.equal(result.visible.size, 0);
+    assert.equal(result.expanded.size, 0);
+});
+
+test('a match shows its ancestors opened and hides the rest', () => {
+    const response = { trees: [maths()] };
+    // Notation of a depth-3 node, typed without the dots' case.
+    const result = filterTrees(response, 'lrmi:teaches', 'smat01sbi.1.1.1');
+    assert.equal(result.active, true);
+    assert.equal(result.matches, 1);
+    assert.deepEqual([...result.visible].sort(), ['10', '20', '21', '23']);
+    assert.deepEqual([...result.expanded].sort(), ['10', '20', '21']);
+});
+
+test('the filter reads notation, label and definition, accent-insensitive', () => {
+    const tree = {
+        subject: { id: 1, title: 'S' },
+        'lrmi:teaches': [{
+            id: 10, notation: 'B1', title: 'B1 · Números', definition: '', selectable: false, children: [
+                { id: 11, notation: 'X1', title: 'X1 · Fracciones', definition: 'Operación con números', selectable: true, children: [] },
+                { id: 12, notation: 'X2', title: 'X2 · Geometría', definition: 'Ángulos', selectable: true, children: [] }
+            ]
+        }]
+    };
+    const response = { trees: [tree] };
+    assert.deepEqual([...filterTrees(response, 'lrmi:teaches', 'ANGULOS').visible].sort(), ['10', '12']);
+    assert.deepEqual([...filterTrees(response, 'lrmi:teaches', 'fracciones').visible].sort(), ['10', '11']);
+    // Every word must appear somewhere in the node's text.
+    assert.equal(filterTrees(response, 'lrmi:teaches', 'operacion numeros').matches, 1);
+    assert.equal(filterTrees(response, 'lrmi:teaches', 'operacion angulos').matches, 0);
+});
+
+test('a matching branch keeps its subtree visible, closed, for context', () => {
+    // The block label matches: its children stay reachable but the block is not opened.
+    const result = filterTrees({ trees: [maths()] }, 'lrmi:teaches', 'SMAT01SBII');
+    assert.equal(result.matches, 2, 'the block and its knowledge item both match');
+    assert.deepEqual([...result.visible].sort(), ['11', '24']);
+    assert.deepEqual([...result.expanded], ['11']);
+    const block = filterTrees({ trees: [maths()] }, 'lrmi:teaches', 'bloque');
+    assert.equal(block.matches, 2);
+    assert.ok(block.visible.has('23'), 'descendants of a match are visible');
+    assert.equal(block.expanded.size, 0, 'a match alone opens nothing');
+});
+
+test('no match hides everything; several subjects are searched together', () => {
+    const response = { trees: [maths(), physics()] };
+    const none = filterTrees(response, 'lrmi:teaches', 'zzz');
+    assert.deepEqual([none.active, none.matches, none.visible.size], [true, 0, 0]);
+    const both = filterTrees(response, 'lrmi:teaches', '.1');
+    assert.ok(both.visible.has('80') && both.visible.has('20'));
+    assert.equal(filterTrees(response, 'lrmi:assesses', 'CE1.2').matches, 1);
+    assert.equal(filterTrees(null, 'lrmi:teaches', 'x').matches, 0);
+});
+
+test('the filter status counts matches or says there are none', () => {
+    const t = (s) => '[' + s + ']';
+    assert.equal(filterStatus({ active: false, matches: 0 }, t), '');
+    assert.equal(filterStatus({ active: true, matches: 0 }, t), '[Ningún término coincide con el filtro.]');
+    assert.equal(filterStatus({ active: true, matches: 1 }, t), '[1 coincidencia]');
+    assert.equal(filterStatus({ active: true, matches: 12 }, t), '12 [coincidencias]');
 });

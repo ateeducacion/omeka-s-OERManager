@@ -791,6 +791,39 @@
     padding: 0.4em 0.6em;
 }
 
+/* Text filter of a tree (owner decision 2026-11-17): the admin's own input,
+   the count in muted text next to it. */
+.oer-leaf-tree-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.3em 0.6em;
+    margin: 0.3em 0;
+}
+
+.oer-leaf-tree-filter[hidden] {
+    display: none;
+}
+
+.oer-leaf-tree-filter label {
+    font-weight: normal;
+}
+
+.oer-leaf-tree-filter-input {
+    flex: 1 1 12em;
+    min-width: 0;
+}
+
+.oer-leaf-tree-filter-status {
+    margin: 0;
+    color: var(--oer-muted);
+    font-size: 0.9em;
+}
+
+.oer-leaf-tree [hidden] {
+    display: none;
+}
+
 .oer-leaf-tree-note {
     margin: 0.2em 0;
     color: var(--oer-muted);

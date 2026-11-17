@@ -154,3 +154,76 @@ export function chipMarks(response, dimension, selectedIds) {
     });
     return marks;
 }
+
+/**
+ * Text of a filter or of a node, compared without case, accents or extra
+ * spaces (owner decision 2026-11-17: «ángulos» finds «Ángulos»).
+ */
+export function normalizeFilterText(text) {
+    return String(text == null ? '' : text)
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function nodeMatches(node, words) {
+    const haystack = normalizeFilterText(
+        [node.notation, node.title, node.definition].filter((part) => part != null).join(' ')
+    );
+    return words.every((word) => -1 !== haystack.indexOf(word));
+}
+
+/**
+ * Text filter of one dimension over the trees already loaded (no request).
+ * A node matches when every word of the filter appears in its notation,
+ * label (`skos:prefLabel`) or definition. What stays visible: the matches,
+ * their ancestors (block and parent knowledge, opened to keep the context)
+ * and the descendants of a match (closed: they belong to what was found).
+ * Everything else is hidden; hiding never changes the selection.
+ *
+ * Returns {active, matches, visible: Set<id>, expanded: Set<id>}; an empty
+ * filter is inactive and the caller restores the tree as it was.
+ */
+export function filterTrees(response, dimension, query) {
+    const words = normalizeFilterText(query).split(' ').filter((word) => '' !== word);
+    const result = { active: words.length > 0, matches: 0, visible: new Set(), expanded: new Set() };
+    if (!result.active) {
+        return result;
+    }
+    const showSubtree = (node) => walk([node], (inner) => result.visible.add(String(inner.id)));
+    // True when the node or something below it matches.
+    const visit = (node) => {
+        const id = String(node.id);
+        if (nodeMatches(node, words)) {
+            result.matches += 1;
+            showSubtree(node);
+            // A match below a match still opens the path to it.
+            const below = (node.children || []).map(visit).some(Boolean);
+            if (below) {
+                result.expanded.add(id);
+            }
+            return true;
+        }
+        const below = (node.children || []).map(visit).some(Boolean);
+        if (below) {
+            result.visible.add(id);
+            result.expanded.add(id);
+        }
+        return below;
+    };
+    ((response && response.trees) || []).forEach((tree) => (tree[dimension] || []).forEach(visit));
+    return result;
+}
+
+/** Text of the filter's live region; `t` translates (Omeka.jsTranslate). */
+export function filterStatus(result, t) {
+    if (!result || !result.active) {
+        return '';
+    }
+    if (0 === result.matches) {
+        return t('Ningún término coincide con el filtro.');
+    }
+    return 1 === result.matches ? t('1 coincidencia') : result.matches + ' ' + t('coincidencias');
+}
