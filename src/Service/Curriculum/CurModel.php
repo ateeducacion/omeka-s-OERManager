@@ -43,8 +43,7 @@ final class CurModel
 
     /**
      * The edge from any term to its course. Replaces the per-file copies of
-     * the ADR-0009 ancestor edges (`lrmi:educationalLevel`,
-     * `lrmi:educationalAlignment`, `schema:inDefinedTermSet`).
+     * the ancestor edges of the old graph (ADR-0009, superseded by ADR-0022).
      */
     public const COURSE_EDGE = self::EDGE_CURSO;
 
@@ -251,7 +250,8 @@ final class CurModel
 
     /**
      * Adds «edge points at an item titled $label» (`eq` matches the linked
-     * resource's title, which is its skos:prefLabel).
+     * resource's title, which is its skos:prefLabel), or «literal property
+     * equals $label» when `$edge` is a literal property such as skos:notation.
      *
      * @param array<string,mixed> $query
      * @return array<string,mixed>
@@ -260,6 +260,19 @@ final class CurModel
     {
         $query['property'][] = ['property' => $edge, 'type' => 'eq', 'text' => trim($label), 'joiner' => 'and'];
         return $query;
+    }
+
+    /**
+     * One current term of one class whose literal `$property` equals `$value`
+     * (TASK-064 slice 6: a code declared by a package is a `skos:notation`, a
+     * declared course a `skos:prefLabel`). Two rows per page: enough to tell a
+     * unique match from an ambiguous one.
+     *
+     * @return array<string,mixed>
+     */
+    public static function exactQuery(int $schemeId, int $classId, string $property, string $value): array
+    {
+        return self::withLabel(self::termsQuery($schemeId, $classId, '', 2), $property, $value);
     }
 
     /** @return array<string,mixed> item sets that look like a curriculum scheme */
@@ -344,6 +357,16 @@ final class CurModel
             }
         }
         return $label;
+    }
+
+    /**
+     * The label of a course subject (`cur:MateriaCurso`): «Matemáticas · 4º
+     * Primaria». Inverse of courseSubjectName(); a package declares the
+     * subject and its course apart.
+     */
+    public static function courseSubjectLabel(string $subjectName, string $courseLabel): string
+    {
+        return trim($subjectName) . ' · ' . trim($courseLabel);
     }
 
     public static function notation(AbstractResourceEntityRepresentation $item): string

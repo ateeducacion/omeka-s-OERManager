@@ -117,6 +117,32 @@ final class CurModelTest extends TestCase
         $this->assertCount(3, $named['property']);
     }
 
+    /** TASK-064 slice 6: a declared code or label is one current term of one class, by exact value. */
+    public function testExactQueryLooksUpOneCurrentTermByALiteral(): void
+    {
+        $query = CurModel::exactQuery(46259, 4769, 'skos:notation', ' SMAT01CE1.1 ');
+        $base = CurModel::termsQuery(46259, 4769, '', 2);
+        $this->assertSame($base['item_set_id'], $query['item_set_id']);
+        $this->assertSame($base['resource_class_id'], $query['resource_class_id']);
+        $this->assertSame(['property' => 'skos:changeNote', 'type' => 'nex'], $query['property'][0]);
+        $this->assertSame(
+            ['property' => 'skos:notation', 'type' => 'eq', 'text' => 'SMAT01CE1.1', 'joiner' => 'and'],
+            $query['property'][1]
+        );
+        $this->assertCount(2, $query['property']);
+        // Two rows are enough to tell a unique match from an ambiguous one.
+        $this->assertSame([1, 2], [$query['page'], $query['per_page']]);
+    }
+
+    public function testCourseSubjectLabelIsSubjectThenCourse(): void
+    {
+        $this->assertSame('Matemáticas · 4º Primaria', CurModel::courseSubjectLabel(' Matemáticas ', ' 4º Primaria'));
+        $this->assertSame(
+            'Matemáticas',
+            CurModel::courseSubjectName(CurModel::courseSubjectLabel('Matemáticas', '1º ESO'), '1º ESO')
+        );
+    }
+
     public function testLookupQueriesForSchemeRetiredSetAndClass(): void
     {
         $this->assertSame([
