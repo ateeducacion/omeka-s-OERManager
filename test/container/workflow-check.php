@@ -1,6 +1,12 @@
 <?php
 
 /**
+ * ⚠️ SUPERSEDED by rea-roles-check.php (TASK-067). This harness writes to a
+ * REAL REA of the catalogue and runs as an arbitrary user; TASK-067's rules
+ * forbid both. It is kept for history with its calls updated to the TASK-067
+ * signatures (publish now keeps `curation:status` = Publicado). Do not run it
+ * against a live catalogue.
+ *
  * Arnés de verificación de RF-016 (flujo autor→curador). `WorkflowService`
  * depende del core (`Omeka\Api\Manager`/`ItemRepresentation`): no se puede
  * instanciar en un test de host (ver «Limitación conocida del arnés»,
@@ -169,19 +175,19 @@ if (null === $incompleteResult) {
     );
     check(
         'canPublish(Propuesto) es true (transición de ESTADO permitida) pese a que ese REA falla el gate de CONTENIDO — son comprobaciones independientes',
-        WorkflowStatus::canPublish(WorkflowStatus::PROPOSED) && !$incompleteResult->isOk()
+        WorkflowStatus::canPublish(WorkflowStatus::PROPOSED, false) && !$incompleteResult->isOk()
     );
 }
 
 // 1. Proponer.
 $item = $api->read('items', $itemId)->getContent();
-$result = $workflow->propose($item);
+$result = $workflow->propose($item, 'workflow-check');
 check('propose() desde el estado inicial da updated=true', true === ($result['updated'] ?? false), json_encode($result));
 $item = $api->read('items', $itemId)->getContent();
 check('El item queda en Propuesto', WorkflowStatus::PROPOSED === $workflow->statusOf($item));
 
 // 2. Rechazar con motivo.
-$result = $workflow->reject($item, 'Falta la licencia');
+$result = $workflow->reject($item, 'Falta la licencia', 'workflow-check');
 check('reject() desde Propuesto da updated=true', true === ($result['updated'] ?? false), json_encode($result));
 $item = $api->read('items', $itemId)->getContent();
 check('El item queda en Rechazado', WorkflowStatus::REJECTED === $workflow->statusOf($item));
@@ -189,7 +195,7 @@ $noteValue = $item->value(WorkflowStatus::NOTE_TERM);
 check('El motivo del rechazo se guardó', null !== $noteValue && 'Falta la licencia' === (string) $noteValue->value());
 
 // 3. Re-proponer: el motivo debe desaparecer.
-$result = $workflow->propose($item);
+$result = $workflow->propose($item, 'workflow-check');
 check('propose() desde Rechazado da updated=true', true === ($result['updated'] ?? false), json_encode($result));
 $item = $api->read('items', $itemId)->getContent();
 check('El item vuelve a Propuesto', WorkflowStatus::PROPOSED === $workflow->statusOf($item));
@@ -197,16 +203,16 @@ check('El motivo del rechazo anterior se limpió', null === $item->value(Workflo
 
 // 4. Publicar (sin pasar por IntegrityChecker aquí — eso lo prueba el
 // controlador; este arnés solo prueba la escritura de WorkflowService).
-$result = $workflow->publish($item);
+$result = $workflow->publish($item, 'workflow-check');
 check('publish() desde Propuesto da updated=true', true === ($result['updated'] ?? false), json_encode($result));
 $item = $api->read('items', $itemId)->getContent();
 check('El item queda público', $item->isPublic());
 check('curation:status se elimina al publicar', null === $workflow->statusOf($item));
 
 // 5. Transiciones inválidas.
-$result = $workflow->reject($item, 'no debería aplicar');
+$result = $workflow->reject($item, 'no debería aplicar', 'workflow-check');
 check('reject() sobre un item ya publicado (sin estado) da updated=false', false === ($result['updated'] ?? true));
-$result = $workflow->publish($item);
+$result = $workflow->publish($item, 'workflow-check');
 check('publish() sobre un item ya publicado (sin estado) da updated=false', false === ($result['updated'] ?? true));
 
 // Restaurar el item a su estado original.

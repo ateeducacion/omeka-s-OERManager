@@ -19,6 +19,8 @@ final class WorkflowStatusTest extends TestCase
         $this->assertSame('curation:note', WorkflowStatus::NOTE_TERM);
         $this->assertSame('Propuesto', WorkflowStatus::PROPOSED);
         $this->assertSame('Rechazado', WorkflowStatus::REJECTED);
+        $this->assertSame('Descartado', WorkflowStatus::DISCARDED);
+        $this->assertSame('Publicado', WorkflowStatus::PUBLISHED);
     }
 
     public function testNormalizeTrataVacioComoBorrador(): void
@@ -29,14 +31,15 @@ final class WorkflowStatusTest extends TestCase
         $this->assertSame('Propuesto', WorkflowStatus::normalize(' Propuesto '));
     }
 
-    /** RF-017: insignia exactamente para Propuesto y Rechazado. */
-    public function testBadgeSoloParaPropuestoYRechazado(): void
+    /** RF-017 + TASK-067: one badge per known state, exact match, none for Borrador. */
+    public function testBadgePorEstadoConocido(): void
     {
         $this->assertSame('proposed', WorkflowStatus::badge(WorkflowStatus::PROPOSED));
         $this->assertSame('rejected', WorkflowStatus::badge(WorkflowStatus::REJECTED));
+        $this->assertSame('discarded', WorkflowStatus::badge(WorkflowStatus::DISCARDED));
+        $this->assertSame('published', WorkflowStatus::badge(WorkflowStatus::PUBLISHED));
         $this->assertNull(WorkflowStatus::badge(null));
         $this->assertNull(WorkflowStatus::badge('propuesto'));
-        $this->assertNull(WorkflowStatus::badge('Publicado'));
     }
 
     public function testProponerDesdeBorradorOAusente(): void
@@ -66,10 +69,61 @@ final class WorkflowStatusTest extends TestCase
         $this->assertFalse(WorkflowStatus::canReject(WorkflowStatus::REJECTED));
     }
 
-    public function testSoloSePuedePublicarUnPropuesto(): void
+    /**
+     * TASK-067: Propuesto publishes; a public REA outside the flow can be
+     * regularised by confirming it, unless it is already Publicado or Descartado.
+     */
+    public function testPublicarUnPropuestoOUnPublicoFueraDelFlujo(): void
     {
-        $this->assertTrue(WorkflowStatus::canPublish(WorkflowStatus::PROPOSED));
-        $this->assertFalse(WorkflowStatus::canPublish(null));
-        $this->assertFalse(WorkflowStatus::canPublish(WorkflowStatus::REJECTED));
+        $this->assertTrue(WorkflowStatus::canPublish(WorkflowStatus::PROPOSED, false));
+        $this->assertTrue(WorkflowStatus::canPublish(WorkflowStatus::PROPOSED, true));
+        $this->assertFalse(WorkflowStatus::canPublish(null, false));
+        $this->assertFalse(WorkflowStatus::canPublish(WorkflowStatus::REJECTED, false));
+        $this->assertTrue(WorkflowStatus::canPublish(null, true));
+        $this->assertTrue(WorkflowStatus::canPublish(WorkflowStatus::REJECTED, true));
+        $this->assertFalse(WorkflowStatus::canPublish(WorkflowStatus::PUBLISHED, true));
+        $this->assertFalse(WorkflowStatus::canPublish(WorkflowStatus::DISCARDED, true));
+        $this->assertFalse(WorkflowStatus::canPublish(WorkflowStatus::DISCARDED, false));
+    }
+
+    public function testDescartarDesdeBorradorPropuestoORechazado(): void
+    {
+        foreach ([null, WorkflowStatus::PROPOSED, WorkflowStatus::REJECTED] as $status) {
+            $this->assertTrue(WorkflowStatus::canDiscard($status));
+        }
+        $this->assertFalse(WorkflowStatus::canDiscard(WorkflowStatus::PUBLISHED));
+        $this->assertFalse(WorkflowStatus::canDiscard(WorkflowStatus::DISCARDED));
+        $this->assertFalse(WorkflowStatus::canDiscard('otro'));
+    }
+
+    public function testReabrirSoloUnDescartado(): void
+    {
+        $this->assertTrue(WorkflowStatus::canReopen(WorkflowStatus::DISCARDED));
+        foreach ([null, WorkflowStatus::PROPOSED, WorkflowStatus::REJECTED, WorkflowStatus::PUBLISHED] as $status) {
+            $this->assertFalse(WorkflowStatus::canReopen($status));
+        }
+    }
+
+    public function testDespublicarUnPublicadoOCualquierPublico(): void
+    {
+        $this->assertTrue(WorkflowStatus::canUnpublish(WorkflowStatus::PUBLISHED, true));
+        $this->assertTrue(WorkflowStatus::canUnpublish(WorkflowStatus::PUBLISHED, false));
+        $this->assertTrue(WorkflowStatus::canUnpublish(null, true));
+        $this->assertFalse(WorkflowStatus::canUnpublish(null, false));
+        $this->assertFalse(WorkflowStatus::canUnpublish(WorkflowStatus::PROPOSED, false));
+    }
+
+    /** ADR-0023 §2: a public REA without Publicado is out of the flow; the queue skips Descartado. */
+    public function testFueraDelFlujoYCola(): void
+    {
+        $this->assertTrue(WorkflowStatus::isOutOfFlow(null, true));
+        $this->assertTrue(WorkflowStatus::isOutOfFlow(WorkflowStatus::DISCARDED, true));
+        $this->assertFalse(WorkflowStatus::isOutOfFlow(WorkflowStatus::PUBLISHED, true));
+        $this->assertFalse(WorkflowStatus::isOutOfFlow(null, false));
+        $this->assertTrue(WorkflowStatus::inQueue(WorkflowStatus::PROPOSED, false));
+        $this->assertTrue(WorkflowStatus::inQueue(null, true));
+        $this->assertFalse(WorkflowStatus::inQueue(WorkflowStatus::DISCARDED, true));
+        $this->assertFalse(WorkflowStatus::inQueue(WorkflowStatus::REJECTED, false));
+        $this->assertFalse(WorkflowStatus::inQueue(WorkflowStatus::PUBLISHED, true));
     }
 }

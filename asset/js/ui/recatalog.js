@@ -136,7 +136,7 @@ function postUndo(config, itemId, force) {
     });
 }
 
-function collectAlignmentPairs($panel) {
+export function collectAlignmentPairs($panel) {
     const pairs = [{ name: 'id', value: $panel.data('item-id') }];
     // La Etapa (data-helper) no se escribe: se excluye de la confirmación.
     $panel.find('.oer-recatalog-dim[data-dirty="1"][data-helper="0"]').each(function () {

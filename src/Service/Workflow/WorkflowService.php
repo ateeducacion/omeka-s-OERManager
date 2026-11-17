@@ -4,24 +4,31 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Workflow;
 
+use OERManager\Service\Curation\CurationWriter;
 use Omeka\Api\Manager as ApiManager;
 use Omeka\Api\Representation\ItemRepresentation;
 
 /**
- * Lee y escribe el estado del flujo autor→curador (RF-016, ADR-0018) sobre un
- * item. Resuelve properties por término, nunca por id hardcodeado — mismo
- * patrón que `RecatalogService::propertyId()`.
+ * Lee y escribe el estado del flujo autor→curador (RF-016, ADR-0018; estados y
+ * transiciones de ADR-0023 §2, TASK-067) sobre un item. Las guardas son las
+ * de `WorkflowStatus`; quién puede pedir cada transición lo decide el ACL
+ * (`Permissions\ReaAcl`), y sobre qué item, el permiso nativo de edición,
+ * que `$api->update()` aplica por sí mismo.
+ *
+ * Cada valor de `curation:status` que se escribe lleva su value annotation
+ * (ADR-0002): `dcterms:contributor`, `dcterms:modified` con la misma marca de
+ * microsegundos que el re-catalogador y `dcterms:provenance`. Así «Publicado»
+ * dice quién publicó y cuándo, en vez de borrarse como antes.
  */
 final class WorkflowService
 {
-    private ApiManager $api;
+    /** Prefijo legible de la procedencia anotada en cada estado. */
+    public const PROVENANCE = 'OERManager flujo: %s';
 
-    /** @var array<string, int|null> */
-    private array $propertyIds = [];
-
-    public function __construct(ApiManager $api)
-    {
-        $this->api = $api;
+    public function __construct(
+        private readonly ApiManager $api,
+        private readonly CurationWriter $writer
+    ) {
     }
 
     public function statusOf(ItemRepresentation $item): ?string
@@ -31,96 +38,126 @@ final class WorkflowService
     }
 
     /**
+     * Borrador o Rechazado → Propuesto. Limpia `curation:note` para que el
+     * motivo de un rechazo previo no sobreviva a una nueva propuesta (spec §4
+     * de TASK-037). No toca la visibilidad.
+     *
      * @return array{updated:bool, status?:string, error?:string}
      */
-    public function propose(ItemRepresentation $item): array
+    public function propose(ItemRepresentation $item, string $contributor): array
     {
         if (!WorkflowStatus::canPropose($this->statusOf($item))) {
-            return ['updated' => false, 'error' => 'invalid_transition'];
+            return self::invalid();
         }
-        // '' (no null): SIEMPRE limpia curation:note, para que el motivo de
-        // un rechazo previo no sobreviva a una nueva propuesta (spec §4).
-        return $this->writeStatus((int) $item->id(), WorkflowStatus::PROPOSED, '');
+        return $this->transition($item, WorkflowStatus::PROPOSED, '', null, $contributor);
     }
 
     /** @return array{updated:bool, status?:string, error?:string} */
-    public function reject(ItemRepresentation $item, string $reason): array
+    public function reject(ItemRepresentation $item, string $reason, string $contributor): array
     {
         if (!WorkflowStatus::canReject($this->statusOf($item))) {
-            return ['updated' => false, 'error' => 'invalid_transition'];
+            return self::invalid();
         }
-        return $this->writeStatus((int) $item->id(), WorkflowStatus::REJECTED, trim($reason));
+        return $this->transition($item, WorkflowStatus::REJECTED, trim($reason), null, $contributor);
     }
 
     /**
-     * ⚠️ TRAMPA CRÍTICA (skill `recatalogador`, incidente 2026-06-25):
+     * Descartado: no publicable como REA. Pasa a privado, para no quedarse
+     * como «Publicado fuera del flujo» para siempre.
+     *
+     * @return array{updated:bool, status?:string, error?:string}
+     */
+    public function discard(ItemRepresentation $item, string $reason, string $contributor): array
+    {
+        if (!WorkflowStatus::canDiscard($this->statusOf($item))) {
+            return self::invalid();
+        }
+        return $this->transition($item, WorkflowStatus::DISCARDED, trim($reason), false, $contributor);
+    }
+
+    /** Descartado → Propuesto (sigue privado). @return array{updated:bool, status?:string, error?:string} */
+    public function reopen(ItemRepresentation $item, string $contributor): array
+    {
+        if (!WorkflowStatus::canReopen($this->statusOf($item))) {
+            return self::invalid();
+        }
+        return $this->transition($item, WorkflowStatus::PROPOSED, '', null, $contributor);
+    }
+
+    /**
+     * Propuesto (o público fuera del flujo) → Publicado y público. El gate de
+     * integridad lo aplica el controlador antes de llamar aquí.
+     *
+     * @return array{updated:bool, status?:string, error?:string}
+     */
+    public function publish(ItemRepresentation $item, string $contributor): array
+    {
+        if (!WorkflowStatus::canPublish($this->statusOf($item), (bool) $item->isPublic())) {
+            return self::invalid();
+        }
+        return $this->transition($item, WorkflowStatus::PUBLISHED, '', true, $contributor);
+    }
+
+    /**
+     * «Despublicar»: Publicado (o cualquier REA público) → Propuesto y
+     * privado, con motivo. Vuelve a la cola.
+     *
+     * @return array{updated:bool, status?:string, error?:string}
+     */
+    public function unpublish(ItemRepresentation $item, string $reason, string $contributor): array
+    {
+        if (!WorkflowStatus::canUnpublish($this->statusOf($item), (bool) $item->isPublic())) {
+            return self::invalid();
+        }
+        return $this->transition($item, WorkflowStatus::PROPOSED, trim($reason), false, $contributor);
+    }
+
+    /**
+     * ⚠️ TRAMPA CRÍTICA (incidente 2026-06-25, skill rdf-curation):
      * `$api->update(..., ['isPartial' => true])` con **valores** de propiedades
      * NO es por-propiedad — `ValueHydrator` recorre la colección PLANA de
      * TODOS los valores del item y borra los no reutilizados. Pasar solo
      * `curation:status`/`curation:note` en `$data` sin más borraría título,
      * descripción, alineamiento curricular y todo lo demás. Patrón correcto
-     * (el mismo que ya usa `RecatalogService`): limpiar SOLO las properties
-     * que se tocan vía `clear_property_values` y anexar con
-     * `'collectionAction' => 'append'`, para que Omeka no reutilice/borre el
-     * resto de la colección.
+     * (el de `CurationWriter::commit()`): limpiar SOLO las properties que se
+     * tocan vía `clear_property_values` y anexar con
+     * `'collectionAction' => 'append'`. La visibilidad (`o:is_public`) no es
+     * un valor RDF y viaja en el mismo payload.
      *
+     * @param string $note '' = limpiar `curation:note`
+     * @param bool|null $isPublic null = no tocar la visibilidad
      * @return array{updated:bool, status?:string, error?:string}
      */
-    public function publish(ItemRepresentation $item): array
-    {
-        if (!WorkflowStatus::canPublish($this->statusOf($item))) {
-            return ['updated' => false, 'error' => 'invalid_transition'];
-        }
-        $itemId = (int) $item->id();
-        $statusPropertyId = $this->propertyId(WorkflowStatus::STATUS_TERM);
+    private function transition(
+        ItemRepresentation $item,
+        string $status,
+        string $note,
+        ?bool $isPublic,
+        string $contributor
+    ): array {
+        $statusPropertyId = $this->writer->propertyId(WorkflowStatus::STATUS_TERM);
         if (null === $statusPropertyId) {
-            // Sin la property no hay dónde limpiar el estado: no dejar el
-            // item a medias (mismo criterio que RecatalogService::eventValue()).
+            // Sin la property no hay dónde escribir el estado: no dejar el
+            // item a medias (mismo criterio que CurationWriter::eventValue()).
             return ['updated' => false, 'error' => 'missing_property'];
         }
         $clear = [$statusPropertyId];
-        $data = [
-            'o:is_public' => true,
-            WorkflowStatus::STATUS_TERM => [],
-        ];
-        $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
-        if (null !== $notePropertyId) {
-            $clear[] = $notePropertyId;
-            $data[WorkflowStatus::NOTE_TERM] = [];
-        }
-        $data['clear_property_values'] = $clear;
-        $this->api->update('items', $itemId, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
-        return ['updated' => true];
-    }
-
-    /**
-     * Mismo patrón `clear_property_values` + `collectionAction=append` que
-     * `publish()` — ver el aviso de arriba. Sin esto, cada propose/reject
-     * borraría el resto de las properties del item.
-     *
-     * @param string $note '' = limpiar `curation:note` (siempre el caso en
-     *   práctica: propose() pasa '' para borrar un motivo de un rechazo
-     *   previo, reject() pasa el motivo). Antes aceptaba `null` como "no
-     *   tocar", pero ninguna llamada real pasaba ese valor — rama muerta
-     *   eliminada en la revisión final de RF-016 (hallazgo 7).
-     */
-    private function writeStatus(int $itemId, string $status, string $note): array
-    {
-        $statusPropertyId = $this->propertyId(WorkflowStatus::STATUS_TERM);
-        if (null === $statusPropertyId) {
-            return ['updated' => false, 'error' => 'missing_property'];
-        }
-        $clear = [$statusPropertyId];
-        $data = [
-            WorkflowStatus::STATUS_TERM => [$this->literal($statusPropertyId, $status)],
-        ];
-        $notePropertyId = $this->propertyId(WorkflowStatus::NOTE_TERM);
+        $statusValue = $this->literal($statusPropertyId, $status);
+        $statusValue['@annotation'] = $this->writer->annotation(
+            $contributor,
+            $this->writer->stamp(),
+            sprintf(self::PROVENANCE, $status)
+        );
+        $data = [WorkflowStatus::STATUS_TERM => [$statusValue]];
+        $notePropertyId = $this->writer->propertyId(WorkflowStatus::NOTE_TERM);
         if (null !== $notePropertyId) {
             $clear[] = $notePropertyId;
             $data[WorkflowStatus::NOTE_TERM] = '' === $note ? [] : [$this->literal($notePropertyId, $note)];
         }
-        $data['clear_property_values'] = $clear;
-        $this->api->update('items', $itemId, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
+        if (null !== $isPublic) {
+            $data['o:is_public'] = $isPublic;
+        }
+        $this->writer->commit((int) $item->id(), $clear, $data);
         return ['updated' => true, 'status' => $status];
     }
 
@@ -134,12 +171,9 @@ final class WorkflowService
         ];
     }
 
-    private function propertyId(string $term): ?int
+    /** @return array{updated:false, error:string} */
+    private static function invalid(): array
     {
-        if (array_key_exists($term, $this->propertyIds)) {
-            return $this->propertyIds[$term];
-        }
-        $content = $this->api->search('properties', ['term' => $term])->getContent();
-        return $this->propertyIds[$term] = $content ? $content[0]->id() : null;
+        return ['updated' => false, 'error' => 'invalid_transition'];
     }
 }

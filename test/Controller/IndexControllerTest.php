@@ -10,6 +10,7 @@ use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
+use OERManager\Service\Curation\CurationWriter;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityResult;
@@ -46,6 +47,7 @@ class IndexControllerTest extends TestCase
     private bool $denyWrite = false;
     private bool $missingItem = false;
     private array $issues = [];
+    private int $updates = 0;
 
     protected function setUp(): void
     {
@@ -78,6 +80,7 @@ class IndexControllerTest extends TestCase
             if ($this->denyWrite) {
                 throw new PermissionDeniedException('private');
             }
+            $this->updates++;
             return new Response($this->item);
         });
         $prompt = new PromptBuilder();
@@ -93,7 +96,7 @@ class IndexControllerTest extends TestCase
             'settings' => new Settings(),
             'scorer' => new EvaluationScorer(),
             'proposalStore' => new ProposalStore($this->dir),
-            'workflowService' => new WorkflowService($this->api),
+            'workflowService' => new WorkflowService($this->api, new CurationWriter($this->api)),
             'computedFilter' => new \OERManager\Service\ComputedFilter(),
         ];
         $arguments = [];
@@ -196,7 +199,7 @@ class IndexControllerTest extends TestCase
         foreach (
             ['setVisibility', 'recatalogPreview', 'recatalogApply', 'recatalogLastEvent',
             'recatalogUndo', 'aiPropose', 'propose', 'rejectProposal', 'publishProposal',
-            'governanceApply'] as $action
+            'governanceApply', 'discard', 'unpublish', 'reopen'] as $action
         ) {
             $this->request->post = false;
             $this->assertSame(['admin/oer-manager', []], $this->controller->{$action . 'Action'}());
@@ -208,7 +211,8 @@ class IndexControllerTest extends TestCase
         $this->params->post['csrf'] = 'invalid';
         foreach (
             ['recatalogApply', 'recatalogUndo', 'aiPropose', 'aiProposeStatus', 'aiProposeCancel',
-            'propose', 'rejectProposal', 'publishProposal', 'governanceApply'] as $action
+            'propose', 'rejectProposal', 'publishProposal', 'governanceApply',
+            'discard', 'unpublish', 'reopen'] as $action
         ) {
             $this->assertSame('csrf', $this->data($action)['error']);
         }
@@ -224,6 +228,9 @@ class IndexControllerTest extends TestCase
                 'propose' => '',
                 'rejectProposal' => WorkflowStatus::PROPOSED,
                 'publishProposal' => WorkflowStatus::PROPOSED,
+                'discard' => WorkflowStatus::REJECTED,
+                'unpublish' => WorkflowStatus::PUBLISHED,
+                'reopen' => WorkflowStatus::DISCARDED,
                 ] as $action => $status
             ) {
                 $this->workflowStatus = $status;
@@ -243,8 +250,9 @@ class IndexControllerTest extends TestCase
                 $this->denyWrite = false;
                 $this->missingItem = true;
                 $result = $this->controller->{$action . 'Action'}();
+                // Not to the master view: a proposer has no privilege there.
                 $this->assertSame(
-                    $ajax ? 'not_found' : 'admin/oer-manager',
+                    $ajax ? 'not_found' : 'admin',
                     $ajax ? $result->getVariable('error') : $result[0]
                 );
                 $this->missingItem = false;
@@ -254,11 +262,14 @@ class IndexControllerTest extends TestCase
                 $this->params->post['csrf'] = 'valid';
             }
             $this->params->post['reason'] = '';
-            $result = $this->controller->rejectProposalAction();
-            $this->assertSame(
-                $ajax ? 'reason_required' : 'admin/id',
-                $ajax ? $result->getVariable('error') : $result[0]
-            );
+            foreach (['rejectProposal', 'discard', 'unpublish'] as $action) {
+                $result = $this->controller->{$action . 'Action'}();
+                $this->assertSame(
+                    $ajax ? 'reason_required' : 'admin/id',
+                    $ajax ? $result->getVariable('error') : $result[0],
+                    $action
+                );
+            }
             $this->params->post['reason'] = 'Revise';
         }
     }
@@ -609,6 +620,56 @@ class IndexControllerTest extends TestCase
         $this->assertSame('ok', $view->getVariable('rail'));
         $this->assertTrue($view->getVariable('canPublish'));
         $this->assertTrue($view->getVariable('canReject'));
+        $this->assertTrue($view->getVariable('canDiscard'));
+        $this->assertFalse($view->getVariable('canUnpublish'));
+        $this->assertFalse($view->getVariable('canReopen'));
+        $this->assertSame('admin/oer-manager/discard', $view->getVariable('discardUrl'));
+    }
+
+    /**
+     * TASK-067: each workflow button needs its own privilege, so a proposer
+     * (who inherits view-all from site_editor) never sees a curator's button.
+     */
+    public function testDrawerWorkflowButtonsFollowEachPrivilege(): void
+    {
+        $this->params->query = ['id' => 7];
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn([]);
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static fn ($resource, $privilege) => 'reject-proposal' === $privilege);
+        $view = $this->controller->drawerDetailsAction();
+        $this->assertTrue($view->getVariable('canReject'));
+        $this->assertFalse($view->getVariable('canPublish'));
+        $this->assertFalse($view->getVariable('canDiscard'));
+    }
+
+    /**
+     * «Confirmar y publicar» (ADR-0023 §3): the panel's pending re-cataloguing
+     * is applied first; if that write fails nothing is published.
+     */
+    public function testConfirmAndPublishAppliesTheRecataloguingFirst(): void
+    {
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post['alignment'] = ['lrmi:teaches' => [11]];
+        $recatalog = $this->dependencies['recatalogService'];
+        $recatalog->expects($this->exactly(2))->method('apply')
+            ->with(7, ['lrmi:teaches' => [11]], 'unknown', [])
+            ->willReturnOnConsecutiveCalls(
+                $this->throwException(new \RuntimeException('invalid_targets')),
+                ['updated' => true, 'properties' => ['lrmi:teaches']]
+            );
+        $failed = $this->controller->publishProposalAction();
+        $this->assertFalse($failed->getVariable('updated'));
+        $this->assertSame('invalid_targets', $failed->getVariable('error'));
+        $this->assertSame(0, $this->updates, 'a failed re-cataloguing publishes nothing');
+
+        // The gate ignores «Publicado fuera del flujo»: publishing is what regularises it.
+        $this->issues = [['severity' => 'warning', 'code' => 'published_out_of_flow', 'field' => 'o:is_public',
+            'message' => 'Out of flow']];
+        $done = $this->controller->publishProposalAction();
+        $this->assertTrue($done->getVariable('updated'));
+        $this->assertSame('Publicado', $done->getVariable('status'));
+        $this->assertSame(1, $this->updates);
     }
 
     public function testPublicationRequiresIntegrityAndValidWorkflowTransition(): void

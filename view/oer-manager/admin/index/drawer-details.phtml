@@ -32,6 +32,12 @@
  * @var string $workflowCsrf
  * @var string $rejectUrl
  * @var string $publishUrl
+ * @var bool $canDiscard
+ * @var bool $canUnpublish
+ * @var bool $canReopen
+ * @var string $discardUrl
+ * @var string $unpublishUrl
+ * @var string $reopenUrl
  * @var string $governanceApplyUrl POST target for the edit form (Task 11)
  */
 
@@ -189,17 +195,27 @@ $checked = null !== $integrity && !empty($integrity['status']);
     // drawer entero es 100% AJAX (ADR-0017 §1), a diferencia de la página
     // nativa— para no perder el filtro activo del curador al ir y volver.
     ?>
-    <?php if ($canReject || $canPublish): ?>
+    <?php if ($canReject || $canPublish || $canDiscard || $canUnpublish || $canReopen): ?>
     <section class="oer-panel-workflow" data-status="<?php echo $escape((string) $workflowStatus); ?>">
         <p class="oer-workflow-status">
-            <?php echo $escape(sprintf($translate('Estado del flujo: %s'), $workflowStatus)); ?>
+            <?php echo $escape(sprintf(
+                $translate('Estado del flujo: %s'),
+                $workflowStatus ?? $translate('Borrador')
+            )); ?>
         </p>
-        <?php if ($canReject): ?>
-        <form
-            method="post"
-            action="<?php echo $escape($rejectUrl); ?>"
-            class="oer-workflow-form oer-drawer-workflow-form"
-        >
+        <?php
+        // TASK-067: rechazar, descartar y despublicar llevan motivo obligatorio.
+        $reasonForms = [
+            [$canReject, $rejectUrl, $translate('Motivo del rechazo'), $translate('Rechazar propuesta')],
+            [$canDiscard, $discardUrl, $translate('Motivo del descarte'), $translate('Descartar')],
+            [$canUnpublish, $unpublishUrl, $translate('Motivo para despublicar'), $translate('Despublicar')],
+        ];
+        foreach ($reasonForms as [$show, $url, $placeholder, $label]):
+            if (!$show) {
+                continue;
+            }
+            ?>
+        <form method="post" action="<?php echo $escape($url); ?>" class="oer-workflow-form oer-drawer-workflow-form">
             <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
             <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
             <input
@@ -207,17 +223,29 @@ $checked = null !== $integrity && !empty($integrity['status']);
                 name="reason"
                 required
                 maxlength="200"
-                placeholder="<?php echo $escape($translate('Motivo del rechazo')); ?>"
-                aria-label="<?php echo $escape($translate('Motivo del rechazo')); ?>"
+                placeholder="<?php echo $escape($placeholder); ?>"
+                aria-label="<?php echo $escape($placeholder); ?>"
             >
-            <button type="submit" class="button"><?php echo $translate('Rechazar propuesta'); ?></button>
+            <button type="submit" class="button"><?php echo $escape($label); ?></button>
         </form>
-        <?php endif; ?>
+        <?php endforeach; ?>
         <?php if ($canPublish): ?>
-        <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form">
+        <?php
+        // «Confirmar y publicar» (ADR-0023 §3): workflowDrawer.js añade la
+        // re-catalogación pendiente del editor abierto, si la hay; el
+        // servidor la escribe primero y no publica si falla.
+        ?>
+        <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form oer-drawer-publish-form">
             <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
             <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
-            <button type="submit" class="button"><?php echo $translate('Publicar propuesta'); ?></button>
+            <button type="submit" class="button"><?php echo $translate('Confirmar y publicar'); ?></button>
+        </form>
+        <?php endif; ?>
+        <?php if ($canReopen): ?>
+        <form method="post" action="<?php echo $escape($reopenUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form">
+            <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
+            <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
+            <button type="submit" class="button"><?php echo $translate('Reabrir'); ?></button>
         </form>
         <?php endif; ?>
         <p class="oer-workflow-error" hidden></p>

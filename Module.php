@@ -278,18 +278,18 @@ class Module extends AbstractModule implements InitProviderInterface
         /** @var \Omeka\Permissions\Acl $acl */
         $acl = $services->get('Omeka\Acl');
         $index = Controller\Admin\IndexController::class;
-        $canEditItem = $item->userIsAllowed('update');
 
-        // TASK-067: cada botón exige el privilegio de SU acción. Antes «es
-        // curador» era `view-all`, que `site_editor` hereda de `editor`: un
-        // proponente habría visto los botones del curador. La UI no puede
-        // ofrecer lo que el ACL deniega, ni ocultar lo que concede.
-        $canPropose = $canEditItem && $acl->userIsAllowed($index, 'propose')
-            && Service\Workflow\WorkflowStatus::canPropose($status);
-        $canReject = $acl->userIsAllowed($index, 'reject-proposal')
-            && Service\Workflow\WorkflowStatus::canReject($status);
-        $canPublish = $acl->userIsAllowed($index, 'publish-proposal')
-            && Service\Workflow\WorkflowStatus::canPublish($status);
+        // TASK-067: cada botón exige el privilegio de SU acción y que el
+        // estado lo permita (WorkflowStatus::available). Antes «es curador»
+        // era `view-all`, que `site_editor` hereda de `editor`: un proponente
+        // habría visto los botones del curador. Proponer exige además poder
+        // editar ESTE item (permiso nativo, IsolatedSites incluido).
+        $buttons = Service\Workflow\WorkflowStatus::available(
+            $status,
+            (bool) $item->isPublic(),
+            static fn (string $privilege): bool => (bool) $acl->userIsAllowed($index, $privilege)
+        );
+        $buttons['canPropose'] = $buttons['canPropose'] && $item->userIsAllowed('update');
 
         /** @var \Laminas\View\Renderer\PhpRenderer $view */
         $view = $event->getTarget();
@@ -305,7 +305,7 @@ class Module extends AbstractModule implements InitProviderInterface
             echo $view->partial('oer-manager/common/workflow-badge', ['badge' => $badge]);
         }
 
-        if (!$canPropose && !$canReject && !$canPublish) {
+        if (!in_array(true, $buttons, true)) {
             return;
         }
 
@@ -315,15 +315,15 @@ class Module extends AbstractModule implements InitProviderInterface
             'timeout' => 3600,
         ]);
 
-        echo $view->partial('oer-manager/common/workflow-actions', [
+        echo $view->partial('oer-manager/common/workflow-actions', $buttons + [
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),
-            'canPropose' => $canPropose,
-            'canReject' => $canReject,
-            'canPublish' => $canPublish,
             'proposeUrl' => $view->url('admin/oer-manager', ['action' => 'propose']),
             'rejectUrl' => $view->url('admin/oer-manager', ['action' => 'reject-proposal']),
             'publishUrl' => $view->url('admin/oer-manager', ['action' => 'publish-proposal']),
+            'discardUrl' => $view->url('admin/oer-manager', ['action' => 'discard']),
+            'unpublishUrl' => $view->url('admin/oer-manager', ['action' => 'unpublish']),
+            'reopenUrl' => $view->url('admin/oer-manager', ['action' => 'reopen']),
         ]);
     }
 

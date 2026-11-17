@@ -227,7 +227,12 @@ return [
                 );
             },
             Service\Workflow\WorkflowService::class => function ($container) {
-                return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
+                // TASK-067: the status value is annotated (who and when, ADR-0002)
+                // with the re-cataloguer's writer, and written by its targeted commit.
+                return new Service\Workflow\WorkflowService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class)
+                );
             },
             // Gobernanza (TASK-028 slice 3b, RF-015): lee y escribe las cinco
             // properties de gobernanza por el mismo CurationWriter que el

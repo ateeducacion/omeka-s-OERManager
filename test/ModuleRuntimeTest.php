@@ -181,7 +181,7 @@ class ModuleRuntimeTest extends TestCase
         $api = $this->createMock(Manager::class);
         $acl = $this->createMock(\Omeka\Permissions\Acl::class);
         $acl->method('userIsAllowed')->willReturn(true);
-        $module = $this->module(['Omeka\Acl' => $acl, WorkflowService::class => new WorkflowService($api)]);
+        $module = $this->module(['Omeka\Acl' => $acl, WorkflowService::class => new WorkflowService($api, new \OERManager\Service\Curation\CurationWriter($api))]);
         $view = new \Laminas\View\Renderer\PhpRenderer();
         $event = (new Event())->setTarget($view);
         ob_start();
@@ -209,7 +209,7 @@ class ModuleRuntimeTest extends TestCase
         $acl->method('userIsAllowed')->willReturn(false);
         $module = $this->module([
             'Omeka\Acl' => $acl,
-            WorkflowService::class => new WorkflowService($this->createMock(Manager::class)),
+            WorkflowService::class => new WorkflowService($api = $this->createMock(Manager::class), new \OERManager\Service\Curation\CurationWriter($api)),
         ]);
         foreach (['Propuesto' => 'proposed', ' Rechazado ' => 'rejected'] as $raw => $badge) {
             $value = $this->createMock(\Omeka\Api\Representation\ValueRepresentation::class);

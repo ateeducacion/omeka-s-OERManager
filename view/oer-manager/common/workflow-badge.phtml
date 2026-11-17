@@ -9,7 +9,7 @@
  * accesible. Sin estado conocido no se pinta nada.
  *
  * @var \Laminas\View\Renderer\PhpRenderer $this
- * @var string|null $badge `proposed`, `rejected` o null (WorkflowStatus::badge())
+ * @var string|null $badge `proposed`, `rejected`, `discarded`, `published` o null (WorkflowStatus::badge())
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
@@ -24,6 +24,17 @@ $badges = [
         'glyph' => '✗',
         'label' => $translate('Rechazado'),
         'title' => $translate('Propuesta rechazada: vuelve a su autor'),
+    ],
+    // TASK-067 (ADR-0023 §2).
+    'discarded' => [
+        'glyph' => '⊘',
+        'label' => $translate('Descartado'),
+        'title' => $translate('Descartado: no se publica como REA; un curador puede reabrirlo'),
+    ],
+    'published' => [
+        'glyph' => '✓',
+        'label' => $translate('Publicado'),
+        'title' => $translate('Publicado por el flujo de curación'),
     ],
 ];
 if (!isset($badge, $badges[$badge])) {

@@ -85,6 +85,10 @@ final class ReaAcl
                 'propose',
                 'reject-proposal',
                 'publish-proposal',
+                // ADR-0023 §2 (TASK-067).
+                'discard',
+                'unpublish',
+                'reopen',
             ],
         ],
         StatsController::class => [
