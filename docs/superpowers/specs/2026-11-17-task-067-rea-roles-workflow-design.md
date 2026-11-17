@@ -176,11 +176,18 @@ or note differs from the stored ones, unless:
 - the write comes from `WorkflowService` (a request-scoped flag around its own commit), or
 - the user is `global_admin` (the initial import, TASK-072).
 
-Compared as text, order-insensitive, so the native form resubmitting unchanged values passes.
+«Changed» is decided on a canonical, **ordered** form of every value of both terms — type, text, uri,
+language, linked resource, visibility and the value annotation's own values — built alike from the
+database (ordered by value id, like Omeka's `Resource::$values`) and from the hydrated entity
+(second security review: an order-insensitive text comparison let anyone reorder two statuses — the
+module reads the first —, make the values public again or forge who published). Nobody, not even
+`global_admin`, may leave a REA with more than one status; legacy data with two is not blocked while
+left untouched. Unchanged resubmissions pass.
 It applies to items that are or were `lrmi:LearningResource`; an item that only now becomes one
 counts as having no previous values, so a status cannot be written under another class and kept by
 switching the class back. Covers the API, the native form and batch update (each sub-update hydrates
-the same way). One small query per item save (old class and workflow values). Other items keep
+the same way). One small query per item save (old class and workflow values), plus one for their
+annotations when there are any. Other items keep
 `curation:status` free for other modules. Not covered: hand edits of the annotations themselves. The
 annotation of the previous state disappears with its value; the full history of who moved a REA is
 not kept (out of scope: ADR-0015 events are for reversible curation, not for workflow).

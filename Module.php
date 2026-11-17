@@ -382,9 +382,14 @@ class Module extends AbstractModule implements InitProviderInterface
         ]);
     }
 
-    /** Old class and workflow values of an item, in one query (guardWorkflowValues). */
+    /**
+     * Old class and workflow values of an item (guardWorkflowValues), ordered
+     * by value id like Omeka's `Resource::$values`. One row with null values
+     * when the item has none.
+     */
     private const WORKFLOW_VALUES_SQL = <<<'SQL'
-        SELECT CONCAT(cv.prefix, ':', rc.local_name) AS class, p.local_name AS term, v.value AS value
+        SELECT CONCAT(cv.prefix, ':', rc.local_name) AS class, p.local_name AS term, v.type, v.value, v.uri,
+            v.lang, v.value_resource_id, v.is_public, v.value_annotation_id
         FROM resource r
         LEFT JOIN resource_class rc ON rc.id = r.resource_class_id
         LEFT JOIN vocabulary cv ON cv.id = rc.vocabulary_id
@@ -394,11 +399,24 @@ class Module extends AbstractModule implements InitProviderInterface
         )
         LEFT JOIN property p ON p.id = v.property_id
         WHERE r.id = ?
+        ORDER BY v.id
+        SQL;
+
+    /** Values of the annotations of those values, ordered by id. */
+    private const WORKFLOW_ANNOTATIONS_SQL = <<<'SQL'
+        SELECT v.resource_id, CONCAT(vo.prefix, ':', p.local_name) AS term, v.type, v.value, v.uri, v.lang,
+            v.value_resource_id, v.is_public
+        FROM value v
+        JOIN property p ON p.id = v.property_id
+        JOIN vocabulary vo ON vo.id = p.vocabulary_id
+        WHERE v.resource_id IN (%s)
+        ORDER BY v.id
         SQL;
 
     /**
      * Rejects a hand-made change of `curation:status`/`curation:note` on a
-     * REA (security review of TASK-067; rules in `Workflow\StatusGuard`).
+     * REA (security reviews of TASK-067; rules in `Workflow\StatusGuard`):
+     * text, order, type, visibility or annotation alike.
      *
      * A REA is an item that is or was `lrmi:LearningResource`; when it only
      * becomes one now, its old values count as empty, so a status cannot be
@@ -411,36 +429,29 @@ class Module extends AbstractModule implements InitProviderInterface
             return;
         }
         $services = $this->getServiceLocator();
-        $class = static function ($resourceClass): ?string {
-            return $resourceClass
-                ? $resourceClass->getVocabulary()->getPrefix() . ':' . $resourceClass->getLocalName()
-                : null;
-        };
         $lr = Service\MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM;
-
-        $after = [];
-        foreach ($entity->getValues() as $value) {
-            $term = $class($value->getProperty());
-            if (in_array($term, Service\Workflow\StatusGuard::TERMS, true)) {
-                $after[$term][] = (string) $value->getValue();
-            }
-        }
-        $isLearningResource = $lr === $class($entity->getResourceClass());
+        $after = Service\Workflow\StatusGuard::fromEntityValues($entity->getValues());
+        $isLearningResource = $lr === Service\Workflow\StatusGuard::term($entity->getResourceClass());
 
         $before = [];
         $wasLearningResource = false;
         if (null !== $entity->getId()) {
-            $rows = $services->get('Omeka\Connection')
-                ->fetchAllAssociative(self::WORKFLOW_VALUES_SQL, [(int) $entity->getId()]);
+            $connection = $services->get('Omeka\Connection');
+            $rows = $connection->fetchAllAssociative(self::WORKFLOW_VALUES_SQL, [(int) $entity->getId()]);
+            $annotationIds = [];
             foreach ($rows as $row) {
                 $wasLearningResource = $wasLearningResource || $lr === $row['class'];
-                if (null !== $row['term']) {
-                    $before['curation:' . $row['term']][] = (string) $row['value'];
+                if (!empty($row['value_annotation_id'])) {
+                    $annotationIds[] = (int) $row['value_annotation_id'];
                 }
             }
-        }
-        if (!$wasLearningResource) {
-            $before = [];
+            $annotationRows = [] === $annotationIds ? [] : $connection->fetchAllAssociative(
+                sprintf(self::WORKFLOW_ANNOTATIONS_SQL, implode(', ', array_fill(0, count($annotationIds), '?'))),
+                $annotationIds
+            );
+            if ($wasLearningResource) {
+                $before = Service\Workflow\StatusGuard::fromRows($rows, $annotationRows);
+            }
         }
 
         $identity = $services->get('Omeka\AuthenticationService')->getIdentity();

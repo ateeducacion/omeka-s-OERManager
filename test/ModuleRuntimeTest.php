@@ -227,17 +227,16 @@ class ModuleRuntimeTest extends TestCase
         }
     }
 
-    /** A hydrated item entity as the guard reads it: class term and its values. */
-    private function entity(?int $id, ?string $class, array $values): object
+    /** A property or class entity with its term. */
+    private function member(string $term): object
     {
-        $term = static fn (string $t) => new class ($t) {
+        return new class ($term) {
             public function __construct(private string $t)
             {
             }
             public function getVocabulary()
             {
-                $prefix = explode(':', $this->t)[0];
-                return new class ($prefix) {
+                return new class (explode(':', $this->t)[0]) {
                     public function __construct(private string $p)
                     {
                     }
@@ -252,25 +251,62 @@ class ModuleRuntimeTest extends TestCase
                 return explode(':', $this->t)[1];
             }
         };
-        $valueObjects = [];
-        foreach ($values as $t => $texts) {
-            foreach ($texts as $text) {
-                $valueObjects[] = new class ($term($t), $text) {
-                    public function __construct(private $p, private string $v)
-                    {
-                    }
-                    public function getProperty()
-                    {
-                        return $this->p;
-                    }
-                    public function getValue()
-                    {
-                        return $this->v;
-                    }
-                };
+    }
+
+    /** A hydrated Value entity: [term, text, public?, annotation values]. */
+    private function valueEntity(string $term, string $text, bool $public = false, array $annotation = []): object
+    {
+        $annotationEntity = [] === $annotation ? null : new class ($annotation) {
+            public function __construct(private array $values)
+            {
             }
-        }
-        return new class ($id, null === $class ? null : $term($class), $valueObjects) {
+            public function getValues()
+            {
+                return $this->values;
+            }
+        };
+        return new class ($this->member($term), $text, $public, $annotationEntity) {
+            public function __construct(private $p, private string $v, private bool $pub, private $ann)
+            {
+            }
+            public function getProperty()
+            {
+                return $this->p;
+            }
+            public function getType()
+            {
+                return 'literal';
+            }
+            public function getValue()
+            {
+                return $this->v;
+            }
+            public function getUri()
+            {
+                return null;
+            }
+            public function getLang()
+            {
+                return null;
+            }
+            public function getValueResource()
+            {
+                return null;
+            }
+            public function isPublic()
+            {
+                return $this->pub;
+            }
+            public function getValueAnnotation()
+            {
+                return $this->ann;
+            }
+        };
+    }
+
+    private function entity(?int $id, ?string $class, array $values): object
+    {
+        return new class ($id, null === $class ? null : $this->member($class), $values) {
             public function __construct(private ?int $id, private $class, private array $values)
             {
             }
@@ -289,23 +325,32 @@ class ModuleRuntimeTest extends TestCase
         };
     }
 
+    /** A database row of the guard's first query. */
+    private static function row(string $class, ?string $term, ?string $text, bool $public = false, ?int $ann = null): array
+    {
+        return ['class' => $class, 'term' => $term, 'type' => null === $term ? null : 'literal', 'value' => $text,
+            'uri' => null, 'lang' => null, 'value_resource_id' => null, 'is_public' => $public ? '1' : '0',
+            'value_annotation_id' => $ann];
+    }
+
     /**
-     * Security review of TASK-067: a hand-made change of curation:status or
-     * curation:note on a REA is a validation error, unless WorkflowService
-     * writes it or the user is global_admin. The database row is the «before».
+     * Security reviews of TASK-067: a hand-made change of curation:status or
+     * curation:note on a REA — text, visibility, annotation, class smuggling —
+     * is a validation error, unless WorkflowService writes it or the user is
+     * global_admin. The database rows are the «before».
      */
     public function testStatusGuardListenerRejectsHandMadeWorkflowValues(): void
     {
-        $run = function (object $entity, array $dbRows, ?string $role, ?StatusGuardAlias $guard = null): array {
-            $connection = new class ($dbRows) {
+        $run = function (object $entity, array $dbRows, ?string $role, ?StatusGuardAlias $guard = null, array $annRows = []): array {
+            $connection = new class ($dbRows, $annRows) {
                 public array $calls = [];
-                public function __construct(private array $rows)
+                public function __construct(private array $rows, private array $annRows)
                 {
                 }
                 public function fetchAllAssociative($sql, array $params = [])
                 {
                     $this->calls[] = $params;
-                    return $this->rows;
+                    return 1 === count($this->calls) ? $this->rows : $this->annRows;
                 }
             };
             $identity = null === $role ? null : new class ($role) {
@@ -344,39 +389,47 @@ class ModuleRuntimeTest extends TestCase
             return $errors->errors;
         };
         $lr = 'lrmi:LearningResource';
-        $proposed = [['class' => $lr, 'term' => 'status', 'value' => 'Propuesto']];
+        $status = fn (string $text, bool $public = false, array $ann = []) => $this->valueEntity('curation:status', $text, $public, $ann);
+        $proposed = [self::row($lr, 'status', 'Propuesto')];
 
         // A proposer writes «Publicado» by hand: rejected.
-        $this->assertArrayHasKey(
-            'curation:status',
-            $run($this->entity(5, $lr, ['curation:status' => ['Publicado']]), $proposed, 'rea_proponente')
-        );
+        $this->assertArrayHasKey('curation:status', $run($this->entity(5, $lr, [$status('Publicado')]), $proposed, 'rea_proponente'));
         // The native form resubmits what it shows: unchanged passes.
-        $this->assertSame([], $run($this->entity(5, $lr, ['curation:status' => ['Propuesto']]), $proposed, 'rea_proponente'));
+        $this->assertSame([], $run($this->entity(5, $lr, [$status('Propuesto')]), $proposed, 'rea_proponente'));
+        // Making the status public again is a change.
+        $this->assertNotSame([], $run($this->entity(5, $lr, [$status('Propuesto', true)]), $proposed, 'rea_proponente'));
+        // Forging who published: the annotation is compared too.
+        $stamped = [self::row($lr, 'status', 'Publicado', false, 40)];
+        $annRows = [['resource_id' => 40, 'term' => 'dcterms:contributor', 'type' => 'literal', 'value' => 'Cu',
+            'uri' => null, 'lang' => null, 'value_resource_id' => null, 'is_public' => '0']];
+        $same = [$status('Publicado', false, [$this->valueEntity('dcterms:contributor', 'Cu')])];
+        $forged = [$status('Publicado', false, [$this->valueEntity('dcterms:contributor', 'Otro')])];
+        $this->assertSame([], $run($this->entity(5, $lr, $same), $stamped, 'rea_proponente', null, $annRows));
+        $this->assertNotSame([], $run($this->entity(5, $lr, $forged), $stamped, 'rea_proponente', null, $annRows));
         // global_admin (initial import) passes.
-        $this->assertSame([], $run($this->entity(5, $lr, ['curation:status' => ['Publicado']]), $proposed, 'global_admin'));
+        $this->assertSame([], $run($this->entity(5, $lr, [$status('Publicado')]), $proposed, 'global_admin'));
         // A REA created with a status by hand, or an item turned into a REA with one: rejected.
-        $this->assertNotSame([], $run($this->entity(null, $lr, ['curation:status' => ['Publicado']]), [], 'rea_curador'));
+        $this->assertNotSame([], $run($this->entity(null, $lr, [$status('Publicado')]), [], 'rea_curador'));
         $this->assertNotSame([], $run(
-            $this->entity(6, $lr, ['curation:status' => ['Publicado']]),
-            [['class' => 'dctype:Text', 'term' => 'status', 'value' => 'Publicado']],
+            $this->entity(6, $lr, [$status('Publicado')]),
+            [self::row('dctype:Text', 'status', 'Publicado')],
             'rea_curador'
         ));
         // A note by hand on a REA leaving the class is still a change to a REA.
         $this->assertNotSame([], $run(
-            $this->entity(5, 'dctype:Text', ['curation:status' => ['Propuesto'], 'curation:note' => ['x']]),
+            $this->entity(5, 'dctype:Text', [$status('Propuesto'), $this->valueEntity('curation:note', 'x')]),
             $proposed,
             'rea_curador'
         ));
         // Items that are not and were not REA are not guarded.
         $this->assertSame([], $run(
-            $this->entity(7, 'dctype:Text', ['curation:status' => ['Draft']]),
-            [['class' => 'dctype:Text', 'term' => null, 'value' => null]],
+            $this->entity(7, 'dctype:Text', [$status('Draft')]),
+            [self::row('dctype:Text', null, null)],
             'editor'
         ));
         // WorkflowService's own write passes.
         $guard = new StatusGuardAlias();
-        $errors = $guard->run(fn () => $run($this->entity(5, $lr, ['curation:status' => ['Publicado']]), $proposed, 'rea_curador', $guard));
+        $errors = $guard->run(fn () => $run($this->entity(5, $lr, [$status('Publicado')]), $proposed, 'rea_curador', $guard));
         $this->assertSame([], $errors);
     }
 
