@@ -382,3 +382,7 @@ now given by `cur:` (a course subject belongs to one course) cite ADR-0022. Outs
   `crit:SMAT01CE1.1` unresolved. Catalogue afterwards (public API): 71 REA, no item titled with the test marker.
 - **Not verified:** a real classifier run (paid LLM, not authorised in this task) and the new evaluation
   baseline; the panel in the admin with a logged-in session (§7.3, §8).
+
+## Status
+
+Closed on 2026-11-17 by the owner, after merging PR #84 (`2a998d1`). Follow-up on the panel: TASK-035 and TASK-065.
