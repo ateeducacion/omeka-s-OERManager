@@ -148,3 +148,17 @@ regularised: publishing through the native form is detected, not blocked (closes
   `src/Listener/ModifyQueryListener.php`, read in the development container (2026-11-17).
 - `Module.php::onBootstrap()` and `src/Service/Workflow/WorkflowService.php` of OERManager.
 - Owner decisions, TASK-066 session (2026-11-17).
+
+## Addendum (2026-11-17) — owner decisions while implementing TASK-067
+
+1. **`rea_curador` may also propose.** A user holds one global role and some people both propose
+   and curate; who proposed and who published stay recorded (§1.7).
+2. **Regularising «Publicado fuera del flujo».** A curator may act directly on a public REA without
+   the status Publicado: «Confirmar y publicar» (never on a Descartado one) or «Despublicar»
+   (back to Propuesto, private, with a reason).
+3. **Existing data.** Public REA without a status (69 in development, none in production) keep the
+   warning; they are not rewritten and curators regularise them one by one from the queue
+   (TASK-070).
+4. **The re-cataloguer's ADR-0002 annotations become private** (they expose who catalogued each
+   value on published REA): TASK-074.
+

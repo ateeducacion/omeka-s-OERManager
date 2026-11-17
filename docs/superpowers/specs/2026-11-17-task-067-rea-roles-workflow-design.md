@@ -304,3 +304,11 @@ users remain.
 2. States and transitions, «Confirmar y publicar», UI buttons.
 3. Integrity warnings and the REA site setting.
 4. «Mis propuestas», queue counter, Descartado out of statistics, status filter.
+
+## Owner decisions (2026-11-17)
+
+1. `rea_curador` keeps `propose` (accepted as implemented).
+2. Regularising out-of-flow REA with «Confirmar y publicar» and «Despublicar» (accepted as in §3).
+3. Existing data: option 1, leave the warning; curators regularise from the queue (TASK-070).
+4. ADR-0002 annotations become private: TASK-074, outside this task.
+

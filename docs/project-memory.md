@@ -79,6 +79,8 @@
 
 - **Container harnesses are CLI-only (2026-11-17, security review of TASK-067).** The development stack mounts the working tree under `modules/OERManager` and nginx runs any `.php`, so all 27 `test/container/*.php` answered over HTTP on port 8080 (published on every interface); some bootstrap Omeka and write. Each now starts with `if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }`; every new harness must too. Release packages exclude `/test` (`composer.json` archive), so production was not exposed.
 
+- **TASK-067 owner decisions (2026-11-17).** `rea_curador` also proposes; curators regularise out-of-flow REA directly; the 69 development REA without status keep the warning; the ADR-0002 audit annotations become private (TASK-074, milestone 1). Personal data rule: workflow and audit values that name people are written private.
+
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
 Tomadas por el propietario y documentadas en `docs/referencia/contexto-modulo-rea.md` §2; pendientes de formalizar como ADR cuando se toquen:

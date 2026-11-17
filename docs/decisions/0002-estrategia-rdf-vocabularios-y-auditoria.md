@@ -4,6 +4,8 @@
 
 Aceptado (2026-06-15)
 
+**2026-11-17:** the curation annotations (`dcterms:contributor`, `dcterms:modified`, `dcterms:provenance`) are to be written private, so published REA do not expose who catalogued each value (owner decision, ADR-0023 addendum; TASK-074).
+
 ## Contexto
 
 El módulo OERManager escribe alineamiento curricular y etiquetas como valores RDF sobre items `lrmi:LearningResource`, y necesita auditar las acciones de curación (quién cambió qué y cuándo). NFR-002 prohíbe tablas Doctrine propias; la única excepción evaluable era la auditoría (PEND-006), planteada con cuatro opciones (A: módulo Log de Daniel-KM, ya instalado; B: value annotations nativas; C: log a fichero; D: riesgo aceptado).
