@@ -77,6 +77,8 @@
 - **Goal: OERManager 1.0 in production (2026-11-17, owner).** Interface and workflow before AI tuning. Production is the shared mediateca of the Consejería: 818 sites, 86 524 public items, about 1 200 school users who edit their own site; it lacks `lrmi`, `schema`, `skos`, `cur`, the curriculum and the REA template. Only the ATE team proposes; about 3 000 REA arrive in one initial import, private until curated. Plan in `docs/superpowers/specs/2026-11-17-v1-production-plan.md`; decisions in ADR-0023 (TASK-066 done). New tasks: TASK-069 (curriculum visible under IsolatedSites), TASK-070 (curation queue), TASK-071 (deployment runbook), TASK-072 (initial import), TASK-073 (release 1.0).
   **Every check so far ran as `global_admin`, which IsolatedSites never filters.** As a non-administrator the curriculum searches would have returned nothing. From now on, profile and workflow checks run as real users with REA roles.
 
+- **Container harnesses are CLI-only (2026-11-17, security review of TASK-067).** The development stack mounts the working tree under `modules/OERManager` and nginx runs any `.php`, so all 27 `test/container/*.php` answered over HTTP on port 8080 (published on every interface); some bootstrap Omeka and write. Each now starts with `if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }`; every new harness must too. Release packages exclude `/test` (`composer.json` archive), so production was not exposed.
+
 ## Decisiones ya tomadas (no reabrir sin motivo)
 
 Tomadas por el propietario y documentadas en `docs/referencia/contexto-modulo-rea.md` §2; pendientes de formalizar como ADR cuando se toquen:

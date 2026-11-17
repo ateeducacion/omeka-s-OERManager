@@ -1,4 +1,10 @@
 <?php
+// CLI only: these harnesses bootstrap Omeka and some write to the catalogue,
+// so they must never run over HTTP (security review of TASK-067).
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 
 /**
  * Arnés de contenedor de la rebanada 2 de TASK-028.
