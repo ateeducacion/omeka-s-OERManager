@@ -262,3 +262,32 @@ the course subject (`schema:about`, `cur:MateriaCurso`) is chosen, knowledge (`l
   deleted (71 REA and 0 test items afterwards).
 - **Not verified:** the panel in the real admin with a logged-in session (render with the admin's styles,
   focus and keyboard with a screen reader, the AI pre-fill end to end). Same debt as TASK-030.
+
+## 8. Text filter inside the trees (owner decision, 2026-11-17)
+
+Implemented on `feature/task-064-cur-model` (`03d9e3a`). Slice 4 removed the autocomplete of knowledge and
+criteria; the owner asked for a text filter inside each tree instead.
+
+- **Where and what.** One labelled `type="search"` input per dimension («Filtrar: Saberes básicos»,
+  «Filtrar: Criterios de evaluación»), above its trees and shown only when a tree has nodes. It filters the
+  trees already loaded (every chosen course subject at once): no request.
+- **Match.** Case- and accent-insensitive (`NFD` without combining marks, so «angulos» finds «Ángulos»;
+  «ñ» also matches «n»), whitespace collapsed; every word of the filter must appear in the node's
+  `skos:notation`, label (`skos:prefLabel`) or `skos:definition`. Blocks match by their notation and label too.
+- **What stays visible.** Matches; their ancestors (block and parent knowledge), opened to keep the context;
+  the descendants of a match, closed (they belong to what was found, e.g. a matching block). Everything else
+  is hidden, and a course subject with nothing visible is hidden too. The first keystroke remembers which
+  branches were open; an empty filter restores them. A tree redrawn while a filter is active (change of
+  subjects) is filtered again from its fresh open/closed state.
+- **Selection.** Hiding never unchecks: chips stay the selection (§7.2) and block counters still count
+  hidden checked boxes.
+- **Count.** A `role="status"`/`aria-live="polite"` line: «1 coincidencia», «N coincidencias» or «Ningún
+  término coincide con el filtro.» (count of matching nodes, blocks included). Enter in the input does not
+  submit the surrounding form.
+- **i18n.** `Filtrar:`, the three status texts, registered in `js_translate_strings` with `// @translate`.
+- **Code.** Pure `normalizeFilterText`, `filterTrees`, `filterStatus` in `asset/js/core/leafTreeModel.js`
+  (node tests); DOM in `asset/js/ui/leafTree.js` (`applyFilter`); styles in `oer-master-view.css`.
+- **Verified.** `test/js/leafTreeModel.test.js` (7 new tests) and `test/browser/leaf-tree-smoke.html`
+  (48 checks, 18 new: label, live region, ancestors opened, definition/case/accents, no match, criteria tree
+  untouched, restore on clear, no request, selection intact, re-filter after a change of subjects, subject
+  without matches hidden). **Not verified:** the filter in the real admin with a screen reader (same debt as §7.3).
