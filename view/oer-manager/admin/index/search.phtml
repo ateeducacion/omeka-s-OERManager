@@ -178,11 +178,23 @@ $curricular = [
             <span class="label"><?php echo $translate('Flujo de propuesta'); ?></span>
         </div>
         <div class="inputs">
-            <label class="oer-checkbox">
-                <input type="checkbox" name="proposed" value="1"
-                    <?php echo !empty($query['proposed']) ? 'checked' : ''; ?>>
-                <?php echo $translate('Solo propuestos'); ?>
-            </label>
+            <?php
+            $statusOptions = [
+                'draft' => $translate('Borrador'),
+                'proposed' => $translate('Propuesto'),
+                'rejected' => $translate('Rechazado'),
+                'discarded' => $translate('Descartado'),
+                'published' => $translate('Publicado'),
+                'out_of_flow' => $translate('Publicado fuera del flujo'),
+            ];
+            $currentStatus = (string) ($query['status'] ?? (empty($query['proposed']) ? '' : 'proposed'));
+            ?>
+            <select name="status" aria-label="<?php echo $escape($translate('Estado')); ?>">
+                <option value=""><?php echo $translate('Estado: todos'); ?></option>
+                <?php foreach ($statusOptions as $value => $label): ?>
+                <option value="<?php echo $escape($value); ?>" <?php echo $value === $currentStatus ? 'selected' : ''; ?>><?php echo $escape($label); ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
     </div>
 

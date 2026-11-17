@@ -235,6 +235,13 @@ return [
                     $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
+            // «Cola (N)» (TASK-067): two COUNT-only searches.
+            Service\Workflow\QueueCounter::class => function ($container) {
+                return new Service\Workflow\QueueCounter(
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
             Service\Workflow\WorkflowService::class => function ($container) {
                 // TASK-067: the status value is annotated (who and when, ADR-0002)
                 // with the re-cataloguer's writer, and written by its targeted commit.
@@ -535,12 +542,23 @@ return [
                 'label' => 'OER Manager', // @translate
                 'route' => 'admin/oer-manager',
                 'resource' => Controller\Admin\IndexController::class,
+                // TASK-067: curators only (a proposer would land on a 403).
+                'privilege' => 'index',
                 'pages' => [
+                    // «Cola (N)» (ADR-0023 §3): Module::labelQueue() writes N
+                    // before rendering. Points at the master view filtered by
+                    // status until the real queue (TASK-070).
+                    [
+                        'id' => 'oer-queue',
+                        'label' => 'Cola', // @translate
+                        'route' => 'admin/oer-manager',
+                        'query' => ['status' => 'proposed'],
+                        'resource' => Controller\Admin\IndexController::class,
+                        'privilege' => 'index',
+                    ],
                     // TASK-029: la configuración deja el listado de Módulos y
-                    // cuelga de aquí, junto a la vista maestra que es donde se
-                    // trabaja. `privilege` hace que la entrada solo se pinte a
-                    // quien puede entrar (Supervisor y superior): sin él, un
-                    // editor vería un enlace que le devuelve un 403.
+                    // cuelga de aquí. `privilege` hace que la entrada solo se
+                    // pinte a quien puede entrar (global_admin desde TASK-067).
                     [
                         'label' => 'Configuración', // @translate
                         'route' => 'admin/oer-manager',
@@ -555,6 +573,14 @@ return [
                         'privilege' => 'index',
                     ],
                 ],
+            ],
+            // «Mis propuestas» (TASK-067): the proposer's own entry.
+            [
+                'label' => 'Mis propuestas', // @translate
+                'route' => 'admin/oer-manager',
+                'action' => 'my-proposals',
+                'resource' => Controller\Admin\IndexController::class,
+                'privilege' => 'my-proposals',
             ],
         ],
     ],

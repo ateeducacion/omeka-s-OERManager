@@ -379,4 +379,86 @@ class ModuleRuntimeTest extends TestCase
         $errors = $guard->run(fn () => $run($this->entity(5, $lr, ['curation:status' => ['Publicado']]), $proposed, 'rea_curador', $guard));
         $this->assertSame([], $errors);
     }
+
+    /**
+     * «Cola (N)» (ADR-0023 §3): set on admin, non-AJAX pages for users who
+     * hold the master view; nobody else pays the count.
+     */
+    public function testQueueCounterLabelsTheNavigationForCuratorsOnly(): void
+    {
+        $page = new class {
+            public ?string $label = null;
+            public function setLabel($label)
+            {
+                $this->label = $label;
+            }
+        };
+        $nav = new class ($page) {
+            public array $asked = [];
+            public function __construct(private $page)
+            {
+            }
+            public function findOneBy($property, $value)
+            {
+                $this->asked[] = [$property, $value];
+                return $this->page;
+            }
+        };
+        $counter = $this->createMock(\OERManager\Service\Workflow\QueueCounter::class);
+        $counter->method('count')->willReturn(7);
+        $translator = new class {
+            public function translate($text)
+            {
+                return $text;
+            }
+        };
+        $event = static fn (bool $admin, bool $ajax) => new class ($admin, $ajax) extends \Laminas\Mvc\MvcEvent {
+            public function __construct(private bool $admin, private bool $ajax)
+            {
+            }
+            public function getRouteMatch()
+            {
+                $admin = $this->admin;
+                return new class ($admin) {
+                    public function __construct(private bool $admin)
+                    {
+                    }
+                    public function getParam($name)
+                    {
+                        return '__ADMIN__' === $name ? $this->admin : null;
+                    }
+                };
+            }
+            public function getRequest()
+            {
+                $ajax = $this->ajax;
+                return new class ($ajax) {
+                    public function __construct(private bool $ajax)
+                    {
+                    }
+                    public function isXmlHttpRequest()
+                    {
+                        return $this->ajax;
+                    }
+                };
+            }
+        };
+        foreach ([[true, false, 'rea_curador', 'Cola (7)'], [false, false, 'rea_curador', null],
+            [true, true, 'rea_curador', null], [true, false, 'rea_proponente', null]] as [$admin, $ajax, $role, $label]) {
+            $page->label = null;
+            $acl = \Omeka\Permissions\Acl::core();
+            $acl->addRole('site_editor', 'editor');
+            \OERManager\Permissions\ReaAcl::register($acl);
+            $acl->identityRole = $role;
+            $module = $this->module([
+                'Omeka\Acl' => $acl,
+                'Laminas\Navigation\AdminModule' => $nav,
+                \OERManager\Service\Workflow\QueueCounter::class => $counter,
+                'MvcTranslator' => $translator,
+            ]);
+            $module->labelQueue($event($admin, $ajax));
+            $this->assertSame($label, $page->label, $role . ($admin ? ' admin' : '') . ($ajax ? ' ajax' : ''));
+        }
+        $this->assertSame(['id', 'oer-queue'], $nav->asked[0]);
+    }
 }

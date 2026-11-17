@@ -1,0 +1,62 @@
+<?php
+/**
+ * «Mis propuestas» (TASK-067, ADR-0023 §3): the proposer's own REA with their
+ * workflow status and the last reason (rejection, discard or unpublication).
+ * Proposing again happens on the native item page, which the title links to.
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var \Omeka\Api\Representation\ItemRepresentation[] $items
+ * @var int $total
+ */
+
+use OERManager\Service\Workflow\WorkflowStatus;
+
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
+$this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals');
+?>
+<?php echo $this->pageTitle($translate('Mis propuestas'), 1, $translate('OER Manager')); ?>
+
+<div class="browse-controls">
+    <?php echo $this->pagination(); ?>
+</div>
+
+<?php if ($items): ?>
+<table class="tablesaw" data-tablesaw-mode="stack">
+    <thead>
+        <tr>
+            <th><?php echo $translate('Título'); ?></th>
+            <th><?php echo $translate('Estado'); ?></th>
+            <th><?php echo $translate('Motivo'); ?></th>
+            <th><?php echo $translate('Visibilidad'); ?></th>
+            <th><?php echo $translate('Modificado'); ?></th>
+        </tr>
+    </thead>
+    <tbody>
+    <?php foreach ($items as $item): ?>
+        <?php
+        $statusValue = $item->value(WorkflowStatus::STATUS_TERM);
+        $status = null === $statusValue ? null : WorkflowStatus::normalize((string) $statusValue->value());
+        $note = $item->value(WorkflowStatus::NOTE_TERM);
+        $badge = WorkflowStatus::badge($status);
+        ?>
+        <tr>
+            <td><?php echo $item->link($item->displayTitle()); ?></td>
+            <td>
+                <?php if (null !== $badge): ?>
+                    <?php echo $this->partial('oer-manager/common/workflow-badge', ['badge' => $badge]); ?>
+                <?php else: ?>
+                    <?php echo $escape(null === $status ? $translate('Borrador') : $status); ?>
+                <?php endif; ?>
+            </td>
+            <td><?php echo $escape(null === $note ? '' : (string) $note->value()); ?></td>
+            <td><?php echo $escape($item->isPublic() ? $translate('Público') : $translate('Privado')); ?></td>
+            <td><?php echo $escape($this->i18n()->dateFormat($item->modified() ?? $item->created())); ?></td>
+        </tr>
+    <?php endforeach; ?>
+    </tbody>
+</table>
+<?php else: ?>
+<p class="no-resources"><?php echo $translate('No tienes REA propios en tus sitios.'); ?></p>
+<?php endif; ?>

@@ -242,6 +242,41 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * «Mis propuestas» (TASK-067, ADR-0023 §3): the proposer's own REA
+     * (`owner_id` = user), newest first, with their status and the reason of a
+     * rejection, discard or unpublication. A page of its own: the proposer has
+     * no privilege on the master view. One search per page; status and note
+     * come from the representations already loaded (an owner reads the
+     * private values of their own items). Under isolation only items in the
+     * user's granted sites are listed.
+     */
+    public function myProposalsAction()
+    {
+        $identity = $this->identity();
+        $items = [];
+        $total = 0;
+        $params = $this->masterViewQuery->buildSearchParams([]);
+        $hasClass = !array_key_exists('resource_class_id', $params) || null !== $params['resource_class_id'];
+        if ($identity && $hasClass) {
+            $params['owner_id'] = (int) $identity->getId();
+            $params['sort_by'] = 'modified';
+            $params['sort_order'] = 'desc';
+            $params['page'] = max(1, (int) $this->params()->fromQuery('page', 1));
+            $params['per_page'] = (int) $this->settings->get('pagination_per_page', 25);
+            $response = $this->api()->search('items', $params);
+            $items = $response->getContent();
+            $total = (int) $response->getTotalResults();
+        }
+        $this->paginator($total);
+
+        $view = new ViewModel();
+        $view->setTemplate('oer-manager/admin/index/my-proposals');
+        $view->setVariable('items', $items);
+        $view->setVariable('total', $total);
+        return $view;
+    }
+
+    /**
      * Búsqueda avanzada de la vista maestra (TASK-028, D-5): los filtros que no
      * caben en la barra rápida. Solo pinta el formulario; el filtrado lo hace
      * indexAction con los mismos parámetros GET.

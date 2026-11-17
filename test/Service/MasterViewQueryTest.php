@@ -26,6 +26,27 @@ final class MasterViewQueryTest extends TestCase
         $this->assertArrayNotHasKey('item_set_id', $query->buildSearchParams(['item_set_id' => 'abc']));
     }
 
+    /** TASK-067: one «Estado» filter; out_of_flow = public without Publicado; proposed=1 still works. */
+    public function testStatusFilter(): void
+    {
+        $query = new MasterViewQuery($this->apiResolvingClass());
+        $row = static fn (string $type, string $text = '') => array_filter(
+            ['property' => 'curation:status', 'type' => $type, 'text' => $text],
+            static fn ($v) => '' !== $v
+        );
+        foreach (['proposed' => 'Propuesto', 'rejected' => 'Rechazado', 'discarded' => 'Descartado',
+            'published' => 'Publicado'] as $key => $literal) {
+            $this->assertSame([$row('eq', $literal)], $query->buildSearchParams(['status' => $key])['property']);
+        }
+        $this->assertSame([$row('nex')], $query->buildSearchParams(['status' => 'draft'])['property']);
+        $outOfFlow = $query->buildSearchParams(['status' => 'out_of_flow']);
+        $this->assertTrue($outOfFlow['is_public']);
+        $this->assertSame([$row('neq', 'Publicado')], $outOfFlow['property']);
+        $this->assertSame([$row('eq', 'Propuesto')], $query->buildSearchParams(['proposed' => '1'])['property']);
+        $this->assertArrayNotHasKey('property', $query->buildSearchParams(['status' => 'bogus']));
+        $this->assertArrayNotHasKey('property', $query->buildSearchParams(['status' => ['x']]));
+    }
+
     public function testOnlyItemSetsWithLearningResourcesAreOffered(): void
     {
         $api = $this->createMock(ApiManager::class);

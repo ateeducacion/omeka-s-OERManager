@@ -69,6 +69,42 @@ class Module extends AbstractModule implements InitProviderInterface
     {
         parent::onBootstrap($event);
         Permissions\ReaAcl::register($this->getServiceLocator()->get('Omeka\Acl'));
+        // «Cola (N)» (TASK-067): labelled just before rendering, once the
+        // route is known. Jobs and the host tests have no application here.
+        $application = method_exists($event, 'getApplication') ? $event->getApplication() : null;
+        if ($application) {
+            $application->getEventManager()->attach(MvcEvent::EVENT_RENDER, [$this, 'labelQueue'], 100);
+        }
+    }
+
+    /**
+     * Puts the queue size in the curator's navigation entry «Cola (N)»
+     * (ADR-0023 §3): admin pages only, not AJAX, and only for users who hold
+     * the master view, so nobody else pays the two COUNT queries.
+     */
+    public function labelQueue(MvcEvent $event): void
+    {
+        $routeMatch = $event->getRouteMatch();
+        if (!$routeMatch || !$routeMatch->getParam('__ADMIN__')) {
+            return;
+        }
+        $request = $event->getRequest();
+        if (method_exists($request, 'isXmlHttpRequest') && $request->isXmlHttpRequest()) {
+            return;
+        }
+        $services = $this->getServiceLocator();
+        if (!$services->get('Omeka\Acl')->userIsAllowed(Controller\Admin\IndexController::class, 'index')) {
+            return;
+        }
+        $page = $services->get('Laminas\Navigation\AdminModule')->findOneBy('id', 'oer-queue');
+        if (!$page) {
+            return;
+        }
+        $count = $services->get(Service\Workflow\QueueCounter::class)->count();
+        $page->setLabel(sprintf(
+            $services->get('MvcTranslator')->translate('Cola (%d)'), // @translate
+            $count
+        ));
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -170,6 +206,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'resource_type' => 'Tipo de recurso', // @translate
         'licence' => 'Licencia', // @translate
         'proposed' => 'Propuesta', // @translate
+        'status' => 'Estado', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -184,6 +221,14 @@ class Module extends AbstractModule implements InitProviderInterface
             'none' => 'Sin alinear', // @translate
         ],
         'proposed' => ['1' => 'Sí'], // @translate
+        'status' => [
+            'draft' => 'Borrador', // @translate
+            'proposed' => 'Propuesto', // @translate
+            'rejected' => 'Rechazado', // @translate
+            'discarded' => 'Descartado', // @translate
+            'published' => 'Publicado', // @translate
+            'out_of_flow' => 'Publicado fuera del flujo', // @translate
+        ],
     ];
 
     /**

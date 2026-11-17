@@ -57,11 +57,25 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
                 <?php echo $translate('Con incidencias'); ?>
             </option>
         </select>
-        <label class="oer-checkbox oer-filter-proposed" for="oer-filter-proposed">
-            <input type="checkbox" id="oer-filter-proposed" name="proposed" value="1"
-                <?php echo !empty($query['proposed']) ? 'checked' : ''; ?>>
-            <?php echo $translate('Propuestos'); ?>
-        </label>
+        <?php // TASK-067: «Estado» replaces the «Propuestos» checkbox (proposed=1 still works). ?>
+        <?php
+        $statusOptions = [
+            'draft' => $translate('Borrador'),
+            'proposed' => $translate('Propuesto'),
+            'rejected' => $translate('Rechazado'),
+            'discarded' => $translate('Descartado'),
+            'published' => $translate('Publicado'),
+            'out_of_flow' => $translate('Publicado fuera del flujo'),
+        ];
+        $currentStatus = (string) ($query['status'] ?? (empty($query['proposed']) ? '' : 'proposed'));
+        ?>
+        <label class="oer-visually-hidden" for="oer-filter-status"><?php echo $translate('Estado'); ?></label>
+        <select id="oer-filter-status" name="status">
+            <option value=""><?php echo $translate('Estado: todos'); ?></option>
+            <?php foreach ($statusOptions as $value => $label): ?>
+            <option value="<?php echo $escape($value); ?>" <?php echo $value === $currentStatus ? 'selected' : ''; ?>><?php echo $escape($label); ?></option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit" class="button oer-button-primary"><?php echo $translate('Filtrar'); ?></button>
         <?php echo $this->hyperlink(
             $translate('Búsqueda avanzada'),

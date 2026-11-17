@@ -57,6 +57,8 @@ final class ReaAcl
         IndexController::class => [
             self::PROPOSER => [
                 'propose',
+                // ADR-0023 §1: their own REA, without the master view.
+                'my-proposals',
             ],
             self::CURATOR => [
                 // Master view and its reads.

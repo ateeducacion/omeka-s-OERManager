@@ -582,6 +582,33 @@ class IndexControllerTest extends TestCase
      * accepted only if its identifier is `<base>id/curriculo`; left empty, the
      * single such item set is detected and stored.
      */
+    /**
+     * «Mis propuestas» (ADR-0023 §3): the user's own REA with status and
+     * reason, without the master view. No identity, nothing listed.
+     */
+    public function testMyProposalsListsOnlyTheUsersOwnReas(): void
+    {
+        $this->controller->plugins['paginator'] = new class {
+            public function __invoke($total)
+            {
+            }
+        };
+        $view = $this->controller->myProposalsAction();
+        $this->assertSame([], $view->getVariable('items'));
+
+        $this->controller->plugins['identity'] = new class {
+            public function getId()
+            {
+                return 3;
+            }
+        };
+        $this->workflowStatus = WorkflowStatus::REJECTED;
+        $view = $this->controller->myProposalsAction();
+        $this->assertSame('oer-manager/admin/index/my-proposals', $view->getTemplate());
+        $this->assertSame([$this->item], $view->getVariable('items'));
+        $this->assertSame(1, $view->getVariable('total'));
+    }
+
     /** TASK-067: the REA site is validated on save, and the page says when the rule is off. */
     public function testConfigValidatesTheReaSite(): void
     {
