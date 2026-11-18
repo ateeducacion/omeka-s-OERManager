@@ -15,6 +15,7 @@ use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
+use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use OERManager\Test\Service\Ai\FakeClassifier;
@@ -48,6 +49,9 @@ class IndexControllerTest extends TestCase
     private bool $missingItem = false;
     private array $issues = [];
     private int $updates = 0;
+    private bool $canUpdate = true;
+    private bool $isPublic = false;
+    private ?object $owner = null;
 
     protected function setUp(): void
     {
@@ -65,6 +69,10 @@ class IndexControllerTest extends TestCase
             return $options['default'] ?? null;
         });
         $this->item->method('values')->willReturn([]);
+        $this->item->method('userIsAllowed')->willReturnCallback(fn ($privilege) => 'update' === $privilege
+            && $this->canUpdate);
+        $this->item->method('isPublic')->willReturnCallback(fn () => $this->isPublic);
+        $this->item->method('owner')->willReturnCallback(fn () => $this->owner);
         $this->api->method('read')->willReturnCallback(function ($resource) {
             if ($this->missingItem) {
                 throw new \RuntimeException('not readable');
@@ -379,6 +387,7 @@ class IndexControllerTest extends TestCase
 
     public function testRecatalogPayloadAndExceptionMapping(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'global_admin');
         $this->params->post['alignment'] = ['lrmi:teaches' => [1], 'unknown' => [2]];
         $this->params->post['justification'] = ['lrmi:teaches' => [1 => str_repeat('x', 220), -1 => 'discard']];
         $this->dependencies['recatalogService']->expects($this->once())
@@ -393,6 +402,7 @@ class IndexControllerTest extends TestCase
 
     public function testRecatalogErrorsAreSanitized(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
         $this->dependencies['recatalogService']->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
         foreach (['apply' => 'recatalogApply', 'undo' => 'recatalogUndo'] as $method => $action) {
             $errors = [
@@ -460,6 +470,7 @@ class IndexControllerTest extends TestCase
 
     public function testHistoryOmitsPrivateEventPayload(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
         $this->dependencies['recatalogService']->method('lastEvent')->willReturn([
             'when' => 'today', 'contributor' => 'Curator', 'summary' => 'Changed', 'payload' => 'private',
         ]);
@@ -512,6 +523,46 @@ class IndexControllerTest extends TestCase
             }
             unset($this->params->post['jobId']);
         }
+    }
+
+    /** A logged-in user with a role (TASK-035: the re-cataloguing rule reads it). */
+    private function user(int $id, string $role, string $name = 'Admin'): object
+    {
+        return new class ($id, $role, $name) {
+            public function __construct(private int $id, private string $role, private string $name)
+            {
+            }
+
+            public function getId()
+            {
+                return $this->id;
+            }
+
+            public function getRole()
+            {
+                return $this->role;
+            }
+
+            public function getName()
+            {
+                return $this->name;
+            }
+        };
+    }
+
+    /** Owner of the item in the fixture (`owner()->id()`). */
+    private function ownedBy(int $id): object
+    {
+        return new class ($id) {
+            public function __construct(private int $id)
+            {
+            }
+
+            public function id()
+            {
+                return $this->id;
+            }
+        };
     }
 
     private function curator(int $id): object
@@ -707,10 +758,11 @@ class IndexControllerTest extends TestCase
     public function testConfirmAndPublishAppliesTheRecataloguingFirst(): void
     {
         $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador', 'Curadora');
         $this->params->post['alignment'] = ['lrmi:teaches' => [11]];
         $recatalog = $this->dependencies['recatalogService'];
         $recatalog->expects($this->exactly(2))->method('apply')
-            ->with(7, ['lrmi:teaches' => [11]], 'unknown', [])
+            ->with(7, ['lrmi:teaches' => [11]], 'Curadora', [])
             ->willReturnOnConsecutiveCalls(
                 $this->throwException(new \RuntimeException('invalid_targets')),
                 ['updated' => true, 'properties' => ['lrmi:teaches']]
@@ -764,5 +816,164 @@ class IndexControllerTest extends TestCase
         $this->dependencies['settings']->set(LlmSettings::MODEL, 'model');
         $this->dependencies['jobDispatcher']->method('dispatch')->willThrowException(new \RuntimeException('private'));
         $this->assertSame('dispatch', $this->data('aiPropose')['error']);
+    }
+
+    /**
+     * TASK-035 §2 (owner decision 2026-11-18): every curricular entry of the
+     * panel applies RecatalogRule before any work, and refuses with a code and
+     * a message the panel shows.
+     */
+    public function testRecatalogEntriesRefuseWhatTheRuleRefuses(): void
+    {
+        $recatalog = $this->dependencies['recatalogService'];
+        foreach (['preview', 'apply', 'undo', 'lastEvent'] as $method) {
+            $recatalog->expects($this->never())->method($method);
+        }
+        $this->params->post['alignment'] = ['lrmi:teaches' => [1]];
+        $cases = [
+            'no identity' => [null, '', RecatalogRule::ROLE],
+            'a site administrator' => [$this->user(5, 'site_admin'), '', RecatalogRule::ROLE],
+            'curator on Descartado' => [$this->user(1, 'rea_curador'), WorkflowStatus::DISCARDED, RecatalogRule::DISCARDED],
+            'admin on Descartado' => [$this->user(1, 'global_admin'), WorkflowStatus::DISCARDED, RecatalogRule::DISCARDED],
+            'proposer on Propuesto' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PROPOSED, RecatalogRule::STATUS],
+            'proposer on Publicado' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PUBLISHED, RecatalogRule::STATUS],
+            'proposer on a foreign REA' => [$this->user(4, 'rea_proponente'), '', RecatalogRule::NOT_OWNER],
+        ];
+        $this->owner = $this->ownedBy(3);
+        foreach ($cases as $case => [$identity, $status, $code]) {
+            $this->controller->plugins['identity'] = $identity;
+            $this->workflowStatus = $status;
+            foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+                $data = $this->data($action);
+                $this->assertFalse($data['updated'], $case . ' ' . $action);
+                $this->assertSame($code, $data['error'], $case . ' ' . $action);
+                $this->assertSame(RecatalogRule::message($code), $data['message'], $case . ' ' . $action);
+            }
+            $this->assertNull($this->data('recatalogLastEvent')['event'], $case);
+        }
+
+        // Without native update (IsolatedSites, a foreign site), not even a curator.
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
+        $this->workflowStatus = '';
+        $this->canUpdate = false;
+        $this->assertSame(RecatalogRule::NO_UPDATE, $this->data('recatalogApply')['error']);
+        $this->canUpdate = true;
+
+        $this->missingItem = true;
+        foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+            $this->assertSame('not_found', $this->data($action)['error'], $action);
+        }
+    }
+
+    /** The owner's table, allowed side: who reaches the service and in which state. */
+    public function testRecatalogReachesTheServiceWhenTheRuleAllows(): void
+    {
+        $recatalog = $this->dependencies['recatalogService'];
+        $recatalog->method('preview')->willReturn(['diff']);
+        $recatalog->method('apply')->willReturn(['updated' => true]);
+        $recatalog->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
+        $recatalog->method('undo')->willReturn(['updated' => true]);
+        $this->params->post['alignment'] = ['lrmi:teaches' => [1]];
+        $this->owner = $this->ownedBy(3);
+        $cases = [
+            'proposer, own Borrador' => [$this->user(3, 'rea_proponente'), '', false],
+            'proposer, own Rechazado' => [$this->user(3, 'rea_proponente'), WorkflowStatus::REJECTED, false],
+            'curator, Propuesto' => [$this->user(1, 'rea_curador'), WorkflowStatus::PROPOSED, false],
+            'curator, Publicado' => [$this->user(1, 'rea_curador'), WorkflowStatus::PUBLISHED, true],
+            'curator, out of flow' => [$this->user(1, 'rea_curador'), '', true],
+            'admin, private Borrador' => [$this->user(1, 'global_admin'), '', false],
+        ];
+        foreach ($cases as $case => [$identity, $status, $isPublic]) {
+            $this->controller->plugins['identity'] = $identity;
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $this->assertSame(['diff'], $this->data('recatalogPreview')['diff'], $case);
+            $this->assertTrue($this->data('recatalogApply')['updated'], $case);
+            $this->assertTrue($this->data('recatalogUndo')['updated'], $case);
+            $this->assertSame('Curator', $this->data('recatalogLastEvent')['event']['contributor'], $case);
+        }
+    }
+
+    /**
+     * The ledger mixes curricular and governance events: a proposer may undo
+     * the former on their REA, never a licence or authorship change.
+     */
+    public function testUndoingAGovernanceEventNeedsTheGovernancePrivilege(): void
+    {
+        $event = self::CURRICULUM_EVENT;
+        $event['payload'] = ['v' => 1, 'op' => 'recatalog', 'undoOf' => null, 'terms' => ['dcterms:license' => []]];
+        $this->dependencies['recatalogService']->method('lastEvent')->willReturn($event);
+        $this->dependencies['governanceService']->method('undoEvent')->willReturn(['updated' => true]);
+        $this->owner = $this->ownedBy(3);
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $allowGovernance = false;
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static function ($resource, $privilege) use (&$allowGovernance) {
+                return 'governance-apply' === $privilege ? $allowGovernance : true;
+            });
+
+        $data = $this->data('recatalogUndo');
+        $this->assertSame('governance_undo', $data['error']);
+        $this->assertNotSame('', $data['message']);
+
+        $allowGovernance = true;
+        $this->assertTrue($this->data('recatalogUndo')['updated']);
+    }
+
+    /** «Confirmar y publicar» writes a pending re-cataloguing only if the rule allows it. */
+    public function testConfirmAndPublishChecksTheRuleBeforeWritingTheAlignment(): void
+    {
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post['alignment'] = ['lrmi:teaches' => [11]];
+        $this->dependencies['recatalogService']->expects($this->never())->method('apply');
+        $this->owner = $this->ownedBy(3);
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $result = $this->controller->publishProposalAction();
+        $this->assertSame(RecatalogRule::STATUS, $result->getVariable('error'));
+        $this->assertSame(0, $this->updates);
+    }
+
+    /**
+     * TASK-035 §1: the panel brings its own pre-fill (no `/api`), and whether
+     * to offer the editor is the rule's answer for this user and this item.
+     */
+    public function testDrawerDetailsCarriesThePrefillAndTheRuleDecision(): void
+    {
+        $current = ['lrmi:teaches' => [['id' => 11, 'title' => 'Saber']]];
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn(['current' => $current]);
+        $allowed = true;
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static function ($resource, $privilege) use (&$allowed) {
+                return 'recatalog-apply' === $privilege ? $allowed : false;
+            });
+        $this->params->query = ['id' => 7];
+        $this->owner = $this->ownedBy(3);
+
+        // Unreadable item: nothing to offer.
+        $this->missingItem = true;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => '', 'current' => []],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+        $this->missingItem = false;
+
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $this->assertSame(
+            ['allowed' => true, 'reason' => '', 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => RecatalogRule::message(RecatalogRule::STATUS), 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+
+        // Without the privilege at all the panel says nothing about re-cataloguing.
+        $allowed = false;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => '', 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
     }
 }

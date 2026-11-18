@@ -52,5 +52,14 @@ final class ItemPanelDataTest extends TestCase
         // ADR-0022: the subject hangs from its course by cur:curso.
         $this->assertSame(['Math'], $result['alignment']['groups'][0]['subjects']);
         $this->assertSame(2, $result['alignment']['groups'][0]['courseId']);
+        // TASK-035: the re-cataloguer's pre-fill, read with the session: linked
+        // targets in value order, literals skipped, every alignment term present.
+        $this->assertSame([
+            'lrmi:educationalLevel' => [['id' => 2, 'title' => 'Course']],
+            'schema:about' => [['id' => 3, 'title' => 'Math']],
+            'lrmi:teaches' => [['id' => 5, 'title' => 'Unassigned']],
+            'lrmi:assesses' => [],
+            'dcterms:relation' => [['id' => 4, 'title' => 'Axis']],
+        ], $result['current']);
     }
 }

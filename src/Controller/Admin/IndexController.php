@@ -16,6 +16,7 @@ use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\ComputedFilter;
 use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
+use OERManager\Service\CurationEvent;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Governance\BatchJobLookup;
@@ -32,6 +33,7 @@ use OERManager\Service\PanelAreas;
 use OERManager\Service\ReaSite;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
+use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -430,6 +432,12 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        // TASK-035 §2: the same rule as the write, so a preview never shows
+        // a change the user could not confirm.
+        $refusal = $this->recatalogRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal + ['diff' => null]);
+        }
         $alignment = $this->collectAlignment();
 
         return new JsonModel(['diff' => $this->recatalogService->preview($id, $alignment)]);
@@ -452,6 +460,10 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        $refusal = $this->recatalogRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal);
+        }
         $alignment = $this->collectAlignment();
         $justifications = $this->collectJustifications();
         $identity = $this->identity();
@@ -650,6 +662,11 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        // Nothing to undo for whom the rule refuses (TASK-035 §2): the panel
+        // then offers no undo, and a Descartado REA stays read only.
+        if (null !== $this->recatalogRefusal($id)) {
+            return new JsonModel(['event' => null]);
+        }
         try {
             $event = $this->recatalogService->lastEvent($id);
         } catch (\Exception $e) {
@@ -715,6 +732,7 @@ class IndexController extends AbstractActionController
                 'unpublishUrl' => '',
                 'reopenUrl' => '',
                 'governanceApplyUrl' => '',
+                'recatalog' => ['allowed' => false, 'reason' => '', 'current' => []],
             ]);
         }
 
@@ -775,7 +793,85 @@ class IndexController extends AbstractActionController
             // receives a DOM root, never the page-level `config` object — see
             // its own file docblock.
             'governanceApplyUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'governance-apply']),
+            'recatalog' => $this->recatalogPanel($item, $panel['current'] ?? []),
         ]);
+    }
+
+    /**
+     * What the anchor area offers (TASK-035 §1): the pre-fill of the
+     * selectors, read here with the session instead of from `/api`, and the
+     * rule's answer for this user and item. Without the re-cataloguing
+     * privilege at all there is no reason to show either.
+     *
+     * @param array<string, list<array{id:int, title:string}>> $current
+     * @return array{allowed:bool, reason:string, current:array}
+     */
+    private function recatalogPanel(ItemRepresentation $item, array $current): array
+    {
+        if (!$this->acl->userIsAllowed(self::class, 'recatalog-apply')) {
+            return ['allowed' => false, 'reason' => '', 'current' => $current];
+        }
+        $code = $this->recatalogDenial($item);
+        return ['allowed' => null === $code, 'reason' => RecatalogRule::message($code), 'current' => $current];
+    }
+
+    /**
+     * RecatalogRule (TASK-035 §2) for the current user on `$item`: null when
+     * allowed, otherwise the refusal code.
+     */
+    private function recatalogDenial(ItemRepresentation $item): ?string
+    {
+        $identity = $this->identity();
+        $owner = $item->owner();
+        return RecatalogRule::denial(
+            $this->workflowService->statusOf($item),
+            (bool) $item->isPublic(),
+            RecatalogRule::profile($identity ? (string) $identity->getRole() : null),
+            null !== $identity && null !== $owner && (int) $owner->id() === (int) $identity->getId(),
+            (bool) $item->userIsAllowed('update')
+        );
+    }
+
+    /**
+     * The refusal every curricular/axes entry of the panel answers before
+     * doing anything, or null when the rule allows it.
+     *
+     * @return array{updated:false, error:string, message:string}|null
+     */
+    private function recatalogRefusal(int $id): ?array
+    {
+        $item = $this->workflowItem($id);
+        if (null === $item) {
+            return ['updated' => false, 'error' => 'not_found', 'message' => self::NOT_FOUND_MESSAGE];
+        }
+        $code = $this->recatalogDenial($item);
+        return null === $code
+            ? null
+            : ['updated' => false, 'error' => $code, 'message' => RecatalogRule::message($code)];
+    }
+
+    /**
+     * The ledger mixes curricular and governance events (ADR-0020) and
+     * UndoRouter replays whichever is last: undoing a licence or authorship
+     * change needs the governance privilege, which a proposer lacks.
+     *
+     * @return array{updated:false, error:string, message:string}|null
+     */
+    private function governanceUndoRefusal(int $id): ?array
+    {
+        try {
+            $event = $this->recatalogService->lastEvent($id);
+        } catch (\Exception $e) {
+            return null;
+        }
+        if (
+            null === $event
+            || 'governance' !== CurationEvent::scopeOf((array) ($event['payload'] ?? []))
+            || $this->acl->userIsAllowed(self::class, 'governance-apply')
+        ) {
+            return null;
+        }
+        return ['updated' => false, 'error' => 'governance_undo', 'message' => self::GOVERNANCE_UNDO_MESSAGE];
     }
 
     /**
@@ -837,6 +933,10 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        $refusal = $this->recatalogRefusal($id) ?? $this->governanceUndoRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal);
+        }
         // El curador ya confirmó que el REA cambió por otra vía y aun así quiere
         // revertir; sin esta confirmación explícita el servicio se niega.
         $force = (bool) $this->params()->fromPost('force');
@@ -1334,6 +1434,10 @@ class IndexController extends AbstractActionController
         ['id' => $id, 'ajax' => $ajax] = $guard['request'];
         $alignment = $this->collectAlignment();
         if ([] !== $alignment) {
+            $refusal = $this->recatalogRefusal($id);
+            if (null !== $refusal) {
+                return $this->workflowFailure($ajax, $id, $refusal['error'], $refusal['message']);
+            }
             try {
                 $this->recatalogService->apply(
                     $id,
@@ -1381,6 +1485,11 @@ class IndexController extends AbstractActionController
             fn () => $this->workflowService->publish($item, $this->contributor())
         );
     }
+
+    private const NOT_FOUND_MESSAGE = 'El REA no existe o no se puede leer.'; // @translate
+
+    // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
+    private const GOVERNANCE_UNDO_MESSAGE = 'El último cambio de este REA es de licencia o autoría: solo el equipo curador puede deshacerlo.'; // @translate
 
     /** Integrity codes the publish gate does not block on (they are what publishing fixes). */
     private const PUBLISH_GATE_IGNORES = ['published_out_of_flow'];
@@ -1449,7 +1558,7 @@ class IndexController extends AbstractActionController
      */
     private function workflowNotFound(bool $ajax)
     {
-        $message = 'El REA no existe o no se puede leer.'; // @translate
+        $message = self::NOT_FOUND_MESSAGE;
         if ($ajax) {
             return new JsonModel(['updated' => false, 'error' => 'not_found', 'message' => $message]);
         }

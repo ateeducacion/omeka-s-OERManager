@@ -26,12 +26,14 @@ class ItemPanelData
      *     identity: array{id:int, title:string, isPublic:bool, thumbnail:?string, editUrl:string},
      *     record: array<string,string>,
      *     alignment: array<string,mixed>,
+     *     current: array<string, list<array{id:int, title:string}>>,
      *     media: list<array{title:string, type:string, size:int, url:?string}>
      * }
      */
     public function forItem(ItemRepresentation $item): array
     {
         $thumbnails = $item->thumbnailDisplayUrls();
+        $alignment = $this->alignment($item);
 
         return [
             'identity' => [
@@ -42,7 +44,8 @@ class ItemPanelData
                 'editUrl' => (string) $item->url('edit'),
             ],
             'record' => $this->record($item),
-            'alignment' => CurricularGrouping::build($this->alignment($item)),
+            'alignment' => CurricularGrouping::build($alignment),
+            'current' => self::current($alignment),
             'media' => $this->media($item),
         ];
     }
@@ -102,6 +105,26 @@ class ItemPanelData
             }
         }
         return $alignment;
+    }
+
+    /**
+     * Pre-fill of the re-cataloguer's selectors (TASK-035): the same values,
+     * read with the session, without the course. Replaces the unauthenticated
+     * `/api` read, which a private REA never answered.
+     *
+     * @param array<string, list<array{id:int, title:string, courseId:?int}>> $alignment
+     * @return array<string, list<array{id:int, title:string}>>
+     */
+    private static function current(array $alignment): array
+    {
+        $current = [];
+        foreach ($alignment as $term => $values) {
+            $current[$term] = array_map(
+                static fn (array $value): array => ['id' => $value['id'], 'title' => $value['title']],
+                $values
+            );
+        }
+        return $current;
     }
 
     /**
