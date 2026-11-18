@@ -36,6 +36,14 @@ $badges = [
         'label' => $translate('Publicado'),
         'title' => $translate('Publicado por el flujo de curación'),
     ],
+    // Página del item (WorkflowStatus::pageBadge, rediseño de 2026-11-18): un
+    // REA público sin el estado Publicado reclama al curador; lleva su propio
+    // glifo porque dispara una acción (ADR-0014 regla 3).
+    'out_of_flow' => [
+        'glyph' => '⚠',
+        'label' => $translate('Publicado fuera del flujo'),
+        'title' => $translate('Es público sin haber pasado por la curación: confírmalo, despublícalo o descártalo'),
+    ],
 ];
 if (!isset($badge, $badges[$badge])) {
     return;

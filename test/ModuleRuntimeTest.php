@@ -197,7 +197,10 @@ class ModuleRuntimeTest extends TestCase
         ob_start();
         $module->addWorkflowActions($event);
         $this->assertSame('oer-manager/common/workflow-actions', ob_get_clean());
-        $this->assertSame([], $view->stylesheets);
+        // Redesign of 2026-11-18: the button zone brings its layout and its
+        // small script; no badge here (a private draft has no status).
+        $this->assertSame(['OERManager/css/oer-workflow-actions.css'], $view->stylesheets);
+        $this->assertSame(['OERManager/js/workflow-actions.js'], $view->scripts);
     }
 
     /**

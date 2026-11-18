@@ -354,7 +354,9 @@ class Module extends AbstractModule implements InitProviderInterface
         // ninguna acción, y es justo quien tiene que ver que espera
         // validación. La vista maestra está cerrada a `author`; esta página
         // es la suya.
-        $badge = Service\Workflow\WorkflowStatus::badge($status);
+        // pageBadge(): también nombra «Publicado fuera del flujo», el estado
+        // que explica por qué el curador ve sus botones (rediseño 2026-11-18).
+        $badge = Service\Workflow\WorkflowStatus::pageBadge($status, (bool) $item->isPublic());
         if (null !== $badge) {
             $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
             echo $view->partial('oer-manager/common/workflow-badge', ['badge' => $badge]);
@@ -370,6 +372,8 @@ class Module extends AbstractModule implements InitProviderInterface
             'timeout' => 3600,
         ]);
 
+        $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-actions.css', 'OERManager'));
+        $view->headScript()->appendFile($view->assetUrl('js/workflow-actions.js', 'OERManager'));
         echo $view->partial('oer-manager/common/workflow-actions', $buttons + [
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),

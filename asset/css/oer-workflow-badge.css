@@ -46,4 +46,7 @@
 #page-actions .oer-workflow-badge {
     margin-right: 6px;
     line-height: 22px;
+    /* Centrada sobre los botones de 36px del core (insignia de 24px). */
+    vertical-align: top;
+    margin-top: 6px;
 }

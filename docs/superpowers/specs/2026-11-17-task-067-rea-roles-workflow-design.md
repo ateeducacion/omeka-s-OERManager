@@ -312,3 +312,19 @@ users remain.
 3. Existing data: option 1, leave the warning; curators regularise from the queue (TASK-070).
 4. ADR-0002 annotations become private: TASK-074, outside this task.
 
+## Item page button zone (2026-11-18, owner's review)
+
+- **Fix:** «Proponer para revisión» showed on a public REA; proposing it left it Propuesto and still
+  public, in the queue and on the site at once. `WorkflowStatus::canPropose($status, $isPublic)`
+  now refuses a public REA, in the UI and in `WorkflowService::propose()`; a public REA goes to the
+  queue with «Despublicar».
+- **Redesign** (ADR-0014, host button styles only): the bar names the state first
+  (`WorkflowStatus::pageBadge()`, with a new ⚠ «Publicado fuera del flujo» badge in the host
+  accent); one primary action per state, on the right, `.green.button` (propose, confirm and
+  publish) or neutral (reopen); actions that need a reason («Rechazar…», «Despublicar…»,
+  «Descartar…») are `<details>` whose panel opens under the fixed bar with a visible label, a help
+  line and a confirm button with the same verb; only «Descartar» is `.red.button`, the one
+  terminal exit. Works without JavaScript; `asset/js/workflow-actions.js` closes the other
+  panels, focuses the field and closes on Esc, «Cancelar» or a click outside. Checked on
+  screenshots of the real partial with the host stylesheet; not yet seen in a logged-in admin.
+

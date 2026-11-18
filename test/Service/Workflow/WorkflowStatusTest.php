@@ -44,22 +44,54 @@ final class WorkflowStatusTest extends TestCase
 
     public function testProponerDesdeBorradorOAusente(): void
     {
-        $this->assertTrue(WorkflowStatus::canPropose(null));
+        $this->assertTrue(WorkflowStatus::canPropose(null, false));
     }
 
     public function testProponerDesdeRechazado(): void
     {
-        $this->assertTrue(WorkflowStatus::canPropose(WorkflowStatus::REJECTED));
+        $this->assertTrue(WorkflowStatus::canPropose(WorkflowStatus::REJECTED, false));
     }
 
     public function testNoSePuedeProponerDosVeces(): void
     {
-        $this->assertFalse(WorkflowStatus::canPropose(WorkflowStatus::PROPOSED));
+        $this->assertFalse(WorkflowStatus::canPropose(WorkflowStatus::PROPOSED, false));
     }
 
     public function testNoSePuedeProponerUnValorDesconocido(): void
     {
-        $this->assertFalse(WorkflowStatus::canPropose('cualquier-otra-cosa'));
+        $this->assertFalse(WorkflowStatus::canPropose('cualquier-otra-cosa', false));
+    }
+
+    /**
+     * Owner's review (2026-11-18): proposing a public REA left it Propuesto
+     * and still public, in the queue and on the site at once. A public REA
+     * goes to the queue with «Despublicar», which makes it private.
+     */
+    public function testNoSePuedeProponerUnReaPublico(): void
+    {
+        $this->assertFalse(WorkflowStatus::canPropose(null, true));
+        $this->assertFalse(WorkflowStatus::canPropose(WorkflowStatus::REJECTED, true));
+    }
+
+    public function testLosBotonesDeUnReaPublicoSinEstadoNoIncluyenProponer(): void
+    {
+        $buttons = WorkflowStatus::available(null, true, static fn (string $privilege): bool => true);
+        $this->assertFalse($buttons['canPropose']);
+        $this->assertTrue($buttons['canPublish']);
+        $this->assertTrue($buttons['canUnpublish']);
+        $this->assertTrue($buttons['canDiscard']);
+    }
+
+    /** The item page names the state, out of flow included (redesign of 2026-11-18). */
+    public function testInsigniaDeLaPaginaDelItem(): void
+    {
+        $this->assertSame('out_of_flow', WorkflowStatus::pageBadge(null, true));
+        $this->assertSame('out_of_flow', WorkflowStatus::pageBadge(WorkflowStatus::PROPOSED, true));
+        $this->assertSame('out_of_flow', WorkflowStatus::pageBadge(WorkflowStatus::REJECTED, true));
+        $this->assertSame('published', WorkflowStatus::pageBadge(WorkflowStatus::PUBLISHED, true));
+        $this->assertSame('proposed', WorkflowStatus::pageBadge(WorkflowStatus::PROPOSED, false));
+        $this->assertSame('discarded', WorkflowStatus::pageBadge(WorkflowStatus::DISCARDED, false));
+        $this->assertNull(WorkflowStatus::pageBadge(null, false));
     }
 
     public function testSoloSePuedeRechazarUnPropuesto(): void

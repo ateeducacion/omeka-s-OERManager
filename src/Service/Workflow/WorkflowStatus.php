@@ -54,10 +54,24 @@ final class WorkflowStatus
         };
     }
 
-    /** Borrador (ausente) o ya rechazado: el autor puede (re)proponer. */
-    public static function canPropose(?string $status): bool
+    /**
+     * Borrador (ausente) o ya rechazado, y privado: el autor puede (re)proponer.
+     * Nunca un REA público (revisión del propietario, 2026-11-18): quedaría
+     * en la cola y en el sitio a la vez; a la cola se manda con «Despublicar».
+     */
+    public static function canPropose(?string $status, bool $isPublic): bool
     {
-        return null === $status || self::REJECTED === $status;
+        return !$isPublic && (null === $status || self::REJECTED === $status);
+    }
+
+    /**
+     * Insignia de la página nativa del item: como badge(), pero un REA público
+     * sin el estado Publicado se nombra «fuera del flujo», que es lo que el
+     * curador tiene que decidir (ADR-0023 §2; rediseño de 2026-11-18).
+     */
+    public static function pageBadge(?string $status, bool $isPublic): ?string
+    {
+        return self::isOutOfFlow($status, $isPublic) ? 'out_of_flow' : self::badge($status);
     }
 
     /** Solo un propuesto puede rechazarse. */
@@ -109,7 +123,7 @@ final class WorkflowStatus
     public static function available(?string $status, bool $isPublic, callable $allowed): array
     {
         return [
-            'canPropose' => self::canPropose($status) && $allowed('propose'),
+            'canPropose' => self::canPropose($status, $isPublic) && $allowed('propose'),
             'canReject' => self::canReject($status) && $allowed('reject-proposal'),
             'canPublish' => self::canPublish($status, $isPublic) && $allowed('publish-proposal'),
             'canDiscard' => self::canDiscard($status) && $allowed('discard'),

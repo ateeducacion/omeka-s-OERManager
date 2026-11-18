@@ -139,6 +139,8 @@ final class WorkflowServiceTest extends TestCase
         $this->assertSame('invalid_transition', $service->publish($this->rea(null), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->publish($this->rea('Descartado', true), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->propose($this->rea('Propuesto'), 'Cu')['error']);
+        // A public REA is never proposed: it would sit in the queue and on the site at once.
+        $this->assertSame('invalid_transition', $service->propose($this->rea(null, true), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->discard($this->rea('Publicado', true), 'x', 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->reopen($this->rea('Propuesto'), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->unpublish($this->rea('Propuesto'), 'x', 'Cu')['error']);

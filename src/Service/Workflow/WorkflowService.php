@@ -52,7 +52,7 @@ final class WorkflowService
      */
     public function propose(ItemRepresentation $item, string $contributor): array
     {
-        if (!WorkflowStatus::canPropose($this->statusOf($item))) {
+        if (!WorkflowStatus::canPropose($this->statusOf($item), (bool) $item->isPublic())) {
             return self::invalid();
         }
         return $this->transition($item, WorkflowStatus::PROPOSED, '', null, $contributor);
