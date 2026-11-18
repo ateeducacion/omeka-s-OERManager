@@ -162,3 +162,25 @@ regularised: publishing through the native form is detected, not blocked (closes
 4. **The re-cataloguer's ADR-0002 annotations become private** (they expose who catalogued each
    value on published REA): TASK-074.
 
+## Addendum 2 (2026-11-18) — who may re-catalogue, by state and role
+
+Owner decision while reviewing TASK-067 and fixing TASK-035 (a private REA could not be
+re-catalogued from the panel). Applies to curricular alignment and thematic axes; it changes
+ADR-0018, which left alignment to the curator only.
+
+| State | `rea_curador` / `global_admin` | `rea_proponente` (only REA they own) |
+| --- | --- | --- |
+| Borrador (no status, private) | yes | yes |
+| Propuesto | yes | no |
+| Rechazado | yes | yes |
+| Publicado | yes, directly (audited and undoable) | no |
+| Out of flow (public without Publicado) | yes (to regularise) | no |
+| Descartado | no (read only until «Reabrir») | no |
+
+- The AI proposal and the governance batches stay with `rea_curador` and `global_admin`.
+- The proposer reaches the same panel from «Mis propuestas»; no master view.
+- Enforced on the server by a pure rule shared with the panel (`RecatalogRule`); the native API
+  still decides each write. A proposer reads the panel and the curation history only of their
+  own REA (security review of the same day).
+- Design: `docs/superpowers/specs/2026-11-18-task-035-authenticated-panel-recatalog-rules-design.md`.
+
