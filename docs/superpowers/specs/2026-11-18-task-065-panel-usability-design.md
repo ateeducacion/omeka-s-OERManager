@@ -50,6 +50,7 @@ not change: header (title, state, alerts) → Curricular alignment → Media →
 History, Media and Record use `<details>`/`<summary>` with a visible chevron (▸ closed, ▾ open) and the
 same heading style as the other sections, so they read as sections that open. History still loads on
 first open (NFR-004). Curricular alignment and Governance are always open: they are the ones edited.
+Media opens by default; Record and History start closed.
 
 ### A3. The re-cataloguing bar
 
@@ -75,13 +76,21 @@ The server resolves each referenced id to its title (`RecatalogService::titlesFo
 cause in the container with a harness (terms deleted when the curriculum moved to `cur:`, or terms the
 user cannot read). Then:
 
-1. **New events store the label of every value** they add or remove, in a new payload version that is
-   read alongside the older ones. The read side prefers a live title, then the stored label.
+1. **New events store the label of every value** they add or remove, in an optional `labels` key of
+   payload v1 (decode already ignores unknown keys; undo never reads it). The read side prefers a live
+   title, then the stored label.
 2. **Older events without labels** whose target can no longer be read show «término retirado (#123)»
    instead of a bare `#123`.
 
 This touches the curation audit: implement it following the `rdf-curation` skill. Undo keeps working on
 ids only; labels are for display.
+
+Governance events (payload v2) were painted as `#1`: fixed by rendering typed values as text.
+
+**Cause measured (2026-11-18, `test/container/history-titles-check.php`, read only):** on the development
+container, 16 REA hold 51 events; 8 are governance events (the `#1` above) and the history references
+296 ids that no longer exist (terms of the old graph, deleted when the curriculum moved to `cur:`). No
+referenced id was unreadable for a non-administrator editor. Those 296 now read «término retirado (#n)».
 
 ## Part B: the re-cataloguer as a tree
 
