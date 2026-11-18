@@ -59,6 +59,19 @@ final class ReaAcl
                 'propose',
                 // ADR-0023 §1: their own REA, without the master view.
                 'my-proposals',
+                // TASK-035 §3 (owner decision 2026-11-18): the detail panel,
+                // opened from «Mis propuestas», and the re-cataloguer. Which
+                // REA and in which state is RecatalogRule's call (their own,
+                // private, Borrador or Rechazado); the API decides each write.
+                // No AI, governance, visibility, batches or statistics.
+                'drawer-details',
+                'drawer-history',
+                'search-terms',
+                'curriculum-tree',
+                'recatalog-preview',
+                'recatalog-apply',
+                'recatalog-last-event',
+                'recatalog-undo',
             ],
             self::CURATOR => [
                 // Master view and its reads.

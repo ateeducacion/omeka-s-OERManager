@@ -4,16 +4,25 @@
  * workflow status and the last reason (rejection, discard or unpublication).
  * Proposing again happens on the native item page, which the title links to.
  *
+ * TASK-035 §3: «Catalogar» opens the master view's detail panel in a sidebar,
+ * with the same `asset/js/main.js` and configuration (`panel-config`), so the
+ * proposer re-catalogues their own Borrador or Rechazado REA there. The panel
+ * says why when the state does not allow it; no AI, batches or visibility.
+ *
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var \Omeka\Api\Representation\ItemRepresentation[] $items
  * @var int $total
+ * @var string $recatalogCsrf
  */
 
 use OERManager\Service\Workflow\WorkflowStatus;
 
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
+$this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
+$drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details']);
 $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals');
 ?>
 <?php echo $this->pageTitle($translate('Mis propuestas'), 1, $translate('OER Manager')); ?>
@@ -23,7 +32,11 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
 </div>
 
 <?php if ($items): ?>
-<table class="tablesaw" data-tablesaw-mode="stack">
+<table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack"
+<?php echo $this->partial('oer-manager/admin/index/panel-config', [
+    'recatalogCsrf' => $recatalogCsrf ?? '',
+    'aiEnabled' => false,
+]); ?>>
     <thead>
         <tr>
             <th><?php echo $translate('Título'); ?></th>
@@ -31,6 +44,7 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
             <th><?php echo $translate('Motivo'); ?></th>
             <th><?php echo $translate('Visibilidad'); ?></th>
             <th><?php echo $translate('Modificado'); ?></th>
+            <th><?php echo $translate('Anclaje curricular'); ?></th>
         </tr>
     </thead>
     <tbody>
@@ -41,7 +55,7 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
         $note = $item->value(WorkflowStatus::NOTE_TERM);
         $badge = WorkflowStatus::badge($status);
         ?>
-        <tr>
+        <tr data-resource-id="<?php echo (int) $item->id(); ?>">
             <td><?php echo $item->link($item->displayTitle()); ?></td>
             <td>
                 <?php if (null !== $badge): ?>
@@ -53,6 +67,13 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
             <td><?php echo $escape(null === $note ? '' : (string) $note->value()); ?></td>
             <td><?php echo $escape($item->isPublic() ? $translate('Público') : $translate('Privado')); ?></td>
             <td><?php echo $escape($this->i18n()->dateFormat($item->modified() ?? $item->created())); ?></td>
+            <td>
+                <a href="#" class="oer-open-drawer sidebar-content"
+                   data-item-id="<?php echo (int) $item->id(); ?>"
+                   data-sidebar-selector="#oer-detail-sidebar"
+                   data-sidebar-content-url="<?php echo $escape($drawerDetailsUrl . '?id=' . (int) $item->id()); ?>"
+                   aria-label="<?php echo $escape(sprintf($translate('Catalogar «%s»'), $item->displayTitle())); ?>"><?php echo $escape($translate('Catalogar')); ?></a>
+            </td>
         </tr>
     <?php endforeach; ?>
     </tbody>
@@ -60,3 +81,12 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
 <?php else: ?>
 <p class="no-resources"><?php echo $translate('No tienes REA propios en tus sitios.'); ?></p>
 <?php endif; ?>
+
+<?php // Same sidebar as the master view (ADR-0017 §1): the core fills it. ?>
+<div id="oer-detail-sidebar" class="sidebar">
+    <?php echo $this->hyperlink('', '#', [
+        'class' => 'sidebar-close o-icon-close',
+        'title' => $translate('Cerrar el detalle'),
+    ]); ?>
+    <div class="sidebar-content"></div>
+</div>

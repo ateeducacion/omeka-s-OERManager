@@ -23,7 +23,14 @@ final class ReaAclTest extends TestCase
     /** Expected privileges per role and controller. Anything not listed is denied. */
     private const EXPECTED = [
         'rea_proponente' => [
-            IndexController::class => ['propose', 'my-proposals'],
+            // TASK-035 §3: the panel from «Mis propuestas» and the re-cataloguer
+            // (RecatalogRule narrows it to their own Borrador/Rechazado REA).
+            // No master view, visibility, governance, AI, batches or statistics.
+            IndexController::class => [
+                'propose', 'my-proposals',
+                'drawer-details', 'drawer-history', 'search-terms', 'curriculum-tree',
+                'recatalog-preview', 'recatalog-apply', 'recatalog-last-event', 'recatalog-undo',
+            ],
         ],
         'rea_curador' => [
             IndexController::class => [
