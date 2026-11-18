@@ -63,7 +63,10 @@ final class ReaAcl
                 // opened from «Mis propuestas», and the re-cataloguer. Which
                 // REA and in which state is RecatalogRule's call (their own,
                 // private, Borrador or Rechazado); the API decides each write.
-                // No AI, governance, visibility, batches or statistics.
+                // The panel reads (drawer-details, drawer-history) answer only
+                // for REA they own (RecatalogRule::readDenied, security
+                // review); search-terms and curriculum-tree read only the
+                // curriculum. No AI, governance, visibility, batches or statistics.
                 'drawer-details',
                 'drawer-history',
                 'search-terms',

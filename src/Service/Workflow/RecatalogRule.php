@@ -87,6 +87,18 @@ final class RecatalogRule
         return WorkflowStatus::canPropose($status, $isPublic) ? null : self::STATUS;
     }
 
+    /**
+     * Whether the detail panel and the curation history of an item are
+     * closed to this profile (security review of TASK-035): a proposer works
+     * on their own REA, so they read only those; curators and global_admin
+     * are unchanged, and other roles are already denied by the ACL. The
+     * caller answers a closed item exactly like an unreadable one.
+     */
+    public static function readDenied(?string $profile, bool $isOwner): bool
+    {
+        return self::PROPOSER === $profile && !$isOwner;
+    }
+
     /** Message of a refusal code; empty for null or an unknown code. */
     public static function message(?string $code): string
     {

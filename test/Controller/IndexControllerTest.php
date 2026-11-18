@@ -839,7 +839,6 @@ class IndexControllerTest extends TestCase
             'admin on Descartado' => [$this->user(1, 'global_admin'), WorkflowStatus::DISCARDED, RecatalogRule::DISCARDED],
             'proposer on Propuesto' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PROPOSED, RecatalogRule::STATUS],
             'proposer on Publicado' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PUBLISHED, RecatalogRule::STATUS],
-            'proposer on a foreign REA' => [$this->user(4, 'rea_proponente'), '', RecatalogRule::NOT_OWNER],
         ];
         $this->owner = $this->ownedBy(3);
         foreach ($cases as $case => [$identity, $status, $code]) {
@@ -861,6 +860,16 @@ class IndexControllerTest extends TestCase
         $this->assertSame(RecatalogRule::NO_UPDATE, $this->data('recatalogApply')['error']);
         $this->canUpdate = true;
 
+        // A proposer on someone else's REA gets the same answer as for a
+        // missing one (security review: existence is not revealed).
+        $this->controller->plugins['identity'] = $this->user(4, 'rea_proponente');
+        foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+            $this->assertSame('not_found', $this->data($action)['error'], $action);
+            $this->assertSame(IndexController::NOT_FOUND_MESSAGE, $this->data($action)['message'], $action);
+        }
+        $this->assertNull($this->data('recatalogLastEvent')['event']);
+
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
         $this->missingItem = true;
         foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
             $this->assertSame('not_found', $this->data($action)['error'], $action);
@@ -977,5 +986,39 @@ class IndexControllerTest extends TestCase
             ['allowed' => false, 'reason' => '', 'current' => $current],
             $this->controller->drawerDetailsAction()->getVariable('recatalog')
         );
+    }
+
+    /**
+     * Security review of TASK-035: a proposer reads the panel and the curation
+     * history only of their own REA; for any other the answer is the same as
+     * for an unreadable item (existence is not revealed).
+     */
+    public function testAProposerReadsThePanelAndHistoryOnlyOfTheirOwnReas(): void
+    {
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn(['current' => []]);
+        $this->dependencies['recatalogService']->method('history')->willReturn([['summary' => 'Rejected by X']]);
+        $this->params->query = ['id' => 7];
+        $this->owner = $this->ownedBy(3);
+
+        foreach ([false, true] as $isPublic) {
+            $this->isPublic = $isPublic;
+            $this->controller->plugins['identity'] = $this->user(4, 'rea_proponente');
+            $this->assertNull($this->controller->drawerDetailsAction()->getVariable('panel'));
+            $this->assertNull($this->data('drawerHistory')['history']);
+
+            $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+            $this->assertNotNull($this->controller->drawerDetailsAction()->getVariable('panel'));
+            $this->assertSame([['summary' => 'Rejected by X']], $this->data('drawerHistory')['history']);
+
+            foreach (['rea_curador', 'global_admin'] as $role) {
+                $this->controller->plugins['identity'] = $this->user(9, $role);
+                $this->assertNotNull($this->controller->drawerDetailsAction()->getVariable('panel'), $role);
+                $this->assertNotNull($this->data('drawerHistory')['history'], $role);
+            }
+        }
+        // An item without owner is nobody's own.
+        $this->owner = null;
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $this->assertNull($this->data('drawerHistory')['history']);
     }
 }

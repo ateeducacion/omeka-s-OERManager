@@ -24,7 +24,8 @@ final class ReaAclTest extends TestCase
     private const EXPECTED = [
         'rea_proponente' => [
             // TASK-035 §3: the panel from «Mis propuestas» and the re-cataloguer
-            // (RecatalogRule narrows it to their own Borrador/Rechazado REA).
+            // (RecatalogRule narrows it to their own Borrador/Rechazado REA, and
+            // the panel reads to their own REA: IndexControllerTest).
             // No master view, visibility, governance, AI, batches or statistics.
             IndexController::class => [
                 'propose', 'my-proposals',

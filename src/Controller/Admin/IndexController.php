@@ -827,12 +827,11 @@ class IndexController extends AbstractActionController
     private function recatalogDenial(ItemRepresentation $item): ?string
     {
         $identity = $this->identity();
-        $owner = $item->owner();
         return RecatalogRule::denial(
             $this->workflowService->statusOf($item),
             (bool) $item->isPublic(),
             RecatalogRule::profile($identity ? (string) $identity->getRole() : null),
-            null !== $identity && null !== $owner && (int) $owner->id() === (int) $identity->getId(),
+            $this->isOwner($item),
             (bool) $item->userIsAllowed('update')
         );
     }
@@ -846,7 +845,11 @@ class IndexController extends AbstractActionController
     private function recatalogRefusal(int $id): ?array
     {
         $item = $this->workflowItem($id);
-        if (null === $item) {
+        $identity = $this->identity();
+        $profile = RecatalogRule::profile($identity ? (string) $identity->getRole() : null);
+        // A proposer is told about someone else's REA exactly what they are
+        // told about a missing one, as in the panel (security review).
+        if (null === $item || RecatalogRule::readDenied($profile, $this->isOwner($item))) {
             return ['updated' => false, 'error' => 'not_found', 'message' => self::NOT_FOUND_MESSAGE];
         }
         $code = $this->recatalogDenial($item);
@@ -903,7 +906,11 @@ class IndexController extends AbstractActionController
         return new JsonModel(['history' => $this->recatalogService->history((int) $item->id())]);
     }
 
-    /** Item de la petición, o null si el id no vale o no se puede leer. */
+    /**
+     * Item de la petición, o null si el id no vale, no se puede leer o el
+     * usuario es un proponente y el REA no es suyo (revisión de seguridad de
+     * TASK-035: misma respuesta que «no existe», para no revelarlo).
+     */
     private function panelItem()
     {
         $id = (int) $this->params()->fromQuery('id');
@@ -911,10 +918,21 @@ class IndexController extends AbstractActionController
             return null;
         }
         try {
-            return $this->api()->read('items', $id)->getContent();
+            $item = $this->api()->read('items', $id)->getContent();
         } catch (\Exception $e) {
             return null;
         }
+        $identity = $this->identity();
+        $profile = RecatalogRule::profile($identity ? (string) $identity->getRole() : null);
+        return RecatalogRule::readDenied($profile, $this->isOwner($item)) ? null : $item;
+    }
+
+    /** The current user owns the item. */
+    private function isOwner(ItemRepresentation $item): bool
+    {
+        $identity = $this->identity();
+        $owner = $item->owner();
+        return null !== $identity && null !== $owner && (int) $owner->id() === (int) $identity->getId();
     }
 
     /**

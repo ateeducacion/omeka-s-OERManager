@@ -78,6 +78,19 @@ final class RecatalogRuleTest extends TestCase
         );
     }
 
+    /**
+     * Security review of TASK-035: the panel and the history are read by a
+     * proposer only on their own REA; curators and global_admin unchanged.
+     */
+    public function testAProposerReadsThePanelOnlyOfTheirOwnItems(): void
+    {
+        $this->assertTrue(RecatalogRule::readDenied(RecatalogRule::PROPOSER, false));
+        $this->assertFalse(RecatalogRule::readDenied(RecatalogRule::PROPOSER, true));
+        $this->assertFalse(RecatalogRule::readDenied(RecatalogRule::CURATOR, false));
+        // Other roles are the ACL's business (it denies them the panel).
+        $this->assertFalse(RecatalogRule::readDenied(null, false));
+    }
+
     public function testEveryRefusalHasAMessage(): void
     {
         foreach (

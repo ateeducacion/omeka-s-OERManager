@@ -88,6 +88,16 @@ The native API still decides each write item by item (NFR-003): the rule narrows
 `recatalog-apply`, `recatalog-last-event`, `recatalog-undo`. Not the master view (`index`,
 `search`), visibility, governance, AI, batches or statistics.
 
+**Reads narrowed to their own REA (security review, 2026-11-18).** The ACL grants are per
+controller, so `drawer-details` and `drawer-history` would otherwise open the panel and the curation
+history (rejection reasons, curator names, AI justifications) of any REA in the proposer's sites.
+`RecatalogRule::readDenied(profile, isOwner)` closes both to a proposer on a REA they do not own,
+private or public, and the controller answers exactly as for an unreadable item (no panel,
+`history: null`), so existence is not revealed. The curricular entries answer a proposer on someone
+else's REA with the same `not_found` (not `not_owner`) for the same reason. Curators and
+`global_admin` are unchanged. `search-terms` and `curriculum-tree` read only curriculum terms, never
+a REA, and stay as they are.
+
 «Mis propuestas» opens the same sidebar panel: each row gets a «Catalogar» trigger
 (`a.oer-open-drawer.sidebar-content`, as in the master view), the page loads the same
 `asset/js/main.js` with the same configuration attributes (a shared partial,
