@@ -135,6 +135,17 @@ final class RecatalogServiceTest extends TestCase
         $this->assertSame([2], $payload['terms']['lrmi:teaches']['after']);
     }
 
+    public function testTheEventStoresTheLabelsOfAddedAndRemovedValues(): void
+    {
+        $this->items[1] = $this->item(1, '', ['lrmi:teaches' => [$this->value('', $this->items[3], 'resource:item')]]);
+
+        $this->service->apply(1, ['lrmi:teaches' => [2]], 'Curator');
+
+        $event = $this->writes[0]['dcterms:provenance'][0];
+        $payload = CurationEvent::decode($event['@annotation']['dcterms:replaces'][0]['@value']);
+        $this->assertSame([3 => 'Other', 2 => 'Target'], $payload['terms']['lrmi:teaches']['labels']);
+    }
+
     public function testClearingEntireDimensionAndMissingAuditPropertyRemainPartial(): void
     {
         $this->items[1] = $this->item(1, '', ['schema:about' => [$this->value('', $this->items[2], 'resource:item')]]);

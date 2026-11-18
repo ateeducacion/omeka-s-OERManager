@@ -109,15 +109,19 @@ final class CurationHistory
         foreach ($entry['why'] ?? [] as $id => $reason) {
             $why[(int) $id] = (string) $reason;
         }
+        $stored = [];
+        foreach ($entry['labels'] ?? [] as $id => $label) {
+            $stored[(int) $id] = (string) $label;
+        }
 
         $removed = [];
         foreach ($removedIds as $id) {
-            $removed[] = ['title' => self::title($id, $titles), 'reason' => $why[$id] ?? ''];
+            $removed[] = ['title' => self::title($id, $titles, $stored), 'reason' => $why[$id] ?? ''];
         }
 
         return [
             'term' => $term,
-            'added' => array_map(static fn (int $id): string => self::title($id, $titles), $addedIds),
+            'added' => array_map(static fn (int $id): string => self::title($id, $titles, $stored), $addedIds),
             'removed' => $removed,
             'emptied' => [] === $after && [] !== $before,
         ];
@@ -169,11 +173,19 @@ final class CurationHistory
         return $out;
     }
 
-    /** @param array<int,string> $titles */
-    private static function title(int $id, array $titles): string
+    /**
+     * @param array<int,string> $titles live titles
+     * @param array<int,string> $stored labels the event stored when it was written
+     */
+    private static function title(int $id, array $titles, array $stored = []): string
     {
-        $title = trim((string) ($titles[$id] ?? ''));
-        return '' === $title ? self::UNRESOLVED_PREFIX . $id : $title;
+        foreach ([$titles[$id] ?? '', $stored[$id] ?? ''] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ('' !== $candidate) {
+                return $candidate;
+            }
+        }
+        return self::UNRESOLVED_PREFIX . $id;
     }
 
     /**

@@ -270,6 +270,29 @@ final class CurationHistoryTest extends TestCase
         $this->assertTrue($rows[0]['changes'][0]['emptied']);
     }
 
+    /** Review Focus 5: an unreadable target keeps the name the event stored. */
+    public function testAStoredLabelIsUsedWhenTheTargetCannotBeRead(): void
+    {
+        $rows = CurationHistory::rows(
+            [$this->event(['lrmi:teaches' => [
+                'before' => [], 'after' => [404], 'labels' => [404 => 'Fracciones (2º ESO)'],
+            ]])],
+            []
+        );
+
+        $this->assertSame(['Fracciones (2º ESO)'], $rows[0]['changes'][0]['added']);
+    }
+
+    public function testALiveTitleWinsOverTheStoredLabel(): void
+    {
+        $rows = CurationHistory::rows(
+            [$this->event(['lrmi:teaches' => ['before' => [], 'after' => [7], 'labels' => [7 => 'Viejo']]])],
+            [7 => 'Nuevo (1º ESO)']
+        );
+
+        $this->assertSame(['Nuevo (1º ESO)'], $rows[0]['changes'][0]['added']);
+    }
+
     public function testReferencedIdsIgnoresTypedEvents(): void
     {
         $ids = CurationHistory::referencedIds([
