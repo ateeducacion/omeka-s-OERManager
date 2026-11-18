@@ -29,17 +29,14 @@ import {
  * `drawerDetails.js` does not know this file exists, the same way it does
  * not know `ui/recatalog.js` exists — it only announces that a slot exists.
  *
- * Unlike `ANCHOR_SLOT`, `GOVERNANCE_SLOT`'s detail carries no fetched data of
- * its own, only `{ itemId, section }` — `section` (the `.oer-area-governance`
- * element) already carries everything the form needs (current values, vocab
- * options, notices, the default rights holder, the item id and the per-render
- * CSRF hash) as JSON in its own `data-governance` attribute, server-rendered
- * by the same authenticated request that rendered the rest of the drawer.
- * This is deliberately unlike `ANCHOR_SLOT`'s `itemJson`, which `drawer.js`
- * fetches separately and unauthenticated (`fetch(apiUrl)` against `/api`) —
- * that route degrades to `null` on a private item, which would have broken
- * this form outright, so the data travels through the authenticated markup
- * instead. Either way, `governance.js` never receives the page-level `config`
+ * `GOVERNANCE_SLOT`'s detail is only `{ itemId, section }` — `section` (the
+ * `.oer-area-governance` element) already carries everything the form needs
+ * (current values, vocab options, notices, the default rights holder, the item
+ * id and the per-render CSRF hash) as JSON in its own `data-governance`
+ * attribute, server-rendered by the same authenticated request that rendered
+ * the rest of the drawer. Since TASK-035 the anchor slot follows the same
+ * pattern (`data-recatalog`) instead of an unauthenticated `/api` read that a
+ * private item never answered. Either way, `governance.js` never receives the page-level `config`
  * object `main.js` builds for the other UI modules; everything it needs comes
  * from the DOM.
  *

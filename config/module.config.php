@@ -606,6 +606,10 @@ return [
         'Ningún término coincide con el filtro.', // @translate
         '1 coincidencia', // @translate
         'coincidencias', // @translate
+        // TASK-035: refusals the re-cataloguer shows from the server's `message`.
+        ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
+        Controller\Admin\IndexController::NOT_FOUND_MESSAGE,
+        Controller\Admin\IndexController::GOVERNANCE_UNDO_MESSAGE,
     ],
     'translator' => [
         'translation_file_patterns' => [

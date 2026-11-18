@@ -7,8 +7,11 @@
  * escanea `*.php` y `*.phtml` (NFR-005).
  *
  * Deja dos huecos que rellena el cliente y que NO pueden servirse desde aquí:
- * `.oer-anchor-slot`, donde se monta el re-catalogador —necesita el `itemJson`
- * de una llamada aparte—, y el cuerpo del historial, que es perezoso.
+ * `.oer-anchor-slot`, donde se monta el re-catalogador, y el cuerpo del
+ * historial, que es perezoso. Desde TASK-035 el hueco del re-catalogador lleva
+ * sus datos en `data-recatalog` (`{allowed, reason, current}`): el prellenado
+ * leído aquí con la sesión, en vez de una llamada a `/api` que un REA privado
+ * no contestaba, y la respuesta de RecatalogRule para este usuario.
  *
  * Task 11 adds a third: `.oer-governance-form`, which `asset/js/ui/governance.js`
  * fills in place of the read rows when `canEdit` is true. Unlike the anchor
@@ -39,6 +42,7 @@
  * @var string $unpublishUrl
  * @var string $reopenUrl
  * @var string $governanceApplyUrl POST target for the edit form (Task 11)
+ * @var array{allowed:bool, reason:string, current:array} $recatalog TASK-035
  */
 
 use OERManager\Service\Governance\GovernanceFields;
@@ -137,6 +141,16 @@ if (null !== $integrity) {
     });
 }
 $checked = null !== $integrity && !empty($integrity['status']);
+
+// TASK-035: the anchor slot's data; the reason is translated here, once.
+$recatalogData = $recatalog ?? ['allowed' => false, 'reason' => '', 'current' => []];
+if ('' !== $recatalogData['reason']) {
+    $recatalogData['reason'] = $translate($recatalogData['reason']);
+}
+$recatalogAttr = $escape((string) json_encode(
+    $recatalogData,
+    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+));
 ?>
 <div class="oer-detail-panel" data-integrity="<?php echo $escape($rail); ?>">
 <?php if (null === $panel): ?>
@@ -335,7 +349,7 @@ $checked = null !== $integrity && !empty($integrity['status']);
                 <?php endif; ?>
                 <?php endif; ?>
             </div>
-            <div class="oer-anchor-slot"></div>
+            <div class="oer-anchor-slot" data-recatalog="<?php echo $recatalogAttr; ?>"></div>
             <div class="oer-anchor-bar"></div>
         </section>
 

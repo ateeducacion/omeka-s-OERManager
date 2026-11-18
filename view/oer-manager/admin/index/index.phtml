@@ -144,27 +144,14 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     <button type="button" class="oer-select-matching-action"></button>
 </p>
 
-<?php
-$canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexController', 'recatalog-apply');
-?>
 <table id="oer-master-view-table" class="tablesaw" data-tablesaw-mode="stack"
-    data-total-results="<?php echo (int) ($totalResults ?? 0); ?>"
-    data-can-batch-governance="<?php echo !empty($canBatchGovernance) ? '1' : '0'; ?>"
-    data-set-visibility-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'set-visibility'])); ?>"
-    data-csrf-token="<?php echo $escape($csrfToken); ?>"
-    data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
-    data-curriculum-tree-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'curriculum-tree'])); ?>"
-    data-recatalog-preview-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-preview'])); ?>"
-    data-recatalog-apply-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-apply'])); ?>"
-    data-recatalog-last-event-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-last-event'])); ?>"
-    data-recatalog-undo-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'recatalog-undo'])); ?>"
-    data-ai-propose-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose'])); ?>"
-    data-ai-propose-status-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose-status'])); ?>"
-    data-ai-propose-cancel-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'ai-propose-cancel'])); ?>"
-    data-ai-enabled="<?php echo !empty($aiEnabled) ? '1' : '0'; ?>"
-    data-can-recatalog="<?php echo $canRecatalog ? '1' : '0'; ?>"
-    data-recatalog-csrf="<?php echo $escape($recatalogCsrf ?? ''); ?>"
-    data-drawer-history-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'drawer-history'])); ?>">
+<?php echo $this->partial('oer-manager/admin/index/panel-config', [
+    'csrfToken' => $csrfToken,
+    'recatalogCsrf' => $recatalogCsrf ?? '',
+    'aiEnabled' => !empty($aiEnabled),
+    'totalResults' => (int) ($totalResults ?? 0),
+    'canBatchGovernance' => !empty($canBatchGovernance),
+]); ?>>
     <thead>
         <tr>
             <th class="oer-column-select"><input type="checkbox" class="oer-select-all" aria-label="<?php echo $escape($translate('Seleccionar todo')); ?>"></th>
@@ -174,7 +161,8 @@ $canRecatalog = $this->userIsAllowed('OERManager\Controller\Admin\IndexControlle
     </thead>
     <tbody>
         <?php foreach ($items as $item): ?>
-        <tr data-resource-id="<?php echo $item->id(); ?>" data-api-url="<?php echo $escape($item->apiUrl()); ?>"
+        <?php // TASK-035: no `data-api-url`; the panel no longer reads `/api`. ?>
+        <tr data-resource-id="<?php echo $item->id(); ?>"
             data-edit-url="<?php echo $escape($item->url('edit')); ?>"
             data-integrity="<?php echo $escape($integrityStatuses[$item->id()] ?? 'ok'); ?>">
             <td class="oer-column-select"><input type="checkbox" class="oer-row-select" name="resource_ids[]" value="<?php echo $item->id(); ?>" aria-label="<?php echo $escape($translate('Seleccionar REA')); ?>"></td>

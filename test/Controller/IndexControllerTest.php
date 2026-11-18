@@ -658,6 +658,8 @@ class IndexControllerTest extends TestCase
         $this->assertSame('oer-manager/admin/index/my-proposals', $view->getTemplate());
         $this->assertSame([$this->item], $view->getVariable('items'));
         $this->assertSame(1, $view->getVariable('total'));
+        // TASK-035 §3: the page opens the same panel, whose re-cataloguer posts with this token.
+        $this->assertNotSame('', (string) $view->getVariable('recatalogCsrf'));
     }
 
     /** TASK-067: the REA site is validated on save, and the page says when the rule is off. */

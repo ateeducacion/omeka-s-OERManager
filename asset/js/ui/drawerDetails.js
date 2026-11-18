@@ -1,6 +1,6 @@
 import { DRAWER_RENDERED } from './drawer.js';
+import { parseRecatalog } from '../core/anchorData.js';
 import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
-import { TERM_LABELS } from '../core/drawerModel.js';
 
 /**
  * Lo que queda del panel en cliente después de TASK-034 (ADR-0017 §1).
@@ -30,9 +30,12 @@ import { TERM_LABELS } from '../core/drawerModel.js';
  * re-catalogador se engancha aquí, y no al contenido entero del sidebar, para
  * que los selectores nazcan DENTRO del área que ya cuenta el anclaje.
  *
- * Contrato con `ui/recatalog.js`: este fichero entrega `{ itemId, itemJson,
+ * Contrato con `ui/recatalog.js`: este fichero entrega `{ itemId, recatalog,
  * slot, bar }` y lleva el modo; aquel puebla `slot` y `bar`, y marca su botón
  * de entrada con `.oer-anchor-edit`, lo único que este fichero le escucha.
+ * `recatalog` es `{ allowed, reason, current }` (`core/anchorData.js`), que el
+ * partial sirve en `data-recatalog` del hueco (TASK-035): ni JSON-LD crudo ni
+ * una llamada aparte.
  */
 export const ANCHOR_SLOT = 'oer:anchor-slot';
 
@@ -203,7 +206,7 @@ export function initDrawerDetails(config) {
     });
 
     document.addEventListener(DRAWER_RENDERED, (event) => {
-        const { itemId, itemJson, content } = event.detail;
+        const { itemId, content } = event.detail;
 
         wireHistory(content, config.drawerHistoryUrl);
 
@@ -218,16 +221,16 @@ export function initDrawerDetails(config) {
         }
 
         // Huecos que deja el partial. Si `drawer-details` no pudo leer el REA,
-        // el partial los pinta igual junto al aviso, así que el re-catalogador
-        // se sigue montando en vez de desaparecer con la lectura.
+        // el hueco llega sin `data-recatalog` y se lee como «cerrado».
         const slot = content.querySelector('.oer-anchor-slot');
         const bar = content.querySelector('.oer-anchor-bar');
         if (!slot || !bar) {
             return;
         }
+        const recatalog = parseRecatalog(slot.dataset.recatalog);
 
         document.dispatchEvent(new CustomEvent(ANCHOR_SLOT, {
-            detail: { itemId, itemJson, slot, bar }
+            detail: { itemId, recatalog, slot, bar }
         }));
     });
 }

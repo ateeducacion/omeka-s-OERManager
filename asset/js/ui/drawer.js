@@ -7,9 +7,10 @@
  *
  * Lo que queda aquí es lo que el core no puede saber:
  *
- * 1. Re-emitir `o:sidebar-content-loaded` como evento del módulo, añadiéndole
- *    el `itemJson` que el re-catalogador necesita para prellenar sus selectores
- *    y que viene de una llamada aparte.
+ * 1. Re-emitir `o:sidebar-content-loaded` como evento del módulo, con el id del
+ *    REA. Desde TASK-035 no hay llamada aparte: el prellenado del
+ *    re-catalogador viaja en el propio partial (`data-recatalog`), leído con
+ *    la sesión del admin, y un REA privado se re-cataloga como cualquier otro.
  * 2. `reopenDrawer()`, que hace falta tras aplicar o deshacer.
  * 3. `Escape` y el retorno de foco, que Omeka 4.2 **no** trae para el sidebar
  *    (no hay ningún manejador de teclado en `admin.js`). Ceñirse al core sería
@@ -64,8 +65,8 @@ export function initDrawer(config) {
         }
     });
 
-    // El core dispara esto tras inyectar el HTML. Aquí se le engancha el
-    // `itemJson` y se re-emite con el contrato que ya conocen los consumidores.
+    // El core dispara esto tras inyectar el HTML; se re-emite con el contrato
+    // que conocen los consumidores.
     $(panel).on('o:sidebar-content-loaded', () => {
         const content = panel.querySelector('.sidebar-content');
         const itemId = lastOpener ? lastOpener.dataset.itemId : null;
@@ -95,34 +96,12 @@ export function initDrawer(config) {
             close.focus();
         }
 
-        const row = document.querySelector(`tr[data-resource-id="${itemId}"]`);
-        const apiUrl = row ? row.dataset.apiUrl : '';
-
-        // Este `fetch` va SIN autenticar (contra `/api`, que conmuta a
-        // NonPersistent+KeyAdapter y no ve la sesión del admin), así que un REA
-        // privado responde 403/404 aquí SIEMPRE. El panel de LECTURA ya no
-        // depende de él —lo sirve `drawer-details`, que sí autentica—; solo lo
-        // necesita el re-catalogador para prellenar sus selectores. El fallo se
-        // degrada a `itemJson: null`, no aborta el evento.
-        fetch(apiUrl, { headers: { Accept: 'application/json' } })
-            .then((response) => {
-                if (!response.ok) {
-                    throw new Error(`item respondió ${response.status}`);
-                }
-                return response.json();
-            })
-            .catch(() => null)
-            .then((itemJson) => {
-                // Si el curador cerró el panel o abrió otro REA mientras el
-                // fetch estaba en vuelo, no se gastan las peticiones que hacen
-                // los consumidores de este evento sobre algo que ya no está.
-                if (!content.isConnected) {
-                    return;
-                }
-                document.dispatchEvent(new CustomEvent(DRAWER_RENDERED, {
-                    detail: { itemId, itemJson, content }
-                }));
-            });
+        // TASK-035: sin `fetch` a `/api` (no veía la sesión, así que un REA
+        // privado no se podía re-catalogar). Todo lo que necesitan los
+        // consumidores ya está en `content`.
+        document.dispatchEvent(new CustomEvent(DRAWER_RENDERED, {
+            detail: { itemId, content }
+        }));
     });
 
     document.addEventListener('keydown', (event) => {

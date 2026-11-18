@@ -251,6 +251,10 @@ class IndexController extends AbstractActionController
      * come from the representations already loaded (an owner reads the
      * private values of their own items). Under isolation only items in the
      * user's granted sites are listed.
+     *
+     * Each row opens the same detail panel as the master view (TASK-035 §3),
+     * where the proposer re-catalogues their own Borrador or Rechazado REA;
+     * RecatalogRule decides item by item.
      */
     public function myProposalsAction()
     {
@@ -275,6 +279,7 @@ class IndexController extends AbstractActionController
         $view->setTemplate('oer-manager/admin/index/my-proposals');
         $view->setVariable('items', $items);
         $view->setVariable('total', $total);
+        $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
         return $view;
     }
 
@@ -1486,10 +1491,10 @@ class IndexController extends AbstractActionController
         );
     }
 
-    private const NOT_FOUND_MESSAGE = 'El REA no existe o no se puede leer.'; // @translate
+    public const NOT_FOUND_MESSAGE = 'El REA no existe o no se puede leer.'; // @translate
 
     // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
-    private const GOVERNANCE_UNDO_MESSAGE = 'El último cambio de este REA es de licencia o autoría: solo el equipo curador puede deshacerlo.'; // @translate
+    public const GOVERNANCE_UNDO_MESSAGE = 'El último cambio de este REA es de licencia o autoría: solo el equipo curador puede deshacerlo.'; // @translate
 
     /** Integrity codes the publish gate does not block on (they are what publishing fixes). */
     private const PUBLISH_GATE_IGNORES = ['published_out_of_flow'];
