@@ -283,7 +283,8 @@ try {
         '/admin/oer-manager/stats' => ['rea_curador'],
         '/admin/oer-manager/batch' => ['rea_curador'],
         '/admin/oer-manager/config' => [],
-        '/admin/oer-manager/drawer-details?id=' . $r1 => ['rea_curador'],
+        // TASK-035: the proposer opens the panel of their own REA (R1 is theirs).
+        '/admin/oer-manager/drawer-details?id=' . $r1 => ['rea_curador', 'rea_proponente'],
     ];
     foreach ($routes as $path => $allowed) {
         foreach ($roles as $role) {
