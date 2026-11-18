@@ -231,3 +231,8 @@ unfolding each stage (the folded stage keeps its name and total), and the layout
   the container with the branch's CSS/JS and the save request intercepted: 24/24 (move buttons and focus,
   fold all, fold one, drag, one debounced save with token, filter repaint keeps the fold, failed save reported,
   reset, stored layout applied on load without saving).
+
+**Re-check 2026-10-20 (`main` after PR #77):** `test/container/stats-check.php` died in `indexAction()` because the
+revision reads a user setting and assembles the layout URL, and the CLI harness had no user-settings target nor
+router. The harness now sets the first user as target (read only) and the HTTP router: 29 OK, 0 FAIL on 71 REA
+(126 × 18 heatmap, 187 gaps, all in 2026). The logged-in admin check is still pending.
