@@ -2,7 +2,7 @@ import { DRAWER_RENDERED } from './drawer.js';
 import { parseRecatalog } from '../core/anchorData.js';
 import {
     historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT,
-    summaryParts, retiredId, nextShown, RETIRED_TEXT
+    summaryParts, retiredId, historyPage, RETIRED_TEXT
 } from '../core/historyModel.js';
 
 /**
@@ -188,12 +188,20 @@ function renderHistory(history) {
     more.className = 'button oer-history-more';
     more.textContent = t('Ver 5 más');
     const showMore = () => {
-        const next = nextShown(rows.length, shown);
-        rows.slice(shown, next).forEach((row) => list.appendChild(entry(row)));
-        shown = next;
-        more.hidden = shown >= rows.length;
+        const page = historyPage(rows.length, shown);
+        const added = rows.slice(page.from, page.to).map((row) => list.appendChild(entry(row)));
+        shown = page.to;
+        more.hidden = page.done;
+        return added;
     };
-    more.addEventListener('click', showMore);
+    more.addEventListener('click', () => {
+        // The button can disappear under the keyboard: focus follows the first
+        // new entry, so neither the place nor the new rows are lost (NFR-006).
+        const added = showMore();
+        if (added.length) {
+            added[0].querySelector('summary').focus();
+        }
+    });
     showMore();
     section.appendChild(more);
 

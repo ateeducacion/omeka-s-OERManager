@@ -112,3 +112,16 @@ export function summaryParts(row) {
 export function nextShown(total, shown) {
     return Math.min(total, shown + HISTORY_PAGE);
 }
+
+/**
+ * One more page: rows `from`..`to` to append, `from` is the entry that takes
+ * the focus after «Ver 5 más» (NFR-006: the button may vanish under the
+ * keyboard), and `done` hides the button.
+ * @param {number} total
+ * @param {number} shown
+ * @returns {{from: number, to: number, done: boolean}}
+ */
+export function historyPage(total, shown) {
+    const to = nextShown(total, shown);
+    return { from: shown, to, done: to >= total };
+}

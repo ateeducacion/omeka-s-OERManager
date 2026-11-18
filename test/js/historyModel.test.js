@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT,
-    summaryParts, retiredId, nextShown, HISTORY_PAGE, RETIRED_TEXT
+    summaryParts, retiredId, nextShown, historyPage, HISTORY_PAGE, RETIRED_TEXT
 } from '../../asset/js/core/historyModel.js';
 
 const row = (changes, extra = {}) => ({
@@ -132,4 +132,11 @@ test('paginación de 5 en 5 (Review Focus 4)', () => {
     assert.equal(nextShown(6, 0), 5);
     assert.equal(nextShown(6, 5), 6);
     assert.equal(nextShown(12, 5), 10);
+});
+
+test('cada página dice qué filas añadir, dónde poner el foco y si se acabó (revisión final, NFR-006)', () => {
+    assert.deepEqual(historyPage(6, 0), { from: 0, to: 5, done: false });
+    assert.deepEqual(historyPage(6, 5), { from: 5, to: 6, done: true });
+    assert.deepEqual(historyPage(5, 0), { from: 0, to: 5, done: true });
+    assert.deepEqual(historyPage(0, 0), { from: 0, to: 0, done: true });
 });
