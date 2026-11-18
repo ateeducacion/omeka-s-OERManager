@@ -356,7 +356,9 @@ $recatalogAttr = $escape((string) json_encode(
         <div class="oer-panel-side">
             <?php $media = $area('media'); ?>
             <section class="oer-area oer-area-media">
-                <h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4>
+                <?php // TASK-065: a section that opens must look like one; Media starts open. ?>
+                <details class="oer-area-box" open>
+                <summary><h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4></summary>
                 <?php if (PanelAreas::STATE_EMPTY === $media['state']): ?>
                 <?php // Un REA sin ningún medio no es un recurso: aviso, no dato. ?>
                 <p class="oer-media-none"><?php echo $escape($translate(PanelAreas::MEDIA_EMPTY_TEXT)); ?></p>
@@ -386,11 +388,13 @@ $recatalogAttr = $escape((string) json_encode(
                     <?php endforeach; ?>
                 </ul>
                 <?php endif; ?>
+                </details>
             </section>
 
             <?php $record = $area('record'); ?>
             <section class="oer-area oer-area-record">
-                <h4><?php echo $escape($translate(PanelAreas::LABELS['record'])); ?></h4>
+                <details class="oer-area-box">
+                <summary><h4><?php echo $escape($translate(PanelAreas::LABELS['record'])); ?></h4></summary>
                 <?php if (PanelAreas::STATE_EMPTY === $record['state']): ?>
                 <p class="oer-drawer-empty"><?php echo $escape($translate('Sin ficha descriptiva.')); ?></p>
                 <?php else: ?>
@@ -401,6 +405,7 @@ $recatalogAttr = $escape((string) json_encode(
                     <?php endforeach; ?>
                 </dl>
                 <?php endif; ?>
+                </details>
             </section>
         </div>
     </div>
@@ -501,8 +506,8 @@ $recatalogAttr = $escape((string) json_encode(
 
     <?php // Nace plegado y su petición NO se lanza hasta que se despliega (P-6). ?>
     <section class="oer-area oer-area-history">
-        <details class="oer-history-box" data-item-id="<?php echo (int) $identity['id']; ?>">
-            <summary><?php echo $escape($translate('Historial de curación')); ?></summary>
+        <details class="oer-area-box oer-history-box" data-item-id="<?php echo (int) $identity['id']; ?>">
+            <summary><h4><?php echo $escape($translate('Historial de curación')); ?></h4></summary>
             <div class="oer-history-body"></div>
         </details>
     </section>

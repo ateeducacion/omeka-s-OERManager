@@ -937,7 +937,7 @@
    área de anclaje —revertir no exige abrir los selectores—, así que ya no
    necesita filete propio: lo separa el ancho de la barra. */
 .oer-recatalog-undo {
-    display: inline-block;
+    display: flex;
 }
 
 /* Sin evento que revertir el hueco existe pero no ocupa: si no, el `gap` de la
@@ -947,11 +947,13 @@
     display: none;
 }
 
+/* Same native button as «Re-catalogar» (same font size, padding and height,
+   TASK-065); only the colours make it secondary. */
 .oer-recatalog-undo-btn {
-    background: none;
+    margin: 0;
+    background: transparent;
     border: 1px solid var(--oer-rule);
-    color: var(--oer-muted);
-    font-size: 0.9em;
+    color: var(--oer-ink);
 }
 
 .oer-recatalog-undo-btn:hover,
@@ -1711,15 +1713,48 @@ body.oer-master-view.sidebar-open footer {
 }
 
 .oer-area {
-    margin-bottom: 1.25em;
+    border-top: 1px solid var(--oer-rule);
+    padding-top: 0.75em;
+    margin-bottom: 1.5em;
 }
 
-.oer-area > h4 {
+.oer-area > h4,
+.oer-area-box > summary > h4 {
     margin: 0 0 0.5em;
     font-size: 0.8em;
     letter-spacing: 0.06em;
     text-transform: uppercase;
+    color: var(--oer-ink);
+}
+
+/* A section that opens must look like one (owner's review, 2026-11-18): the
+   heading keeps the section style and carries a visible chevron. */
+.oer-area-box > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.oer-area-box > summary::-webkit-details-marker {
+    display: none;
+}
+
+.oer-area-box > summary > h4 {
+    display: inline;
+}
+
+.oer-area-box > summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1.1em;
     color: var(--oer-muted);
+}
+
+.oer-area-box[open] > summary::before {
+    content: "▾";
+}
+
+.oer-area-box[open] > summary {
+    margin-bottom: 0.5em;
 }
 
 /* ------------------------------------------------------------------
@@ -1751,7 +1786,7 @@ body.oer-master-view.sidebar-open footer {
    que se lea como algo que falta. */
 .oer-anchor-bar {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0.75em;
     margin-top: 1em;
 }
@@ -1874,14 +1909,6 @@ body.oer-master-view.sidebar-open footer {
 .oer-media-none {
     color: var(--oer-warn);
     font-style: italic;
-}
-
-.oer-history-box > summary {
-    cursor: pointer;
-    font-size: 0.8em;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--oer-muted);
 }
 
 /* La fila madre de un detalle abierto se marca como el estante que la
