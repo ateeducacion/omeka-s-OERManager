@@ -53,6 +53,20 @@ class MasterViewQuery
         'axis' => 'dcterms:relation',
     ];
 
+    /**
+     * «Estado» filter (TASK-067, ADR-0023 §2): key => [query type, literal].
+     * `draft` is the absence of a status; `out_of_flow` is a public REA
+     * without Publicado (it also sets `is_public`).
+     */
+    public const STATUS_FILTERS = [
+        'draft' => ['nex', null],
+        'proposed' => ['eq', WorkflowStatus::PROPOSED],
+        'rejected' => ['eq', WorkflowStatus::REJECTED],
+        'discarded' => ['eq', WorkflowStatus::DISCARDED],
+        'published' => ['eq', WorkflowStatus::PUBLISHED],
+        'out_of_flow' => ['neq', WorkflowStatus::PUBLISHED],
+    ];
+
     private ApiManager $api;
     private bool $classIdResolved = false;
     private ?int $learningResourceClassId = null;
@@ -121,12 +135,18 @@ class MasterViewQuery
             ];
         }
 
-        if (!empty($query['proposed'])) {
-            $params['property'][] = [
-                'property' => WorkflowStatus::STATUS_TERM,
-                'type' => 'eq',
-                'text' => WorkflowStatus::PROPOSED,
-            ];
+        // «Estado» (TASK-067): `proposed=1` is the older «Propuestos» checkbox.
+        $status = $query['status'] ?? (empty($query['proposed']) ? '' : 'proposed');
+        if (is_string($status) && isset(self::STATUS_FILTERS[$status])) {
+            [$type, $literal] = self::STATUS_FILTERS[$status];
+            $row = ['property' => WorkflowStatus::STATUS_TERM, 'type' => $type];
+            if (null !== $literal) {
+                $row['text'] = $literal;
+            }
+            $params['property'][] = $row;
+            if ('out_of_flow' === $status) {
+                $params['is_public'] = true;
+            }
         }
 
         // D1: lrmi:learningResourceType son literales del CustomVocab, no

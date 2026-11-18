@@ -285,4 +285,13 @@ final class ConfigPayloadTest extends TestCase
         $this->assertSame(4, $invalid[LlmSettings::DECISION_MAX_TEACHES]);
         $this->assertSame(3, $invalid[LlmSettings::DECISION_MAX_ASSESSES]);
     }
+
+    /** TASK-067: the REA site id round-trips; empty means «not configured». */
+    public function testReaSiteSetting(): void
+    {
+        $this->assertSame(1, ConfigPayload::write([\OERManager\Service\ReaSite::SETTING => '1'])[\OERManager\Service\ReaSite::SETTING]);
+        $this->assertNull(ConfigPayload::write([\OERManager\Service\ReaSite::SETTING => ''])[\OERManager\Service\ReaSite::SETTING]);
+        $read = ConfigPayload::read(static fn (string $key, $default = null) => \OERManager\Service\ReaSite::SETTING === $key ? 3 : $default);
+        $this->assertSame(3, $read[\OERManager\Service\ReaSite::SETTING]);
+    }
 }

@@ -10,10 +10,12 @@ use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Content\ContentExtractor;
 use OERManager\Service\Content\MediaVisionExtractor;
+use OERManager\Service\Curation\CurationWriter;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
+use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use OERManager\Test\Service\Ai\FakeClassifier;
@@ -46,6 +48,10 @@ class IndexControllerTest extends TestCase
     private bool $denyWrite = false;
     private bool $missingItem = false;
     private array $issues = [];
+    private int $updates = 0;
+    private bool $canUpdate = true;
+    private bool $isPublic = false;
+    private ?object $owner = null;
 
     protected function setUp(): void
     {
@@ -63,6 +69,10 @@ class IndexControllerTest extends TestCase
             return $options['default'] ?? null;
         });
         $this->item->method('values')->willReturn([]);
+        $this->item->method('userIsAllowed')->willReturnCallback(fn ($privilege) => 'update' === $privilege
+            && $this->canUpdate);
+        $this->item->method('isPublic')->willReturnCallback(fn () => $this->isPublic);
+        $this->item->method('owner')->willReturnCallback(fn () => $this->owner);
         $this->api->method('read')->willReturnCallback(function ($resource) {
             if ($this->missingItem) {
                 throw new \RuntimeException('not readable');
@@ -78,6 +88,7 @@ class IndexControllerTest extends TestCase
             if ($this->denyWrite) {
                 throw new PermissionDeniedException('private');
             }
+            $this->updates++;
             return new Response($this->item);
         });
         $prompt = new PromptBuilder();
@@ -93,7 +104,7 @@ class IndexControllerTest extends TestCase
             'settings' => new Settings(),
             'scorer' => new EvaluationScorer(),
             'proposalStore' => new ProposalStore($this->dir),
-            'workflowService' => new WorkflowService($this->api),
+            'workflowService' => new WorkflowService($this->api, new CurationWriter($this->api)),
             'computedFilter' => new \OERManager\Service\ComputedFilter(),
         ];
         $arguments = [];
@@ -149,6 +160,10 @@ class IndexControllerTest extends TestCase
             {
                 $this->messages[] = $message;
             }
+            public function addWarning($message)
+            {
+                $this->messages[] = $message;
+            }
             public function addFormErrors($form)
             {
                 $this->messages[] = 'invalid form';
@@ -196,7 +211,7 @@ class IndexControllerTest extends TestCase
         foreach (
             ['setVisibility', 'recatalogPreview', 'recatalogApply', 'recatalogLastEvent',
             'recatalogUndo', 'aiPropose', 'propose', 'rejectProposal', 'publishProposal',
-            'governanceApply'] as $action
+            'governanceApply', 'discard', 'unpublish', 'reopen'] as $action
         ) {
             $this->request->post = false;
             $this->assertSame(['admin/oer-manager', []], $this->controller->{$action . 'Action'}());
@@ -208,7 +223,8 @@ class IndexControllerTest extends TestCase
         $this->params->post['csrf'] = 'invalid';
         foreach (
             ['recatalogApply', 'recatalogUndo', 'aiPropose', 'aiProposeStatus', 'aiProposeCancel',
-            'propose', 'rejectProposal', 'publishProposal', 'governanceApply'] as $action
+            'propose', 'rejectProposal', 'publishProposal', 'governanceApply',
+            'discard', 'unpublish', 'reopen'] as $action
         ) {
             $this->assertSame('csrf', $this->data($action)['error']);
         }
@@ -224,6 +240,9 @@ class IndexControllerTest extends TestCase
                 'propose' => '',
                 'rejectProposal' => WorkflowStatus::PROPOSED,
                 'publishProposal' => WorkflowStatus::PROPOSED,
+                'discard' => WorkflowStatus::REJECTED,
+                'unpublish' => WorkflowStatus::PUBLISHED,
+                'reopen' => WorkflowStatus::DISCARDED,
                 ] as $action => $status
             ) {
                 $this->workflowStatus = $status;
@@ -243,8 +262,9 @@ class IndexControllerTest extends TestCase
                 $this->denyWrite = false;
                 $this->missingItem = true;
                 $result = $this->controller->{$action . 'Action'}();
+                // Not to the master view: a proposer has no privilege there.
                 $this->assertSame(
-                    $ajax ? 'not_found' : 'admin/oer-manager',
+                    $ajax ? 'not_found' : 'admin',
                     $ajax ? $result->getVariable('error') : $result[0]
                 );
                 $this->missingItem = false;
@@ -254,11 +274,14 @@ class IndexControllerTest extends TestCase
                 $this->params->post['csrf'] = 'valid';
             }
             $this->params->post['reason'] = '';
-            $result = $this->controller->rejectProposalAction();
-            $this->assertSame(
-                $ajax ? 'reason_required' : 'admin/id',
-                $ajax ? $result->getVariable('error') : $result[0]
-            );
+            foreach (['rejectProposal', 'discard', 'unpublish'] as $action) {
+                $result = $this->controller->{$action . 'Action'}();
+                $this->assertSame(
+                    $ajax ? 'reason_required' : 'admin/id',
+                    $ajax ? $result->getVariable('error') : $result[0],
+                    $action
+                );
+            }
             $this->params->post['reason'] = 'Revise';
         }
     }
@@ -364,6 +387,7 @@ class IndexControllerTest extends TestCase
 
     public function testRecatalogPayloadAndExceptionMapping(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'global_admin');
         $this->params->post['alignment'] = ['lrmi:teaches' => [1], 'unknown' => [2]];
         $this->params->post['justification'] = ['lrmi:teaches' => [1 => str_repeat('x', 220), -1 => 'discard']];
         $this->dependencies['recatalogService']->expects($this->once())
@@ -378,6 +402,7 @@ class IndexControllerTest extends TestCase
 
     public function testRecatalogErrorsAreSanitized(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
         $this->dependencies['recatalogService']->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
         foreach (['apply' => 'recatalogApply', 'undo' => 'recatalogUndo'] as $method => $action) {
             $errors = [
@@ -445,6 +470,7 @@ class IndexControllerTest extends TestCase
 
     public function testHistoryOmitsPrivateEventPayload(): void
     {
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
         $this->dependencies['recatalogService']->method('lastEvent')->willReturn([
             'when' => 'today', 'contributor' => 'Curator', 'summary' => 'Changed', 'payload' => 'private',
         ]);
@@ -497,6 +523,46 @@ class IndexControllerTest extends TestCase
             }
             unset($this->params->post['jobId']);
         }
+    }
+
+    /** A logged-in user with a role (TASK-035: the re-cataloguing rule reads it). */
+    private function user(int $id, string $role, string $name = 'Admin'): object
+    {
+        return new class ($id, $role, $name) {
+            public function __construct(private int $id, private string $role, private string $name)
+            {
+            }
+
+            public function getId()
+            {
+                return $this->id;
+            }
+
+            public function getRole()
+            {
+                return $this->role;
+            }
+
+            public function getName()
+            {
+                return $this->name;
+            }
+        };
+    }
+
+    /** Owner of the item in the fixture (`owner()->id()`). */
+    private function ownedBy(int $id): object
+    {
+        return new class ($id) {
+            public function __construct(private int $id)
+            {
+            }
+
+            public function id()
+            {
+                return $this->id;
+            }
+        };
     }
 
     private function curator(int $id): object
@@ -567,6 +633,61 @@ class IndexControllerTest extends TestCase
      * accepted only if its identifier is `<base>id/curriculo`; left empty, the
      * single such item set is detected and stored.
      */
+    /**
+     * «Mis propuestas» (ADR-0023 §3): the user's own REA with status and
+     * reason, without the master view. No identity, nothing listed.
+     */
+    public function testMyProposalsListsOnlyTheUsersOwnReas(): void
+    {
+        $this->controller->plugins['paginator'] = new class {
+            public function __invoke($total)
+            {
+            }
+        };
+        $view = $this->controller->myProposalsAction();
+        $this->assertSame([], $view->getVariable('items'));
+
+        $this->controller->plugins['identity'] = new class {
+            public function getId()
+            {
+                return 3;
+            }
+        };
+        $this->workflowStatus = WorkflowStatus::REJECTED;
+        $view = $this->controller->myProposalsAction();
+        $this->assertSame('oer-manager/admin/index/my-proposals', $view->getTemplate());
+        $this->assertSame([$this->item], $view->getVariable('items'));
+        $this->assertSame(1, $view->getVariable('total'));
+        // TASK-035 §3: the page opens the same panel, whose re-cataloguer posts with this token.
+        $this->assertNotSame('', (string) $view->getVariable('recatalogCsrf'));
+    }
+
+    /** TASK-067: the REA site is validated on save, and the page says when the rule is off. */
+    public function testConfigValidatesTheReaSite(): void
+    {
+        $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();
+        $form->init();
+        $form->method('isValid')->willReturn(true);
+        $this->dependencies['formElementManager']->method('get')->willReturn($form);
+        $this->dependencies['reaSite']->method('exists')->willReturnCallback(static fn (int $id): bool => 1 === $id);
+        $settings = $this->dependencies['settings'];
+        $off = 'Sin sitio REA configurado: el aviso «REA sin sitio REA» no se evalúa.';
+
+        $this->request->post = false;
+        $this->controller->configAction();
+        $this->assertContains($off, array_map('strval', $this->messages->messages));
+
+        $this->request->post = true;
+        $this->params->post = [\OERManager\Service\ReaSite::SETTING => '1'];
+        $this->controller->configAction();
+        $this->assertSame(1, $settings->get(\OERManager\Service\ReaSite::SETTING));
+
+        $this->params->post = [\OERManager\Service\ReaSite::SETTING => '99'];
+        $this->controller->configAction();
+        $this->assertSame(1, $settings->get(\OERManager\Service\ReaSite::SETTING));
+        $this->assertContains('El sitio 99 no existe: no se guarda como sitio REA.', array_map('strval', $this->messages->messages));
+    }
+
     public function testConfigValidatesOrDetectsTheCurriculumItemSet(): void
     {
         $form = $this->getMockBuilder(\OERManager\Form\ConfigForm::class)->onlyMethods(['isValid'])->getMock();
@@ -609,6 +730,57 @@ class IndexControllerTest extends TestCase
         $this->assertSame('ok', $view->getVariable('rail'));
         $this->assertTrue($view->getVariable('canPublish'));
         $this->assertTrue($view->getVariable('canReject'));
+        $this->assertTrue($view->getVariable('canDiscard'));
+        $this->assertFalse($view->getVariable('canUnpublish'));
+        $this->assertFalse($view->getVariable('canReopen'));
+        $this->assertSame('admin/oer-manager/discard', $view->getVariable('discardUrl'));
+    }
+
+    /**
+     * TASK-067: each workflow button needs its own privilege, so a proposer
+     * (who inherits view-all from site_editor) never sees a curator's button.
+     */
+    public function testDrawerWorkflowButtonsFollowEachPrivilege(): void
+    {
+        $this->params->query = ['id' => 7];
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn([]);
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static fn ($resource, $privilege) => 'reject-proposal' === $privilege);
+        $view = $this->controller->drawerDetailsAction();
+        $this->assertTrue($view->getVariable('canReject'));
+        $this->assertFalse($view->getVariable('canPublish'));
+        $this->assertFalse($view->getVariable('canDiscard'));
+    }
+
+    /**
+     * «Confirmar y publicar» (ADR-0023 §3): the panel's pending re-cataloguing
+     * is applied first; if that write fails nothing is published.
+     */
+    public function testConfirmAndPublishAppliesTheRecataloguingFirst(): void
+    {
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador', 'Curadora');
+        $this->params->post['alignment'] = ['lrmi:teaches' => [11]];
+        $recatalog = $this->dependencies['recatalogService'];
+        $recatalog->expects($this->exactly(2))->method('apply')
+            ->with(7, ['lrmi:teaches' => [11]], 'Curadora', [])
+            ->willReturnOnConsecutiveCalls(
+                $this->throwException(new \RuntimeException('invalid_targets')),
+                ['updated' => true, 'properties' => ['lrmi:teaches']]
+            );
+        $failed = $this->controller->publishProposalAction();
+        $this->assertFalse($failed->getVariable('updated'));
+        $this->assertSame('invalid_targets', $failed->getVariable('error'));
+        $this->assertSame(0, $this->updates, 'a failed re-cataloguing publishes nothing');
+
+        // The gate ignores «Publicado fuera del flujo»: publishing is what regularises it.
+        $this->issues = [['severity' => 'warning', 'code' => 'published_out_of_flow', 'field' => 'o:is_public',
+            'message' => 'Out of flow']];
+        $done = $this->controller->publishProposalAction();
+        $this->assertTrue($done->getVariable('updated'));
+        $this->assertSame('Publicado', $done->getVariable('status'));
+        $this->assertSame(1, $this->updates);
     }
 
     public function testPublicationRequiresIntegrityAndValidWorkflowTransition(): void
@@ -646,5 +818,207 @@ class IndexControllerTest extends TestCase
         $this->dependencies['settings']->set(LlmSettings::MODEL, 'model');
         $this->dependencies['jobDispatcher']->method('dispatch')->willThrowException(new \RuntimeException('private'));
         $this->assertSame('dispatch', $this->data('aiPropose')['error']);
+    }
+
+    /**
+     * TASK-035 §2 (owner decision 2026-11-18): every curricular entry of the
+     * panel applies RecatalogRule before any work, and refuses with a code and
+     * a message the panel shows.
+     */
+    public function testRecatalogEntriesRefuseWhatTheRuleRefuses(): void
+    {
+        $recatalog = $this->dependencies['recatalogService'];
+        foreach (['preview', 'apply', 'undo', 'lastEvent'] as $method) {
+            $recatalog->expects($this->never())->method($method);
+        }
+        $this->params->post['alignment'] = ['lrmi:teaches' => [1]];
+        $cases = [
+            'no identity' => [null, '', RecatalogRule::ROLE],
+            'a site administrator' => [$this->user(5, 'site_admin'), '', RecatalogRule::ROLE],
+            'curator on Descartado' => [$this->user(1, 'rea_curador'), WorkflowStatus::DISCARDED, RecatalogRule::DISCARDED],
+            'admin on Descartado' => [$this->user(1, 'global_admin'), WorkflowStatus::DISCARDED, RecatalogRule::DISCARDED],
+            'proposer on Propuesto' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PROPOSED, RecatalogRule::STATUS],
+            'proposer on Publicado' => [$this->user(3, 'rea_proponente'), WorkflowStatus::PUBLISHED, RecatalogRule::STATUS],
+        ];
+        $this->owner = $this->ownedBy(3);
+        foreach ($cases as $case => [$identity, $status, $code]) {
+            $this->controller->plugins['identity'] = $identity;
+            $this->workflowStatus = $status;
+            foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+                $data = $this->data($action);
+                $this->assertFalse($data['updated'], $case . ' ' . $action);
+                $this->assertSame($code, $data['error'], $case . ' ' . $action);
+                $this->assertSame(RecatalogRule::message($code), $data['message'], $case . ' ' . $action);
+            }
+            $this->assertNull($this->data('recatalogLastEvent')['event'], $case);
+        }
+
+        // Without native update (IsolatedSites, a foreign site), not even a curator.
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
+        $this->workflowStatus = '';
+        $this->canUpdate = false;
+        $this->assertSame(RecatalogRule::NO_UPDATE, $this->data('recatalogApply')['error']);
+        $this->canUpdate = true;
+
+        // A proposer on someone else's REA gets the same answer as for a
+        // missing one (security review: existence is not revealed).
+        $this->controller->plugins['identity'] = $this->user(4, 'rea_proponente');
+        foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+            $this->assertSame('not_found', $this->data($action)['error'], $action);
+            $this->assertSame(IndexController::NOT_FOUND_MESSAGE, $this->data($action)['message'], $action);
+        }
+        $this->assertNull($this->data('recatalogLastEvent')['event']);
+
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
+        $this->missingItem = true;
+        foreach (['recatalogPreview', 'recatalogApply', 'recatalogUndo'] as $action) {
+            $this->assertSame('not_found', $this->data($action)['error'], $action);
+        }
+    }
+
+    /** The owner's table, allowed side: who reaches the service and in which state. */
+    public function testRecatalogReachesTheServiceWhenTheRuleAllows(): void
+    {
+        $recatalog = $this->dependencies['recatalogService'];
+        $recatalog->method('preview')->willReturn(['diff']);
+        $recatalog->method('apply')->willReturn(['updated' => true]);
+        $recatalog->method('lastEvent')->willReturn(self::CURRICULUM_EVENT);
+        $recatalog->method('undo')->willReturn(['updated' => true]);
+        $this->params->post['alignment'] = ['lrmi:teaches' => [1]];
+        $this->owner = $this->ownedBy(3);
+        $cases = [
+            'proposer, own Borrador' => [$this->user(3, 'rea_proponente'), '', false],
+            'proposer, own Rechazado' => [$this->user(3, 'rea_proponente'), WorkflowStatus::REJECTED, false],
+            'curator, Propuesto' => [$this->user(1, 'rea_curador'), WorkflowStatus::PROPOSED, false],
+            'curator, Publicado' => [$this->user(1, 'rea_curador'), WorkflowStatus::PUBLISHED, true],
+            'curator, out of flow' => [$this->user(1, 'rea_curador'), '', true],
+            'admin, private Borrador' => [$this->user(1, 'global_admin'), '', false],
+        ];
+        foreach ($cases as $case => [$identity, $status, $isPublic]) {
+            $this->controller->plugins['identity'] = $identity;
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $this->assertSame(['diff'], $this->data('recatalogPreview')['diff'], $case);
+            $this->assertTrue($this->data('recatalogApply')['updated'], $case);
+            $this->assertTrue($this->data('recatalogUndo')['updated'], $case);
+            $this->assertSame('Curator', $this->data('recatalogLastEvent')['event']['contributor'], $case);
+        }
+    }
+
+    /**
+     * The ledger mixes curricular and governance events: a proposer may undo
+     * the former on their REA, never a licence or authorship change.
+     */
+    public function testUndoingAGovernanceEventNeedsTheGovernancePrivilege(): void
+    {
+        $event = self::CURRICULUM_EVENT;
+        $event['payload'] = ['v' => 1, 'op' => 'recatalog', 'undoOf' => null, 'terms' => ['dcterms:license' => []]];
+        $this->dependencies['recatalogService']->method('lastEvent')->willReturn($event);
+        $this->dependencies['governanceService']->method('undoEvent')->willReturn(['updated' => true]);
+        $this->owner = $this->ownedBy(3);
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $allowGovernance = false;
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static function ($resource, $privilege) use (&$allowGovernance) {
+                return 'governance-apply' === $privilege ? $allowGovernance : true;
+            });
+
+        $data = $this->data('recatalogUndo');
+        $this->assertSame('governance_undo', $data['error']);
+        $this->assertNotSame('', $data['message']);
+
+        $allowGovernance = true;
+        $this->assertTrue($this->data('recatalogUndo')['updated']);
+    }
+
+    /** «Confirmar y publicar» writes a pending re-cataloguing only if the rule allows it. */
+    public function testConfirmAndPublishChecksTheRuleBeforeWritingTheAlignment(): void
+    {
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post['alignment'] = ['lrmi:teaches' => [11]];
+        $this->dependencies['recatalogService']->expects($this->never())->method('apply');
+        $this->owner = $this->ownedBy(3);
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $result = $this->controller->publishProposalAction();
+        $this->assertSame(RecatalogRule::STATUS, $result->getVariable('error'));
+        $this->assertSame(0, $this->updates);
+    }
+
+    /**
+     * TASK-035 §1: the panel brings its own pre-fill (no `/api`), and whether
+     * to offer the editor is the rule's answer for this user and this item.
+     */
+    public function testDrawerDetailsCarriesThePrefillAndTheRuleDecision(): void
+    {
+        $current = ['lrmi:teaches' => [['id' => 11, 'title' => 'Saber']]];
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn(['current' => $current]);
+        $allowed = true;
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static function ($resource, $privilege) use (&$allowed) {
+                return 'recatalog-apply' === $privilege ? $allowed : false;
+            });
+        $this->params->query = ['id' => 7];
+        $this->owner = $this->ownedBy(3);
+
+        // Unreadable item: nothing to offer.
+        $this->missingItem = true;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => '', 'current' => []],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+        $this->missingItem = false;
+
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $this->assertSame(
+            ['allowed' => true, 'reason' => '', 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => RecatalogRule::message(RecatalogRule::STATUS), 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+
+        // Without the privilege at all the panel says nothing about re-cataloguing.
+        $allowed = false;
+        $this->assertSame(
+            ['allowed' => false, 'reason' => '', 'current' => $current],
+            $this->controller->drawerDetailsAction()->getVariable('recatalog')
+        );
+    }
+
+    /**
+     * Security review of TASK-035: a proposer reads the panel and the curation
+     * history only of their own REA; for any other the answer is the same as
+     * for an unreadable item (existence is not revealed).
+     */
+    public function testAProposerReadsThePanelAndHistoryOnlyOfTheirOwnReas(): void
+    {
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn(['current' => []]);
+        $this->dependencies['recatalogService']->method('history')->willReturn([['summary' => 'Rejected by X']]);
+        $this->params->query = ['id' => 7];
+        $this->owner = $this->ownedBy(3);
+
+        foreach ([false, true] as $isPublic) {
+            $this->isPublic = $isPublic;
+            $this->controller->plugins['identity'] = $this->user(4, 'rea_proponente');
+            $this->assertNull($this->controller->drawerDetailsAction()->getVariable('panel'));
+            $this->assertNull($this->data('drawerHistory')['history']);
+
+            $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+            $this->assertNotNull($this->controller->drawerDetailsAction()->getVariable('panel'));
+            $this->assertSame([['summary' => 'Rejected by X']], $this->data('drawerHistory')['history']);
+
+            foreach (['rea_curador', 'global_admin'] as $role) {
+                $this->controller->plugins['identity'] = $this->user(9, $role);
+                $this->assertNotNull($this->controller->drawerDetailsAction()->getVariable('panel'), $role);
+                $this->assertNotNull($this->data('drawerHistory')['history'], $role);
+            }
+        }
+        // An item without owner is nobody's own.
+        $this->owner = null;
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $this->assertNull($this->data('drawerHistory')['history']);
     }
 }

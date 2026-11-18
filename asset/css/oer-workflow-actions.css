@@ -1,0 +1,102 @@
+/**
+ * Zona de botones del flujo de curación en `#page-actions` (TASK-067,
+ * rediseño de 2026-11-18). Hereda el chrome del admin (ADR-0014 regla 1):
+ * los botones son `.button`, `.red.button` y `.green.button` del core; aquí
+ * solo hay disposición. Los únicos valores fijos son los del anfitrión
+ * (filete #dfdfdf, acento #a91919), leídos de su hoja compilada.
+ */
+#page-actions .oer-workflow-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    vertical-align: top;
+}
+
+#page-actions .oer-workflow-actions form {
+    display: inline;
+    margin: 0;
+}
+
+/* «Acción…»: un <details> cuyo <summary> es el botón. */
+.oer-workflow-reason {
+    position: relative;
+    display: inline-block;
+}
+
+.oer-workflow-reason > summary {
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.oer-workflow-reason > summary::-webkit-details-marker {
+    display: none;
+}
+
+/* Abierto: el botón queda hundido, para que se vea de qué acción es el panel. */
+.oer-workflow-reason[open] > summary {
+    box-shadow: 0 0 0 1px #dfdfdf inset, 0 2px 0 #dfdfdf inset;
+}
+
+/* El panel cuelga bajo la barra fija, alineado a la derecha del botón. */
+#page-actions .oer-workflow-reason-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-sizing: border-box;
+    width: 22em;
+    max-width: calc(100vw - 2em);
+    padding: 12px;
+    background-color: #fff;
+    border: 1px solid #dfdfdf;
+    box-shadow: 0 4px 12px rgba(43, 50, 64, 0.18);
+    text-align: left;
+    white-space: normal;
+}
+
+.oer-workflow-reason-panel label {
+    font-weight: bold;
+}
+
+.oer-workflow-reason-panel input[type="text"] {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.oer-workflow-reason-help {
+    margin: 0;
+    font-size: 0.875em;
+}
+
+.oer-workflow-reason-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+/* Dentro del panel los botones no heredan el alto fijo de la barra. */
+#page-actions .oer-workflow-reason-buttons .button {
+    height: auto;
+}
+
+/* El estado que reclama al curador lleva el acento del anfitrión (ADR-0014 regla 2). */
+#page-actions .oer-workflow-badge[data-status="out_of_flow"] {
+    color: #a91919;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .oer-workflow-reason[open] > .oer-workflow-reason-panel {
+        animation: oer-workflow-reason-open 120ms ease-out;
+    }
+}
+
+@keyframes oer-workflow-reason-open {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+}

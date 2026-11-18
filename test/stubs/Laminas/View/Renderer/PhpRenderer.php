@@ -32,6 +32,21 @@ class PhpRenderer
             }
         };
     }
+    public array $scripts = [];
+    public function headScript()
+    {
+        $view = $this;
+        return new class ($view) {
+            public function __construct(private $view)
+            {
+            }
+            public function appendFile($src)
+            {
+                $this->view->scripts[] = $src;
+                return $this;
+            }
+        };
+    }
     public function assetUrl($file, $module = null)
     {
         return $module . '/' . $file;

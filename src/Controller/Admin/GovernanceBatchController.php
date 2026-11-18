@@ -301,8 +301,9 @@ class GovernanceBatchController extends AbstractActionController
      * yet must never be served or stopped as a batch. Another user's batch is
      * answered as `not_found`, so its existence is not disclosed. Serves the
      * batch and its undo (slice 5a), each only to the Job's own owner:
-     * `undo-any-batch` lets a site_admin start an undo of someone else's
-     * batch, and the undo Job so started is theirs.
+     * `undo-any-batch` (global_admin only since TASK-067) lets an
+     * administrator start an undo of someone else's batch, and the undo Job
+     * so started is theirs.
      *
      * @return array{0:?array{id:int, class:string, ownerId:?int, status:string}, 1:?array, 2:?JsonModel}
      */

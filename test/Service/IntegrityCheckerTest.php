@@ -95,4 +95,23 @@ final class IntegrityCheckerTest extends TestCase
 
         $this->checker($terms)->check($this->item(2, 'Empty'));
     }
+
+    /** TASK-067 (ADR-0023): the workflow and REA-site warnings come from the item itself. */
+    public function testOutOfFlowAndMissingReaSiteAreProjected(): void
+    {
+        $site = $this->createMock(\OERManager\Service\ReaSite::class);
+        $site->method('contains')->willReturnCallback(static fn (int $id): ?bool => 2 === $id);
+        $checker = new IntegrityChecker(new VocabEntries(null, static fn (int $id): array => []), null, $site);
+        $public = $this->item(1, 'REA');
+        $public->method('isPublic')->willReturn(true);
+        $codes = array_column($checker->check($public, false)->getIssues(), 'code');
+        $this->assertContains('published_out_of_flow', $codes);
+        $this->assertContains('missing_rea_site', $codes);
+
+        $published = $this->item(2, 'REA', ['curation:status' => [$this->value('Publicado')]]);
+        $published->method('isPublic')->willReturn(true);
+        $codes = array_column($checker->check($published, false)->getIssues(), 'code');
+        $this->assertNotContains('published_out_of_flow', $codes);
+        $this->assertNotContains('missing_rea_site', $codes);
+    }
 }

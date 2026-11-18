@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Governance;
 
+use OERManager\Service\Workflow\WorkflowStatus;
+
 /**
  * Reglas de integridad RDF (RF-006) expresadas sobre datos planos.
  *
@@ -58,13 +60,17 @@ final class IntegrityPolicy
      * @param bool $checkLinks Comprobar que los enlaces tienen destino vivo
      * @param list<string>|null $licenceVocabUris URIs del vocabulario configurado,
      *        null si no resuelve (entonces no se juzga pertenencia)
+     * @param array{isPublic?:bool, status?:?string, inReaSite?:?bool} $flow Flujo y
+     *        sitio REA (TASK-067): visibilidad nativa, `curation:status` normalizado
+     *        y pertenencia al sitio REA (null = sin sitio REA, regla no evaluada)
      * @return list<array{severity:string, code:string, field:string, message:string}>
      */
     public static function issuesFor(
         array $values,
         array $requiredTerms,
         bool $checkLinks,
-        ?array $licenceVocabUris = null
+        ?array $licenceVocabUris = null,
+        array $flow = []
     ): array {
         $issues = [];
 
@@ -185,6 +191,29 @@ final class IntegrityPolicy
                     ),
                 ];
             }
+        }
+
+        // ADR-0023 §2 (TASK-067, closes TASK-038): publishing through the
+        // native form is detected, not blocked. A warning, not an error: the
+        // REA may well be right, it just skipped the curator.
+        if (($flow['isPublic'] ?? false) && WorkflowStatus::PUBLISHED !== ($flow['status'] ?? null)) {
+            $issues[] = [
+                'severity' => 'warning',
+                'code' => 'published_out_of_flow',
+                'field' => WorkflowStatus::STATUS_TERM,
+                'message' => 'Publicado fuera del flujo: el REA es público sin el estado Publicado.', // @translate
+            ];
+        }
+
+        // ADR-0023 §1.4: every REA belongs to the REA site. Only evaluated when
+        // the site is configured and exists (null otherwise).
+        if (false === ($flow['inReaSite'] ?? null)) {
+            $issues[] = [
+                'severity' => 'warning',
+                'code' => 'missing_rea_site',
+                'field' => 'o:site',
+                'message' => 'El REA no está en el sitio REA: el equipo no podrá editarlo.', // @translate
+            ];
         }
 
         return $issues;

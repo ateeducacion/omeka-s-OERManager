@@ -8,6 +8,7 @@
  * resto de casos (IndexController::rejectProposalAction/publishProposalAction).
  */
 import { reopenDrawer } from './drawer.js';
+import { collectAlignmentPairs } from './recatalog.js';
 
 function errorBox(form) {
     return form.closest('.oer-panel-workflow')?.querySelector('.oer-workflow-error') || null;
@@ -50,6 +51,17 @@ export function initWorkflowDrawer() {
         const idField = form.querySelector('[name="id"]');
         const itemId = idField ? idField.value : null;
         const body = new URLSearchParams(new FormData(form));
+        // «Confirmar y publicar» (ADR-0023 §3): the re-cataloguing still open
+        // in the panel travels with the publication; the server writes it
+        // first and publishes nothing if that write fails.
+        if (form.classList.contains('oer-drawer-publish-form')) {
+            const $editor = $(form).closest('.sidebar-content, .sidebar, body').find('.oer-recatalog').first();
+            if ($editor.length) {
+                collectAlignmentPairs($editor)
+                    .filter((pair) => 'id' !== pair.name)
+                    .forEach((pair) => body.append(pair.name, pair.value));
+            }
+        }
 
         fetch(form.action, {
             method: 'POST',

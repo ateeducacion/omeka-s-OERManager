@@ -59,6 +59,8 @@ class ConfigPayload
             $data[$setting] = $get($setting);
         }
         $data[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = $get(GovernanceSettings::DEFAULT_RIGHTS_HOLDER);
+        // TASK-067: the REA site (ADR-0023 §1.4).
+        $data[ReaSite::SETTING] = $get(ReaSite::SETTING);
 
         // Conexión LLM (TASK-010, ADR-0008). La clave API NO se devuelve en
         // claro: el campo se pinta vacío y solo se actualiza si el admin escribe.
@@ -129,6 +131,9 @@ class ConfigPayload
         $settings[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = GovernanceSettings::parseRightsHolder(
             $post[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] ?? null
         );
+        // TASK-067: null = not configured, «REA sin sitio REA» not evaluated.
+        // The controller checks that the site exists before saving it.
+        $settings[ReaSite::SETTING] = GovernanceSettings::parseId($post[ReaSite::SETTING] ?? null);
 
         // Conexión LLM (TASK-010, ADR-0008).
         $settings[LlmSettings::ENABLED] = !empty($post[LlmSettings::ENABLED]);

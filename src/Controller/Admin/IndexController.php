@@ -16,6 +16,7 @@ use OERManager\Service\Ai\ProposalStore;
 use OERManager\Service\ComputedFilter;
 use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
+use OERManager\Service\CurationEvent;
 use OERManager\Service\Content\MediaSourceInterface;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Governance\BatchJobLookup;
@@ -29,8 +30,10 @@ use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
 use OERManager\Service\MasterViewQuery;
 use OERManager\Service\PanelAreas;
+use OERManager\Service\ReaSite;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
+use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -81,6 +84,7 @@ class IndexController extends AbstractActionController
     private UndoRouter $undoRouter;
     private BatchJobLookup $jobLookup;
     private CurriculumTerms $curriculumTerms;
+    private ReaSite $reaSite;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -103,7 +107,8 @@ class IndexController extends AbstractActionController
         GovernanceService $governanceService,
         UndoRouter $undoRouter,
         BatchJobLookup $jobLookup,
-        CurriculumTerms $curriculumTerms
+        CurriculumTerms $curriculumTerms,
+        ReaSite $reaSite
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -126,6 +131,7 @@ class IndexController extends AbstractActionController
         $this->undoRouter = $undoRouter;
         $this->jobLookup = $jobLookup;
         $this->curriculumTerms = $curriculumTerms;
+        $this->reaSite = $reaSite;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -234,6 +240,46 @@ class IndexController extends AbstractActionController
         $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
         // Pre-relleno IA (TASK-010): solo si la conexión LLM está activa y con modelo.
         $view->setVariable('aiEnabled', $this->aiEnabled());
+        return $view;
+    }
+
+    /**
+     * «Mis propuestas» (TASK-067, ADR-0023 §3): the proposer's own REA
+     * (`owner_id` = user), newest first, with their status and the reason of a
+     * rejection, discard or unpublication. A page of its own: the proposer has
+     * no privilege on the master view. One search per page; status and note
+     * come from the representations already loaded (an owner reads the
+     * private values of their own items). Under isolation only items in the
+     * user's granted sites are listed.
+     *
+     * Each row opens the same detail panel as the master view (TASK-035 §3),
+     * where the proposer re-catalogues their own Borrador or Rechazado REA;
+     * RecatalogRule decides item by item.
+     */
+    public function myProposalsAction()
+    {
+        $identity = $this->identity();
+        $items = [];
+        $total = 0;
+        $params = $this->masterViewQuery->buildSearchParams([]);
+        $hasClass = !array_key_exists('resource_class_id', $params) || null !== $params['resource_class_id'];
+        if ($identity && $hasClass) {
+            $params['owner_id'] = (int) $identity->getId();
+            $params['sort_by'] = 'modified';
+            $params['sort_order'] = 'desc';
+            $params['page'] = max(1, (int) $this->params()->fromQuery('page', 1));
+            $params['per_page'] = (int) $this->settings->get('pagination_per_page', 25);
+            $response = $this->api()->search('items', $params);
+            $items = $response->getContent();
+            $total = (int) $response->getTotalResults();
+        }
+        $this->paginator($total);
+
+        $view = new ViewModel();
+        $view->setTemplate('oer-manager/admin/index/my-proposals');
+        $view->setVariable('items', $items);
+        $view->setVariable('total', $total);
+        $view->setVariable('recatalogCsrf', $this->csrfValidator()->getHash());
         return $view;
     }
 
@@ -391,6 +437,12 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        // TASK-035 §2: the same rule as the write, so a preview never shows
+        // a change the user could not confirm.
+        $refusal = $this->recatalogRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal + ['diff' => null]);
+        }
         $alignment = $this->collectAlignment();
 
         return new JsonModel(['diff' => $this->recatalogService->preview($id, $alignment)]);
@@ -413,6 +465,10 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        $refusal = $this->recatalogRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal);
+        }
         $alignment = $this->collectAlignment();
         $justifications = $this->collectJustifications();
         $identity = $this->identity();
@@ -511,7 +567,7 @@ class IndexController extends AbstractActionController
      * del menú lateral, junto a la vista maestra que es donde se trabaja.
      *
      * La ACL la impone `Module::onBootstrap` con el privilegio `config`, que
-     * solo tienen Supervisor (site_admin) y global_admin: aquí se gobiernan la
+     * desde TASK-067 solo tiene global_admin (ADR-0023): aquí se gobiernan la
      * clave API del LLM y los vocabularios de todo el catálogo, así que no es
      * una acción de curación.
      *
@@ -531,7 +587,8 @@ class IndexController extends AbstractActionController
             $post = $this->params()->fromPost();
             $form->setData($post);
             if ($form->isValid()) {
-                foreach ($this->withCurriculumScheme(ConfigPayload::write($post)) as $key => $value) {
+                $toSave = $this->withReaSite($this->withCurriculumScheme(ConfigPayload::write($post)));
+                foreach ($toSave as $key => $value) {
                     $settings->set($key, $value);
                 }
                 $this->messenger()->addSuccess('Configuración guardada.'); // @translate
@@ -542,9 +599,35 @@ class IndexController extends AbstractActionController
             $this->messenger()->addFormErrors($form);
         }
 
+        if (null === $this->reaSite->siteId()) {
+            $this->messenger()->addWarning(
+                'Sin sitio REA configurado: el aviso «REA sin sitio REA» no se evalúa.' // @translate
+            );
+        }
+
         $view = new ViewModel();
         $view->setVariable('form', $form);
         return $view;
+    }
+
+    /**
+     * REA site (TASK-067): an id is stored only if the site exists; otherwise
+     * the stored value stays and the admin is told. Empty clears it.
+     *
+     * @param array<string,mixed> $settings
+     * @return array<string,mixed>
+     */
+    private function withReaSite(array $settings): array
+    {
+        $id = $settings[ReaSite::SETTING] ?? null;
+        if (null !== $id && !$this->reaSite->exists($id)) {
+            unset($settings[ReaSite::SETTING]);
+            $this->messenger()->addError(new Message(
+                'El sitio %d no existe: no se guarda como sitio REA.', // @translate
+                $id
+            ));
+        }
+        return $settings;
     }
 
     /**
@@ -584,6 +667,11 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        // Nothing to undo for whom the rule refuses (TASK-035 §2): the panel
+        // then offers no undo, and a Descartado REA stays read only.
+        if (null !== $this->recatalogRefusal($id)) {
+            return new JsonModel(['event' => null]);
+        }
         try {
             $event = $this->recatalogService->lastEvent($id);
         } catch (\Exception $e) {
@@ -639,10 +727,17 @@ class IndexController extends AbstractActionController
                 'workflowStatus' => null,
                 'canReject' => false,
                 'canPublish' => false,
+                'canDiscard' => false,
+                'canUnpublish' => false,
+                'canReopen' => false,
                 'workflowCsrf' => '',
                 'rejectUrl' => '',
                 'publishUrl' => '',
+                'discardUrl' => '',
+                'unpublishUrl' => '',
+                'reopenUrl' => '',
                 'governanceApplyUrl' => '',
+                'recatalog' => ['allowed' => false, 'reason' => '', 'current' => []],
             ]);
         }
 
@@ -668,12 +763,14 @@ class IndexController extends AbstractActionController
 
         // Rechazar/publicar desde el drawer (extensión RF-016 post-PR#38):
         // mismo criterio que `Module::addWorkflowActions()` en la página
-        // nativa del item — `view-all` es la señal de "es curador", no un
-        // nombre de rol propio.
+        // nativa del item — el privilegio de cada acción (TASK-067), no
+        // `view-all`, que `site_editor` hereda.
         $status = $this->workflowService->statusOf($item);
-        $isCurator = $this->acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
-        $canReject = $isCurator && WorkflowStatus::canReject($status);
-        $canPublish = $isCurator && WorkflowStatus::canPublish($status);
+        $buttons = WorkflowStatus::available(
+            $status,
+            (bool) $item->isPublic(),
+            fn (string $privilege): bool => (bool) $this->acl->userIsAllowed(self::class, $privilege)
+        );
 
         return $view->setVariables([
             'panel' => $panel,
@@ -685,17 +782,104 @@ class IndexController extends AbstractActionController
             // volver a deducirlo de la fila de la tabla.
             'rail' => $result->getStatus(),
             'workflowStatus' => $status,
-            'canReject' => $canReject,
-            'canPublish' => $canPublish,
+            'canReject' => $buttons['canReject'],
+            'canPublish' => $buttons['canPublish'],
+            'canDiscard' => $buttons['canDiscard'],
+            'canUnpublish' => $buttons['canUnpublish'],
+            'canReopen' => $buttons['canReopen'],
             'workflowCsrf' => $this->csrfValidator()->getHash(),
             'rejectUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'reject-proposal']),
             'publishUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'publish-proposal']),
+            'discardUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'discard']),
+            'unpublishUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'unpublish']),
+            'reopenUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'reopen']),
             // Task 11: the edit form posts here. Computed per render (like
             // rejectUrl/publishUrl above) because `governance.js` only ever
             // receives a DOM root, never the page-level `config` object — see
             // its own file docblock.
             'governanceApplyUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'governance-apply']),
+            'recatalog' => $this->recatalogPanel($item, $panel['current'] ?? []),
         ]);
+    }
+
+    /**
+     * What the anchor area offers (TASK-035 §1): the pre-fill of the
+     * selectors, read here with the session instead of from `/api`, and the
+     * rule's answer for this user and item. Without the re-cataloguing
+     * privilege at all there is no reason to show either.
+     *
+     * @param array<string, list<array{id:int, title:string}>> $current
+     * @return array{allowed:bool, reason:string, current:array}
+     */
+    private function recatalogPanel(ItemRepresentation $item, array $current): array
+    {
+        if (!$this->acl->userIsAllowed(self::class, 'recatalog-apply')) {
+            return ['allowed' => false, 'reason' => '', 'current' => $current];
+        }
+        $code = $this->recatalogDenial($item);
+        return ['allowed' => null === $code, 'reason' => RecatalogRule::message($code), 'current' => $current];
+    }
+
+    /**
+     * RecatalogRule (TASK-035 §2) for the current user on `$item`: null when
+     * allowed, otherwise the refusal code.
+     */
+    private function recatalogDenial(ItemRepresentation $item): ?string
+    {
+        $identity = $this->identity();
+        return RecatalogRule::denial(
+            $this->workflowService->statusOf($item),
+            (bool) $item->isPublic(),
+            RecatalogRule::profile($identity ? (string) $identity->getRole() : null),
+            $this->isOwner($item),
+            (bool) $item->userIsAllowed('update')
+        );
+    }
+
+    /**
+     * The refusal every curricular/axes entry of the panel answers before
+     * doing anything, or null when the rule allows it.
+     *
+     * @return array{updated:false, error:string, message:string}|null
+     */
+    private function recatalogRefusal(int $id): ?array
+    {
+        $item = $this->workflowItem($id);
+        $identity = $this->identity();
+        $profile = RecatalogRule::profile($identity ? (string) $identity->getRole() : null);
+        // A proposer is told about someone else's REA exactly what they are
+        // told about a missing one, as in the panel (security review).
+        if (null === $item || RecatalogRule::readDenied($profile, $this->isOwner($item))) {
+            return ['updated' => false, 'error' => 'not_found', 'message' => self::NOT_FOUND_MESSAGE];
+        }
+        $code = $this->recatalogDenial($item);
+        return null === $code
+            ? null
+            : ['updated' => false, 'error' => $code, 'message' => RecatalogRule::message($code)];
+    }
+
+    /**
+     * The ledger mixes curricular and governance events (ADR-0020) and
+     * UndoRouter replays whichever is last: undoing a licence or authorship
+     * change needs the governance privilege, which a proposer lacks.
+     *
+     * @return array{updated:false, error:string, message:string}|null
+     */
+    private function governanceUndoRefusal(int $id): ?array
+    {
+        try {
+            $event = $this->recatalogService->lastEvent($id);
+        } catch (\Exception $e) {
+            return null;
+        }
+        if (
+            null === $event
+            || 'governance' !== CurationEvent::scopeOf((array) ($event['payload'] ?? []))
+            || $this->acl->userIsAllowed(self::class, 'governance-apply')
+        ) {
+            return null;
+        }
+        return ['updated' => false, 'error' => 'governance_undo', 'message' => self::GOVERNANCE_UNDO_MESSAGE];
     }
 
     /**
@@ -722,7 +906,11 @@ class IndexController extends AbstractActionController
         return new JsonModel(['history' => $this->recatalogService->history((int) $item->id())]);
     }
 
-    /** Item de la petición, o null si el id no vale o no se puede leer. */
+    /**
+     * Item de la petición, o null si el id no vale, no se puede leer o el
+     * usuario es un proponente y el REA no es suyo (revisión de seguridad de
+     * TASK-035: misma respuesta que «no existe», para no revelarlo).
+     */
     private function panelItem()
     {
         $id = (int) $this->params()->fromQuery('id');
@@ -730,10 +918,21 @@ class IndexController extends AbstractActionController
             return null;
         }
         try {
-            return $this->api()->read('items', $id)->getContent();
+            $item = $this->api()->read('items', $id)->getContent();
         } catch (\Exception $e) {
             return null;
         }
+        $identity = $this->identity();
+        $profile = RecatalogRule::profile($identity ? (string) $identity->getRole() : null);
+        return RecatalogRule::readDenied($profile, $this->isOwner($item)) ? null : $item;
+    }
+
+    /** The current user owns the item. */
+    private function isOwner(ItemRepresentation $item): bool
+    {
+        $identity = $this->identity();
+        $owner = $item->owner();
+        return null !== $identity && null !== $owner && (int) $owner->id() === (int) $identity->getId();
     }
 
     /**
@@ -757,6 +956,10 @@ class IndexController extends AbstractActionController
         }
 
         $id = (int) $this->params()->fromPost('id');
+        $refusal = $this->recatalogRefusal($id) ?? $this->governanceUndoRefusal($id);
+        if (null !== $refusal) {
+            return new JsonModel($refusal);
+        }
         // El curador ya confirmó que el REA cambió por otra vía y aun así quiere
         // revertir; sin esta confirmación explícita el servicio se niega.
         $force = (bool) $this->params()->fromPost('force');
@@ -1128,227 +1331,169 @@ class IndexController extends AbstractActionController
     }
 
     /**
+     * Mensajes de cada transición del flujo (RF-016, ADR-0023 §2): éxito,
+     * transición no permitida por el estado y permiso denegado sobre el item.
+     */
+    private const WORKFLOW_MESSAGES = [
+        'propose' => [
+            'ok' => 'REA propuesto para revisión.', // @translate
+            'invalid' => 'No se pudo proponer el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para proponer este REA.', // @translate
+        ],
+        'reject' => [
+            'ok' => 'Propuesta rechazada.', // @translate
+            'invalid' => 'No se pudo rechazar el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para rechazar este REA.', // @translate
+        ],
+        'publish' => [
+            'ok' => 'REA publicado.', // @translate
+            'invalid' => 'No se pudo publicar el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para publicar este REA.', // @translate
+        ],
+        'discard' => [
+            'ok' => 'REA descartado.', // @translate
+            'invalid' => 'No se pudo descartar el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para descartar este REA.', // @translate
+        ],
+        'unpublish' => [
+            'ok' => 'REA despublicado: vuelve a la cola como propuesto.', // @translate
+            'invalid' => 'No se pudo despublicar el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para despublicar este REA.', // @translate
+        ],
+        'reopen' => [
+            'ok' => 'REA reabierto: vuelve a la cola como propuesto.', // @translate
+            'invalid' => 'No se pudo reabrir el REA: su estado actual no lo permite.', // @translate
+            'denied' => 'No tienes permiso para reabrir este REA.', // @translate
+        ],
+    ];
+
+    /**
      * Un autor propone un REA (o lo re-propone tras un rechazo) para revisión
-     * (RF-016). No hay privilegio ACL propio para decidir quién: se apoya en
-     * el permiso nativo de edición del item — `$api->update()` deniega por sí
-     * mismo a quien no pueda editarlo (autor sobre lo suyo, curador+ sobre
-     * cualquiera), igual que ya hace `setVisibilityAction`.
+     * (RF-016). Quién puede pedirlo lo decide el ACL (`propose`: proponente y
+     * curador, TASK-067); sobre qué item, el permiso nativo de edición —
+     * `$api->update()` deniega por sí mismo a quien no pueda editarlo.
      *
-     * Esta acción se llega desde un `<form>` HTML plano de la página nativa
-     * del item (`workflow-actions.phtml`): sin JS, así que responde con el
-     * mismo mecanismo que el resto del admin nativo de Omeka — mensaje flash
-     * + redirect a la página del item — en vez de `JsonModel` (revisión
-     * final RF-016, hallazgo 1). Cuando la petición SÍ lleva
-     * `X-Requested-With` (el drawer de la vista maestra, 100% AJAX igual que
-     * `setVisibilityAction` — extensión post-PR#38), responde JSON sin
-     * redirect: la misma lógica de negocio, dos contratos de respuesta según
-     * quién llama.
+     * Las transiciones se llegan desde dos sitios con dos contratos (revisión
+     * final RF-016, hallazgo 1, y extensión post-PR#38): un `<form>` HTML
+     * plano de la página nativa del item (mensaje flash + redirect al item) o
+     * el drawer de la vista maestra, 100% AJAX (`X-Requested-With`: JSON sin
+     * redirect). La misma lógica de negocio, dos respuestas según quién llama.
      */
     public function proposeAction()
     {
-        if (!$this->getRequest()->isPost()) {
-            return $this->redirect()->toRoute('admin/oer-manager');
-        }
-        $ajax = $this->getRequest()->isXmlHttpRequest();
-        $id = (int) $this->params()->fromPost('id');
-        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'csrf',
-                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
-            return $this->redirectToItem($id);
-        }
-        try {
-            $item = $this->api()->read('items', $id)->getContent();
-        } catch (\Exception $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'not_found',
-                    'message' => 'El REA no existe o no se puede leer.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
-            return $this->redirect()->toRoute('admin/oer-manager');
-        }
-        try {
-            $result = $this->workflowService->propose($item);
-        } catch (PermissionDeniedException $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'denied',
-                    'message' => 'No tienes permiso para proponer este REA.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('No tienes permiso para proponer este REA.'); // @translate
-            return $this->redirectToItem($id);
-        }
-        if ($ajax) {
-            return new JsonModel($result + [
-                'message' => ($result['updated'] ?? false)
-                    ? 'REA propuesto para revisión.' // @translate
-                    : 'No se pudo proponer el REA: su estado actual no lo permite.', // @translate
-            ]);
-        }
-        if ($result['updated'] ?? false) {
-            $this->messenger()->addSuccess('REA propuesto para revisión.'); // @translate
-        } else {
-            $this->messenger()->addError('No se pudo proponer el REA: su estado actual no lo permite.'); // @translate
-        }
-        return $this->redirectToItem($id);
+        return $this->workflowTransition(
+            'propose',
+            false,
+            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService->propose($item, $who)
+        );
     }
 
     /**
-     * Un curador rechaza un REA propuesto, con motivo (RF-016). Acción de
-     * curación: ACL restringida a `editor`/`reviewer`/`site_admin`
-     * (`Module::onBootstrap`), a diferencia de `proposeAction`.
-     *
-     * El motivo es obligatorio (revisión final RF-016, hallazgo 3): un
-     * rechazo sin motivo deja al autor sin saber qué corregir, que es
-     * precisamente lo que este campo existe para evitar. Se acota a 200
-     * caracteres, mismo tope que `collectJustifications()` en este mismo
-     * controlador (hallazgo 8).
-     *
-     * Igual que `proposeAction`, responde con mensaje flash + redirect al
-     * item si es un `<form>` plano, o `JsonModel` sin redirect si la
-     * petición lleva `X-Requested-With` (el drawer de la vista maestra,
-     * extensión post-PR#38).
+     * Un curador rechaza un REA propuesto, con motivo (RF-016). El motivo es
+     * obligatorio (revisión final RF-016, hallazgo 3) y se acota a 200
+     * caracteres; texto libre hasta la lista de TASK-039.
      */
     public function rejectProposalAction()
     {
-        if (!$this->getRequest()->isPost()) {
-            return $this->redirect()->toRoute('admin/oer-manager');
-        }
-        $ajax = $this->getRequest()->isXmlHttpRequest();
-        $id = (int) $this->params()->fromPost('id');
-        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'csrf',
-                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
-            return $this->redirectToItem($id);
-        }
-        $reason = mb_substr(trim((string) $this->params()->fromPost('reason', '')), 0, 200);
-        if ('' === $reason) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'reason_required',
-                    'message' => 'Debes indicar un motivo de rechazo.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('Debes indicar un motivo de rechazo.'); // @translate
-            return $this->redirectToItem($id);
-        }
-        try {
-            $item = $this->api()->read('items', $id)->getContent();
-        } catch (\Exception $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'not_found',
-                    'message' => 'El REA no existe o no se puede leer.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
-            return $this->redirect()->toRoute('admin/oer-manager');
-        }
-        try {
-            $result = $this->workflowService->reject($item, $reason);
-        } catch (PermissionDeniedException $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'denied',
-                    'message' => 'No tienes permiso para rechazar este REA.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('No tienes permiso para rechazar este REA.'); // @translate
-            return $this->redirectToItem($id);
-        }
-        if ($ajax) {
-            return new JsonModel($result + [
-                'message' => ($result['updated'] ?? false)
-                    ? 'Propuesta rechazada.' // @translate
-                    : 'No se pudo rechazar el REA: su estado actual no lo permite.', // @translate
-            ]);
-        }
-        if ($result['updated'] ?? false) {
-            $this->messenger()->addSuccess('Propuesta rechazada.'); // @translate
-        } else {
-            $this->messenger()->addError('No se pudo rechazar el REA: su estado actual no lo permite.'); // @translate
-        }
-        return $this->redirectToItem($id);
+        return $this->workflowTransition(
+            'reject',
+            true,
+            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
+                ->reject($item, $reason, $who)
+        );
+    }
+
+    /** Descartar (ADR-0023 §2): no publicable como REA; terminal, con motivo. */
+    public function discardAction()
+    {
+        return $this->workflowTransition(
+            'discard',
+            true,
+            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
+                ->discard($item, $reason, $who)
+        );
+    }
+
+    /** «Despublicar» (ADR-0023 §2): Publicado → Propuesto y privado, con motivo. */
+    public function unpublishAction()
+    {
+        return $this->workflowTransition(
+            'unpublish',
+            true,
+            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
+                ->unpublish($item, $reason, $who)
+        );
+    }
+
+    /** Reabrir un descartado (ADR-0023 §2): vuelve a Propuesto. */
+    public function reopenAction()
+    {
+        return $this->workflowTransition(
+            'reopen',
+            false,
+            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService->reopen($item, $who)
+        );
     }
 
     /**
-     * Un curador publica un REA propuesto (RF-016). Gate: IntegrityChecker
-     * debe dar `ok` estricto (ni error ni warning, ADR-0018 §4) — igual
-     * criterio que el drawer, `checkLinks=true`, porque es una acción de un
-     * solo item, no un browse. Acción de curación: ACL restringida igual que
-     * `rejectProposalAction`.
+     * «Confirmar y publicar» (ADR-0023 §3): si el panel trae una
+     * re-catalogación pendiente (`alignment[...]`, los mismos campos que
+     * `recatalog-apply`), se escribe primero con `RecatalogService::apply()`;
+     * si esa escritura falla, no se publica nada. Después se relee el item y
+     * se aplica el gate de integridad: `ok` estricto (ADR-0018 §4) salvo
+     * `published_out_of_flow`, que es justo lo que publicar regulariza.
      *
-     * Si el gate de integridad rechaza la publicación, se listan las
-     * incidencias una a una como mensajes de error (revisión final RF-016,
-     * hallazgo 1): el curador necesita saber qué falta, no solo que algo
-     * falló.
-     *
-     * Igual que las otras dos acciones, responde con mensaje flash +
-     * redirect al item si es un `<form>` plano, o `JsonModel` sin redirect
-     * si la petición lleva `X-Requested-With` (el drawer de la vista
-     * maestra, extensión post-PR#38) — en ese caso las incidencias de
-     * integridad viajan estructuradas (`issues`), no como mensajes flash.
+     * Si el gate rechaza la publicación, se listan las incidencias una a una
+     * (revisión final RF-016, hallazgo 1): el curador necesita saber qué
+     * falta. Una re-catalogación ya escrita se queda (se deshace desde el
+     * panel).
      */
     public function publishProposalAction()
     {
-        if (!$this->getRequest()->isPost()) {
-            return $this->redirect()->toRoute('admin/oer-manager');
+        $guard = $this->workflowGuard('publish', false);
+        if (!is_array($guard) || !isset($guard['request'])) {
+            return $guard;
         }
-        $ajax = $this->getRequest()->isXmlHttpRequest();
-        $id = (int) $this->params()->fromPost('id');
-        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'csrf',
-                    'message' => 'Token de seguridad inválido. Vuelve a intentarlo.', // @translate
-                ]);
+        ['id' => $id, 'ajax' => $ajax] = $guard['request'];
+        $alignment = $this->collectAlignment();
+        if ([] !== $alignment) {
+            $refusal = $this->recatalogRefusal($id);
+            if (null !== $refusal) {
+                return $this->workflowFailure($ajax, $id, $refusal['error'], $refusal['message']);
             }
-            $this->messenger()->addError('Token de seguridad inválido. Vuelve a intentarlo.'); // @translate
-            return $this->redirectToItem($id);
+            try {
+                $this->recatalogService->apply(
+                    $id,
+                    $alignment,
+                    $this->contributor(),
+                    $this->collectJustifications()
+                );
+            } catch (PermissionDeniedException $e) {
+                return $this->workflowFailure($ajax, $id, 'denied', self::WORKFLOW_MESSAGES['publish']['denied']);
+            } catch (\RuntimeException $e) {
+                return $this->workflowFailure($ajax, $id, $e->getMessage(), sprintf(
+                    'No se pudo re-catalogar: %s', // @translate
+                    $e->getMessage()
+                ));
+            } catch (\Exception $e) {
+                $this->logger->err('OERManager confirm and publish item ' . $id . ': ' . $e->getMessage());
+                $message = 'Error inesperado; inténtalo de nuevo.'; // @translate
+                return $this->workflowFailure($ajax, $id, 'unexpected', $message);
+            }
         }
-        try {
-            $item = $this->api()->read('items', $id)->getContent();
-        } catch (\Exception $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'not_found',
-                    'message' => 'El REA no existe o no se puede leer.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('El REA no existe o no se puede leer.'); // @translate
-            return $this->redirect()->toRoute('admin/oer-manager');
+        $item = $this->workflowItem($id);
+        if (null === $item) {
+            return $this->workflowNotFound($ajax);
         }
-        $integrity = $this->integrityChecker->check($item, true);
-        if (!$integrity->isOk()) {
+        $issues = array_values(array_filter(
+            $this->integrityChecker->check($item, true)->getIssues(),
+            static fn (array $issue): bool => !in_array($issue['code'], self::PUBLISH_GATE_IGNORES, true)
+        ));
+        if ([] !== $issues) {
             if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'integrity',
-                    'issues' => $integrity->getIssues(),
-                ]);
+                return new JsonModel(['updated' => false, 'error' => 'integrity', 'issues' => $issues]);
             }
-            foreach ($integrity->getIssues() as $issue) {
+            foreach ($issues as $issue) {
                 $this->messenger()->addError(sprintf(
                     'No se puede publicar: %s', // @translate
                     $issue['message']
@@ -1356,32 +1501,129 @@ class IndexController extends AbstractActionController
             }
             return $this->redirectToItem($id);
         }
+        return $this->workflowApply(
+            'publish',
+            $ajax,
+            $id,
+            fn () => $this->workflowService->publish($item, $this->contributor())
+        );
+    }
+
+    public const NOT_FOUND_MESSAGE = 'El REA no existe o no se puede leer.'; // @translate
+
+    // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
+    public const GOVERNANCE_UNDO_MESSAGE = 'El último cambio de este REA es de licencia o autoría: solo el equipo curador puede deshacerlo.'; // @translate
+
+    /** Integrity codes the publish gate does not block on (they are what publishing fixes). */
+    private const PUBLISH_GATE_IGNORES = ['published_out_of_flow'];
+
+    /**
+     * Esqueleto común de una transición: POST, CSRF, motivo si hace falta,
+     * lectura del item y la escritura.
+     *
+     * @param callable(ItemRepresentation, string, string): array $apply
+     */
+    private function workflowTransition(string $name, bool $reasonRequired, callable $apply)
+    {
+        $guard = $this->workflowGuard($name, $reasonRequired);
+        if (!is_array($guard) || !isset($guard['request'])) {
+            return $guard;
+        }
+        ['id' => $id, 'ajax' => $ajax, 'reason' => $reason] = $guard['request'];
+        $item = $this->workflowItem($id);
+        if (null === $item) {
+            return $this->workflowNotFound($ajax);
+        }
+        return $this->workflowApply(
+            $name,
+            $ajax,
+            $id,
+            fn () => $apply($item, $reason, $this->contributor())
+        );
+    }
+
+    /**
+     * POST, CSRF y motivo. Devuelve `['request' => [id, ajax, reason]]` o la
+     * respuesta de error (redirect o JsonModel), que el llamador devuelve tal cual.
+     *
+     * @return array{request: array{id:int, ajax:bool, reason:string}}|mixed
+     */
+    private function workflowGuard(string $name, bool $reasonRequired)
+    {
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute('admin/oer-manager');
+        }
+        $ajax = (bool) $this->getRequest()->isXmlHttpRequest();
+        $id = (int) $this->params()->fromPost('id');
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            $message = 'Token de seguridad inválido. Vuelve a intentarlo.'; // @translate
+            return $this->workflowFailure($ajax, $id, 'csrf', $message);
+        }
+        $reason = mb_substr(trim((string) $this->params()->fromPost('reason', '')), 0, 200);
+        if ($reasonRequired && '' === $reason) {
+            return $this->workflowFailure($ajax, $id, 'reason_required', 'Debes indicar un motivo.'); // @translate
+        }
+        return ['request' => ['id' => $id, 'ajax' => $ajax, 'reason' => $reason]];
+    }
+
+    private function workflowItem(int $id): ?ItemRepresentation
+    {
         try {
-            $result = $this->workflowService->publish($item);
-        } catch (PermissionDeniedException $e) {
-            if ($ajax) {
-                return new JsonModel([
-                    'updated' => false,
-                    'error' => 'denied',
-                    'message' => 'No tienes permiso para publicar este REA.', // @translate
-                ]);
-            }
-            $this->messenger()->addError('No tienes permiso para publicar este REA.'); // @translate
-            return $this->redirectToItem($id);
+            return $this->api()->read('items', $id)->getContent();
+        } catch (\Exception $e) {
+            return null;
         }
+    }
+
+    /**
+     * Not to the master view: a proposer has no privilege there (TASK-067),
+     * so the admin dashboard is the one page every user can land on.
+     */
+    private function workflowNotFound(bool $ajax)
+    {
+        $message = self::NOT_FOUND_MESSAGE;
         if ($ajax) {
-            return new JsonModel($result + [
-                'message' => ($result['updated'] ?? false)
-                    ? 'REA publicado.' // @translate
-                    : 'No se pudo publicar el REA: su estado actual no lo permite.', // @translate
-            ]);
+            return new JsonModel(['updated' => false, 'error' => 'not_found', 'message' => $message]);
         }
-        if ($result['updated'] ?? false) {
-            $this->messenger()->addSuccess('REA publicado.'); // @translate
+        $this->messenger()->addError($message);
+        return $this->redirect()->toRoute('admin');
+    }
+
+    /** @param callable(): array $write */
+    private function workflowApply(string $name, bool $ajax, int $id, callable $write)
+    {
+        $messages = self::WORKFLOW_MESSAGES[$name];
+        try {
+            $result = $write();
+        } catch (PermissionDeniedException $e) {
+            return $this->workflowFailure($ajax, $id, 'denied', $messages['denied']);
+        }
+        $ok = (bool) ($result['updated'] ?? false);
+        if ($ajax) {
+            return new JsonModel($result + ['message' => $ok ? $messages['ok'] : $messages['invalid']]);
+        }
+        if ($ok) {
+            $this->messenger()->addSuccess($messages['ok']);
         } else {
-            $this->messenger()->addError('No se pudo publicar el REA: su estado actual no lo permite.'); // @translate
+            $this->messenger()->addError($messages['invalid']);
         }
         return $this->redirectToItem($id);
+    }
+
+    private function workflowFailure(bool $ajax, int $id, string $error, string $message)
+    {
+        if ($ajax) {
+            return new JsonModel(['updated' => false, 'error' => $error, 'message' => $message]);
+        }
+        $this->messenger()->addError($message);
+        return $this->redirectToItem($id);
+    }
+
+    /** Name recorded in the annotations of a write (ADR-0002). */
+    private function contributor(): string
+    {
+        $identity = $this->identity();
+        return $identity ? (string) $identity->getName() : 'unknown';
     }
 
     /**

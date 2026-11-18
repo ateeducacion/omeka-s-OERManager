@@ -1,62 +1,108 @@
 <?php
 /**
+ * Botones del flujo de curación en la página nativa del item (TASK-067).
+ *
+ * Se inyecta en `#page-actions`, la barra fija de 48px del core, detrás de la
+ * insignia de estado (workflow-badge.phtml). Rediseño de 2026-11-18 sobre la
+ * revisión del propietario, con el lenguaje visual de ADR-0014 (estilos de
+ * botón del admin: `.button`, `.red.button`, `.green.button`):
+ *
+ * - una sola acción principal por estado, a la derecha y en verde
+ *   (proponer, confirmar y publicar) o neutra (reabrir);
+ * - las acciones que piden motivo (rechazar, despublicar, descartar) no
+ *   ocupan la barra con su campo: «Acción…» abre bajo la barra un panel con
+ *   la etiqueta, el campo y la confirmación con el mismo verbo. Es un
+ *   `<details>`, así que funciona sin JavaScript; `workflow-actions.js` solo
+ *   cierra los demás, enfoca el campo y cierra con Esc o «Cancelar»;
+ * - solo «Descartar» va en rojo: es la única salida terminal.
+ *
+ * `required` + comprobación de servidor: ninguna transición con motivo se
+ * acepta sin él (revisión final de RF-016, hallazgo 3).
+ *
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var int $itemId
  * @var string $csrf
  * @var bool $canPropose
  * @var bool $canReject
  * @var bool $canPublish
+ * @var bool $canDiscard
+ * @var bool $canUnpublish
+ * @var bool $canReopen
  * @var string $proposeUrl
  * @var string $rejectUrl
  * @var string $publishUrl
+ * @var string $discardUrl
+ * @var string $unpublishUrl
+ * @var string $reopenUrl
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
+
+$reasonActions = [
+    [
+        'show' => $canReject, 'url' => $rejectUrl, 'key' => 'reject', 'tone' => '',
+        'open' => $translate('Rechazar…'), 'label' => $translate('Motivo del rechazo'),
+        'confirm' => $translate('Rechazar'),
+        'help' => $translate('El REA vuelve a quien lo propuso, que verá este motivo.'),
+    ],
+    [
+        'show' => $canUnpublish, 'url' => $unpublishUrl, 'key' => 'unpublish', 'tone' => '',
+        'open' => $translate('Despublicar…'), 'label' => $translate('Motivo para despublicar'),
+        'confirm' => $translate('Despublicar'),
+        'help' => $translate('El REA deja de ser público y vuelve a la cola de curación.'),
+    ],
+    [
+        'show' => $canDiscard, 'url' => $discardUrl, 'key' => 'discard', 'tone' => ' red',
+        'open' => $translate('Descartar…'), 'label' => $translate('Motivo del descarte'),
+        'confirm' => $translate('Descartar'),
+        'help' => $translate('El REA no se publicará. Un curador puede reabrirlo.'),
+    ],
+];
+
+$hidden = static function () use ($escape, $csrf, $itemId): string {
+    return '<input type="hidden" name="csrf" value="' . $escape($csrf) . '">'
+        . '<input type="hidden" name="id" value="' . (int) $itemId . '">';
+};
 ?>
-<?php if ($canPropose): ?>
-<form method="post" action="<?php echo $escape($proposeUrl); ?>" class="oer-workflow-form">
-    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
-    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
-    <button type="submit" class="button"><?php echo $translate('Proponer para revisión'); ?></button>
-</form>
+<div class="oer-workflow-actions">
+<?php foreach ($reasonActions as $action): ?>
+<?php if ($action['show']): ?>
+<?php $fieldId = 'oer-workflow-' . $action['key'] . '-' . (int) $itemId; ?>
+    <details class="oer-workflow-reason">
+        <summary class="button<?php echo $action['tone']; ?>"><?php echo $escape($action['open']); ?></summary>
+        <form method="post" action="<?php echo $escape($action['url']); ?>"
+            class="oer-workflow-form oer-workflow-reason-panel oer-workflow-<?php echo $escape($action['key']); ?>">
+            <?php echo $hidden(); ?>
+            <label for="<?php echo $escape($fieldId); ?>"><?php echo $escape($action['label']); ?></label>
+            <input type="text" id="<?php echo $escape($fieldId); ?>" name="reason" required maxlength="200"
+                aria-describedby="<?php echo $escape($fieldId); ?>-help">
+            <p class="oer-workflow-reason-help" id="<?php echo $escape($fieldId); ?>-help">
+                <?php echo $escape($action['help']); ?>
+            </p>
+            <div class="oer-workflow-reason-buttons">
+                <button type="button" class="button" data-oer-workflow-cancel><?php echo $translate('Cancelar'); ?></button>
+                <button type="submit" class="button<?php echo $action['tone']; ?>"><?php echo $escape($action['confirm']); ?></button>
+            </div>
+        </form>
+    </details>
 <?php endif; ?>
-<?php if ($canReject): ?>
-<?php /*
- * Fila única, horizontal, en `style` inline (revisión final RF-016, hallazgo
- * 2): esto se inyecta dentro de `#page-actions`, que el core renderiza con
- * `position:fixed; height:48px` (verificado contra
- * application/asset/css/style.css) — un <label>+<textarea>+<button> en bloque
- * desborda esa barra. Se descarta a propósito mover el hook a otro evento o
- * añadir una hoja CSS nueva (fuera de alcance de este hallazgo); el input de
- * una sola línea + `required` cierra a la vez el hallazgo 3 (motivo
- * obligatorio).
- */ ?>
-<form
-    method="post"
-    action="<?php echo $escape($rejectUrl); ?>"
-    class="oer-workflow-form oer-workflow-reject"
-    style="display:inline-flex;align-items:center;gap:4px;margin:0;vertical-align:top;"
->
-    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
-    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
-    <input
-        type="text"
-        name="reason"
-        required
-        maxlength="200"
-        placeholder="<?php echo $escape($translate('Motivo del rechazo')); ?>"
-        aria-label="<?php echo $escape($translate('Motivo del rechazo')); ?>"
-        style="height:24px;min-height:0;padding:2px 6px;width:14em;box-sizing:border-box;"
-    >
-    <button type="submit" class="button" style="height:24px;min-height:0;padding:2px 8px;line-height:1;">
-        <?php echo $translate('Rechazar propuesta'); ?>
-    </button>
-</form>
+<?php endforeach; ?>
+<?php if ($canReopen): ?>
+    <form method="post" action="<?php echo $escape($reopenUrl); ?>" class="oer-workflow-form">
+        <?php echo $hidden(); ?>
+        <button type="submit" class="button"><?php echo $translate('Reabrir'); ?></button>
+    </form>
+<?php endif; ?>
+<?php if ($canPropose): ?>
+    <form method="post" action="<?php echo $escape($proposeUrl); ?>" class="oer-workflow-form">
+        <?php echo $hidden(); ?>
+        <button type="submit" class="button green"><?php echo $translate('Proponer para revisión'); ?></button>
+    </form>
 <?php endif; ?>
 <?php if ($canPublish): ?>
-<form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form">
-    <input type="hidden" name="csrf" value="<?php echo $escape($csrf); ?>">
-    <input type="hidden" name="id" value="<?php echo $itemId; ?>">
-    <button type="submit" class="button"><?php echo $translate('Publicar propuesta'); ?></button>
-</form>
+    <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form">
+        <?php echo $hidden(); ?>
+        <button type="submit" class="button green"><?php echo $translate('Confirmar y publicar'); ?></button>
+    </form>
 <?php endif; ?>
+</div>

@@ -50,115 +50,61 @@ class Module extends AbstractModule implements InitProviderInterface
     }
 
     /**
-     * ACL (NFR-003). Se concede **por privilegio**, nunca por controlador.
+     * ACL (NFR-003, TASK-067/ADR-0023 §1). Se concede **por privilegio**,
+     * nunca por controlador, y solo a los roles `rea_proponente` y
+     * `rea_curador` (más `global_admin`, al que el core ya concede todo). La
+     * matriz entera vive en `Permissions\ReaAcl` y la fija `ReaAclTest`.
      *
-     * Hasta TASK-029 esto era un `allow(['editor','site_admin'], [Controller])`
-     * sin lista de privilegios, o sea el controlador entero: cualquier acción
-     * nueva quedaba alcanzable por `editor` —y por `site_editor`, que el módulo
-     * IsolatedSites añade heredando de `editor`— con solo escribirla. Con la
-     * configuración colgando de este mismo controlador eso habría abierto la
-     * clave API del LLM y los vocabularios del catálogo a un editor.
+     * Hasta TASK-067 la curación se concedía a `editor`/`site_admin`/`reviewer`
+     * y proponer también a `author`; por herencia, un `site_editor` de
+     * IsolatedSites recibía todo, incluida la propuesta IA de pago. En la
+     * mediateca compartida eso son ~1 200 editores de centro.
      *
-     * La lista va dentro del método a propósito, por el mismo motivo que
-     * `governanceIdSettings()` lo era: Laminas instancia este Module antes de
-     * registrar el autoloading PSR-4 del módulo. Aquí solo hay literales, pero
-     * el criterio se mantiene para no invitar a meter una referencia de clase.
-     *
-     * Los privilegios son los nombres de acción tal cual llegan en la ruta —con
-     * guiones—, que es lo que compara el core al despachar
-     * (`Mvc\MvcListeners::authorizeUserAgainstController`).
+     * Orden de carga: los roles REA heredan de `site_editor`, que IsolatedSites
+     * añade en su propio onBootstrap(). El core ordena los módulos por id con
+     * `ksort()` (`Module\Manager::sortModules()`), así que IsolatedSites arranca
+     * antes; sin IsolatedSites se usan los padres de respaldo (ReaAcl).
      */
     public function onBootstrap(MvcEvent $event): void
     {
         parent::onBootstrap($event);
-        /** @var \Omeka\Permissions\Acl $acl */
-        $acl = $this->getServiceLocator()->get('Omeka\Acl');
+        Permissions\ReaAcl::register($this->getServiceLocator()->get('Omeka\Acl'));
+        // «Cola (N)» (TASK-067): labelled just before rendering, once the
+        // route is known. Jobs and the host tests have no application here.
+        $application = method_exists($event, 'getApplication') ? $event->getApplication() : null;
+        if ($application) {
+            $application->getEventManager()->attach(MvcEvent::EVENT_RENDER, [$this, 'labelQueue'], 100);
+        }
+    }
 
-        // Curación: vista maestra, re-catalogador, gobernanza, propuesta IA y
-        // visibilidad. RF-016/ADR-0018 (2026-08-29): `reviewer` se añade junto
-        // a los roles que ya curaban — es el rol nativo que hace de curador de
-        // REA en el flujo autor→curador. No sustituye a editor/site_admin.
-        // `governance-apply` (TASK-028 rebanada 3b) entra al mismo nivel que
-        // `recatalog-apply`: escribir las cinco properties de gobernanza no es
-        // más privilegiado que re-catalogar, y `author` no lo tiene.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\IndexController::class],
-            [
-                'index',
-                'search',
-                'search-terms',
-                // TASK-064 slice 4: knowledge/criteria tree of a course
-                // subject for the panel; read only, like `search-terms`.
-                'curriculum-tree',
-                'set-visibility',
-                'recatalog-preview',
-                'recatalog-apply',
-                'governance-apply',
-                'recatalog-last-event',
-                'drawer-details',
-                'drawer-history',
-                'recatalog-undo',
-                'ai-propose',
-                'ai-propose-status',
-                'ai-propose-cancel',
-                'ai-evaluate',
-                'reject-proposal',
-                'publish-proposal',
-            ]
-        );
-
-        // Proponer (RF-016): abierto también a `author`, a diferencia del
-        // resto de acciones de curación. El controlador solo es la puerta de
-        // entrada — quién puede tocar CADA item lo decide el permiso nativo
-        // de edición dentro de WorkflowService::propose() (OwnsEntityAssertion
-        // para author, view-all para el resto), no este ACL.
-        $acl->allow(
-            ['author', 'editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\IndexController::class],
-            ['propose']
-        );
-
-        // Configuración: solo Supervisor (site_admin) y superior, decisión del
-        // propietario (2026-07-28). Gobierna la clave API del LLM y los
-        // vocabularios de todo el catálogo, así que no es tarea de curación.
-        // `global_admin` no se lista porque el core ya le concede todo
-        // (`Service\AclFactory::addRulesForGlobalAdmin`, `$acl->allow('global_admin')`).
-        $acl->allow(
-            ['site_admin'],
-            [Controller\Admin\IndexController::class],
-            ['config']
-        );
-
-        // Estadísticas: mismo nivel que la curación (spec TASK-006 §2.1). Datos
-        // agregados de solo lectura, no gobernanza sensible como `config`.
-        // RF-016: `reviewer` se añade por el mismo motivo que arriba.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\StatsController::class],
-            // `layout`: guarda la disposición propia de la página (ajuste de usuario).
-            ['index', 'export', 'layout']
-        );
-
-        // Lote de licencia y autoría (TASK-028 slice 4): los mismos roles que
-        // `governance-apply`. Escribir en lote no es más privilegiado que
-        // escribir en un item; el ACL nativo de edición decide item a item
-        // dentro del Job, que corre como su dueño.
-        $acl->allow(
-            ['editor', 'site_admin', 'reviewer'],
-            [Controller\Admin\GovernanceBatchController::class],
-            ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo']
-        );
-
-        // Deshacer un lote ajeno (TASK-028 slice 5a): solo site_admin, para
-        // cuando el autor del lote no está. `global_admin` ya lo tiene todo.
-        // El Job de deshacer corre como quien lo lanza: el ACL nativo de cada
-        // item sigue decidiendo.
-        $acl->allow(
-            ['site_admin'],
-            [Controller\Admin\GovernanceBatchController::class],
-            [Controller\Admin\GovernanceBatchController::PRIVILEGE_UNDO_ANY]
-        );
+    /**
+     * Puts the queue size in the curator's navigation entry «Cola (N)»
+     * (ADR-0023 §3): admin pages only, not AJAX, and only for users who hold
+     * the master view, so nobody else pays the two COUNT queries.
+     */
+    public function labelQueue(MvcEvent $event): void
+    {
+        $routeMatch = $event->getRouteMatch();
+        if (!$routeMatch || !$routeMatch->getParam('__ADMIN__')) {
+            return;
+        }
+        $request = $event->getRequest();
+        if (method_exists($request, 'isXmlHttpRequest') && $request->isXmlHttpRequest()) {
+            return;
+        }
+        $services = $this->getServiceLocator();
+        if (!$services->get('Omeka\Acl')->userIsAllowed(Controller\Admin\IndexController::class, 'index')) {
+            return;
+        }
+        $page = $services->get('Laminas\Navigation\AdminModule')->findOneBy('id', 'oer-queue');
+        if (!$page) {
+            return;
+        }
+        $count = $services->get(Service\Workflow\QueueCounter::class)->count();
+        $page->setLabel(sprintf(
+            $services->get('MvcTranslator')->translate('Cola (%d)'), // @translate
+            $count
+        ));
     }
 
     public function install(ServiceLocatorInterface $serviceLocator)
@@ -167,9 +113,20 @@ class Module extends AbstractModule implements InitProviderInterface
         // Los datos del módulo viven como valores RDF y settings nativos.
     }
 
+    /**
+     * Sin tablas propias (NFR-002). Los usuarios con un rol REA vuelven al rol
+     * padre (ADR-0023 §1.6): sin el módulo la ACL ya no conoce `rea_*` y
+     * Laminas lanzaría una excepción en cada petición suya. Los valores
+     * `curation:status`/`curation:note` se quedan: son RDF nativo.
+     */
     public function uninstall(ServiceLocatorInterface $serviceLocator)
     {
-        // Sin tablas ni settings persistidos todavía: no hay nada que limpiar.
+        $acl = $serviceLocator->get('Omeka\Acl');
+        $connection = $serviceLocator->get('Omeka\Connection');
+        $targets = Permissions\ReaAcl::uninstallTargets($acl->hasRole(Permissions\ReaAcl::SITE_EDITOR));
+        foreach ($targets as $role => $target) {
+            $connection->executeStatement('UPDATE user SET role = ? WHERE role = ?', [$target, $role]);
+        }
     }
 
     public function upgrade($oldVersion, $newVersion, ServiceLocatorInterface $serviceLocator)
@@ -195,6 +152,16 @@ class Module extends AbstractModule implements InitProviderInterface
             'Omeka\Api\Adapter\ItemAdapter',
             'api.update.post',
             [$this, 'handleItemPostSave']
+        );
+        // Security review of TASK-067: curation:status/curation:note of a REA
+        // change only through WorkflowService or by global_admin. hydrate.post
+        // sees the hydrated values; the database still holds the old ones, and
+        // an error here makes the core refresh the entity and refuse the write
+        // (create, update, batch update, API and native form alike).
+        $sharedEventManager->attach(
+            'Omeka\Api\Adapter\ItemAdapter',
+            'api.hydrate.post',
+            [$this, 'guardWorkflowValues']
         );
         // Columnas y orden por defecto de la vista maestra, configurables por
         // cada curador desde su perfil (TASK-028). Se usa la clave propia
@@ -239,6 +206,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'resource_type' => 'Tipo de recurso', // @translate
         'licence' => 'Licencia', // @translate
         'proposed' => 'Propuesta', // @translate
+        'status' => 'Estado', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -253,6 +221,14 @@ class Module extends AbstractModule implements InitProviderInterface
             'none' => 'Sin alinear', // @translate
         ],
         'proposed' => ['1' => 'Sí'], // @translate
+        'status' => [
+            'draft' => 'Borrador', // @translate
+            'proposed' => 'Propuesto', // @translate
+            'rejected' => 'Rechazado', // @translate
+            'discarded' => 'Descartado', // @translate
+            'published' => 'Publicado', // @translate
+            'out_of_flow' => 'Publicado fuera del flujo', // @translate
+        ],
     ];
 
     /**
@@ -356,17 +332,19 @@ class Module extends AbstractModule implements InitProviderInterface
 
         /** @var \Omeka\Permissions\Acl $acl */
         $acl = $services->get('Omeka\Acl');
-        $isCurator = $acl->userIsAllowed('Omeka\Entity\Resource', 'view-all');
-        $canEditItem = $item->userIsAllowed('update');
+        $index = Controller\Admin\IndexController::class;
 
-        // Revisión final RF-016 (hallazgo 6): antes excluía al curador
-        // (`!$isCurator`), pero el ACL SÍ concede `propose` a
-        // editor/site_admin/reviewer (ver el bloque de arriba en
-        // onBootstrap()) precisamente para poder reproponer algo en nombre de
-        // otro. La UI no puede contradecir lo que el ACL ya permite.
-        $canPropose = $canEditItem && Service\Workflow\WorkflowStatus::canPropose($status);
-        $canReject = $isCurator && Service\Workflow\WorkflowStatus::canReject($status);
-        $canPublish = $isCurator && Service\Workflow\WorkflowStatus::canPublish($status);
+        // TASK-067: cada botón exige el privilegio de SU acción y que el
+        // estado lo permita (WorkflowStatus::available). Antes «es curador»
+        // era `view-all`, que `site_editor` hereda de `editor`: un proponente
+        // habría visto los botones del curador. Proponer exige además poder
+        // editar ESTE item (permiso nativo, IsolatedSites incluido).
+        $buttons = Service\Workflow\WorkflowStatus::available(
+            $status,
+            (bool) $item->isPublic(),
+            static fn (string $privilege): bool => (bool) $acl->userIsAllowed($index, $privilege)
+        );
+        $buttons['canPropose'] = $buttons['canPropose'] && $item->userIsAllowed('update');
 
         /** @var \Laminas\View\Renderer\PhpRenderer $view */
         $view = $event->getTarget();
@@ -376,13 +354,15 @@ class Module extends AbstractModule implements InitProviderInterface
         // ninguna acción, y es justo quien tiene que ver que espera
         // validación. La vista maestra está cerrada a `author`; esta página
         // es la suya.
-        $badge = Service\Workflow\WorkflowStatus::badge($status);
+        // pageBadge(): también nombra «Publicado fuera del flujo», el estado
+        // que explica por qué el curador ve sus botones (rediseño 2026-11-18).
+        $badge = Service\Workflow\WorkflowStatus::pageBadge($status, (bool) $item->isPublic());
         if (null !== $badge) {
             $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
             echo $view->partial('oer-manager/common/workflow-badge', ['badge' => $badge]);
         }
 
-        if (!$canPropose && !$canReject && !$canPublish) {
+        if (!in_array(true, $buttons, true)) {
             return;
         }
 
@@ -392,16 +372,100 @@ class Module extends AbstractModule implements InitProviderInterface
             'timeout' => 3600,
         ]);
 
-        echo $view->partial('oer-manager/common/workflow-actions', [
+        $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-actions.css', 'OERManager'));
+        $view->headScript()->appendFile($view->assetUrl('js/workflow-actions.js', 'OERManager'));
+        echo $view->partial('oer-manager/common/workflow-actions', $buttons + [
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),
-            'canPropose' => $canPropose,
-            'canReject' => $canReject,
-            'canPublish' => $canPublish,
             'proposeUrl' => $view->url('admin/oer-manager', ['action' => 'propose']),
             'rejectUrl' => $view->url('admin/oer-manager', ['action' => 'reject-proposal']),
             'publishUrl' => $view->url('admin/oer-manager', ['action' => 'publish-proposal']),
+            'discardUrl' => $view->url('admin/oer-manager', ['action' => 'discard']),
+            'unpublishUrl' => $view->url('admin/oer-manager', ['action' => 'unpublish']),
+            'reopenUrl' => $view->url('admin/oer-manager', ['action' => 'reopen']),
         ]);
+    }
+
+    /**
+     * Old class and workflow values of an item (guardWorkflowValues), ordered
+     * by value id like Omeka's `Resource::$values`. One row with null values
+     * when the item has none.
+     */
+    private const WORKFLOW_VALUES_SQL = <<<'SQL'
+        SELECT CONCAT(cv.prefix, ':', rc.local_name) AS class, p.local_name AS term, v.type, v.value, v.uri,
+            v.lang, v.value_resource_id, v.is_public, v.value_annotation_id
+        FROM resource r
+        LEFT JOIN resource_class rc ON rc.id = r.resource_class_id
+        LEFT JOIN vocabulary cv ON cv.id = rc.vocabulary_id
+        LEFT JOIN value v ON v.resource_id = r.id AND v.property_id IN (
+            SELECT p2.id FROM property p2 JOIN vocabulary v2 ON v2.id = p2.vocabulary_id
+            WHERE v2.prefix = 'curation' AND p2.local_name IN ('status', 'note')
+        )
+        LEFT JOIN property p ON p.id = v.property_id
+        WHERE r.id = ?
+        ORDER BY v.id
+        SQL;
+
+    /** Values of the annotations of those values, ordered by id. */
+    private const WORKFLOW_ANNOTATIONS_SQL = <<<'SQL'
+        SELECT v.resource_id, CONCAT(vo.prefix, ':', p.local_name) AS term, v.type, v.value, v.uri, v.lang,
+            v.value_resource_id, v.is_public
+        FROM value v
+        JOIN property p ON p.id = v.property_id
+        JOIN vocabulary vo ON vo.id = p.vocabulary_id
+        WHERE v.resource_id IN (%s)
+        ORDER BY v.id
+        SQL;
+
+    /**
+     * Rejects a hand-made change of `curation:status`/`curation:note` on a
+     * REA (security reviews of TASK-067; rules in `Workflow\StatusGuard`):
+     * text, order, type, visibility or annotation alike.
+     *
+     * A REA is an item that is or was `lrmi:LearningResource`; when it only
+     * becomes one now, its old values count as empty, so a status cannot be
+     * smuggled in under another class and kept when the class changes back.
+     */
+    public function guardWorkflowValues(Event $event): void
+    {
+        $entity = $event->getParam('entity');
+        if (!is_object($entity) || !method_exists($entity, 'getValues')) {
+            return;
+        }
+        $services = $this->getServiceLocator();
+        $lr = Service\MasterViewQuery::LEARNING_RESOURCE_CLASS_TERM;
+        $after = Service\Workflow\StatusGuard::fromEntityValues($entity->getValues());
+        $isLearningResource = $lr === Service\Workflow\StatusGuard::term($entity->getResourceClass());
+
+        $before = [];
+        $wasLearningResource = false;
+        if (null !== $entity->getId()) {
+            $connection = $services->get('Omeka\Connection');
+            $rows = $connection->fetchAllAssociative(self::WORKFLOW_VALUES_SQL, [(int) $entity->getId()]);
+            $annotationIds = [];
+            foreach ($rows as $row) {
+                $wasLearningResource = $wasLearningResource || $lr === $row['class'];
+                if (!empty($row['value_annotation_id'])) {
+                    $annotationIds[] = (int) $row['value_annotation_id'];
+                }
+            }
+            $annotationRows = [] === $annotationIds ? [] : $connection->fetchAllAssociative(
+                sprintf(self::WORKFLOW_ANNOTATIONS_SQL, implode(', ', array_fill(0, count($annotationIds), '?'))),
+                $annotationIds
+            );
+            if ($wasLearningResource) {
+                $before = Service\Workflow\StatusGuard::fromRows($rows, $annotationRows);
+            }
+        }
+
+        $identity = $services->get('Omeka\AuthenticationService')->getIdentity();
+        /** @var Service\Workflow\StatusGuard $guard */
+        $guard = $services->get(Service\Workflow\StatusGuard::class);
+        if ($guard->rejects($before, $after, $isLearningResource || $wasLearningResource, $identity?->getRole())) {
+            $message = 'El estado y el motivo del flujo de curación de un REA solo cambian con '
+                . 'sus acciones (proponer, rechazar, publicar…), no a mano.'; // @translate
+            $event->getParam('errorStore')->addError(Service\Workflow\WorkflowStatus::STATUS_TERM, $message);
+        }
     }
 
     /**

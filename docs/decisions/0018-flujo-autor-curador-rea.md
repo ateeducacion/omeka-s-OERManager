@@ -42,6 +42,13 @@ La revisión final de la rama de implementación (tras las 8 tareas) encontró d
 1. **La vía de escape del punto 4 (`set-visibility` sin gate) ahora también la tiene el curador.** Este ADR reservaba esa vía para `editor`/`site_admin`; al añadir `reviewer` a **todo** el bloque de curación existente (que incluye `set-visibility`), un curador puede publicar una propuesta saltándose `IntegrityChecker` con solo usar el toggle de visibilidad de la vista maestra en vez de «Publicar propuesta». **Decisión del propietario (2026-08-30): aceptado tal cual.** Un curador ya es de confianza para tomar esa decisión manualmente si hace falta; el gate de `IntegrityChecker` es una ayuda que guía el flujo normal, no una barrera de seguridad dura que deba ser imposible de sortear por un rol con privilegio de curación. No se retira `set-visibility` del bloque de `reviewer`.
 2. **Un autor puede autopublicar saltándose el flujo entero**, marcando el item público desde el formulario **nativo** de edición de Omeka (no el de este módulo): el core no aplica ningún control sobre `o:is_public` más allá del permiso genérico `update`, y `author` tiene `update` sobre lo suyo. Cerrarlo de verdad exigiría un `api.update.pre` nuevo que niegue `is_public=true` a quien no sea curador en items `lrmi:LearningResource` — un listener que afectaría a **toda** edición de item, no solo a las de este flujo, y que este ADR no había anticipado. **Decisión del propietario (2026-08-30): no se cierra en esta rama.** Queda como limitación conocida y se abre **TASK-038** en el backlog para diseñar e implementar el listener como trabajo aparte.
 
+## Nota (2026-11-18) — el alineamiento ya no es solo del curador
+
+ADR-0023, addendum 2 (decisión del propietario de 2026-11-18), cambia el punto de «Consecuencias»
+que dejaba el alineamiento curricular al curador: `rea_proponente` re-cataloga sus propios REA en
+Borrador o Rechazado (privados) desde «Mis propuestas», y el curador en cualquier estado salvo
+Descartado. La regla vive en `Service\Workflow\RecatalogRule` (TASK-035).
+
 ## Fuentes
 
 - `application/src/Service/AclFactory.php` del core (contenedor real, 2026-08-28): `addRulesForAuthor()`, `addRulesForReviewer()`.

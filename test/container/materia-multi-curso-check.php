@@ -1,4 +1,10 @@
 <?php
+// CLI only: these harnesses bootstrap Omeka and some write to the catalogue,
+// so they must never run over HTTP (security review of TASK-067).
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 
 /**
  * Arnés del defecto reportado el 2026-08-25: con dos Cursos elegidos a la vez

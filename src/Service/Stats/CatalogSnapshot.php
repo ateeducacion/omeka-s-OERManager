@@ -55,6 +55,13 @@ final class CatalogSnapshot
         do {
             $response = $this->api->search('items', [
                 'resource_class_id' => $classId,
+                // TASK-067 (ADR-0023 §2): a discarded REA is not a REA for the
+                // statistics. `neq` also matches REA with no status.
+                'property' => [[
+                    'property' => 'curation:status',
+                    'type' => 'neq',
+                    'text' => 'Descartado',
+                ]],
                 'sort_by' => 'id',
                 'sort_order' => 'asc',
                 'page' => $page,

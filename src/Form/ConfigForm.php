@@ -168,6 +168,23 @@ class ConfigForm extends Form implements InputFilterProviderInterface
             ],
         ]);
 
+        // TASK-067 (ADR-0023 §1.4): every REA belongs to the REA site.
+        $this->add([
+            'name' => \OERManager\Service\ReaSite::SETTING,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'Sitio REA (id)', // @translate
+                'info' => 'ID del sitio al que pertenece todo REA y sobre el que el equipo '
+                    . 'tiene permiso. Un REA fuera de él se avisa como «REA sin sitio REA». '
+                    . 'Vacío: el aviso no se evalúa.', // @translate
+            ],
+            'attributes' => [
+                'id' => \OERManager\Service\ReaSite::SETTING,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
         $this->add([
             'name' => GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
             'type' => 'Text',

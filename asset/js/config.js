@@ -24,7 +24,6 @@ export function readConfig() {
         aiProposeStatusUrl: d.aiProposeStatusUrl,
         aiProposeCancelUrl: d.aiProposeCancelUrl,
         aiEnabled: flag(d.aiEnabled),
-        canRecatalog: flag(d.canRecatalog),
         recatalogCsrf: d.recatalogCsrf,
         drawerHistoryUrl: d.drawerHistoryUrl,
         totalResults: Number(d.totalResults || 0),

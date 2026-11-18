@@ -49,9 +49,10 @@ class CurationWriter
      * Las properties que la instalación no tenga se omiten en silencio.
      *
      * @param array<string,string> $map term => literal
+     * @param bool $isPublic false = private annotation values (workflow, TASK-067)
      * @return array<string,array<int,array<string,mixed>>>
      */
-    public function annotationValues(array $map): array
+    public function annotationValues(array $map, bool $isPublic = true): array
     {
         $annotation = [];
         foreach ($map as $annTerm => $literal) {
@@ -59,11 +60,15 @@ class CurationWriter
             if (null === $annPropertyId) {
                 continue;
             }
-            $annotation[$annTerm] = [[
+            $value = [
                 'type' => 'literal',
                 'property_id' => $annPropertyId,
                 '@value' => $literal,
-            ]];
+            ];
+            if (!$isPublic) {
+                $value['is_public'] = false;
+            }
+            $annotation[$annTerm] = [$value];
         }
         return $annotation;
     }
@@ -81,8 +86,13 @@ class CurationWriter
      *
      * @return array<string,array<int,array<string,mixed>>>
      */
-    public function annotation(string $contributor, string $when, string $provenance, string $description = ''): array
-    {
+    public function annotation(
+        string $contributor,
+        string $when,
+        string $provenance,
+        string $description = '',
+        bool $isPublic = true
+    ): array {
         $map = [
             'dcterms:contributor' => $contributor,
             'dcterms:modified' => $when,
@@ -91,7 +101,7 @@ class CurationWriter
         if ('' !== $description) {
             $map['dcterms:description'] = mb_substr($description, 0, self::MAX_REASON_CHARS);
         }
-        return $this->annotationValues($map);
+        return $this->annotationValues($map, $isPublic);
     }
 
     /**

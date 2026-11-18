@@ -1,7 +1,7 @@
 import { diffRows, RECATALOG_DIMENSIONS } from '../core/diffModel.js';
 import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
-import { valueText } from '../core/values.js';
+import { valuesFor } from '../core/anchorData.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
 import { mountLeafTrees } from './leafTree.js';
 import { reopenDrawer } from './drawer.js';
@@ -21,19 +21,19 @@ import { ANCHOR_SLOT } from './drawerDetails.js';
  * `oer:drawer-rendered`.
  */
 
-function buildRecatalogPanel(config, itemId, itemJson) {
+function buildRecatalogPanel(config, itemId, recatalog) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
 
     const $dims = $('<div>').addClass('oer-recatalog-dims');
     // Etapa: ayuda de navegación de la cascada (ADR-0022). No se escribe en
     // el REA; solo acota Curso → Asignatura → Saberes/Criterios. La advertencia
     // va en su propia línea: una etiqueta etiqueta, y antes hacía dos trabajos.
-    const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), {}, true, valueText);
+    const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), [], true);
     $etapa.append($('<p>').addClass('oer-dim-hint')
         .text(Omeka.jsTranslate('Solo acota la búsqueda. No se guarda en el REA.')));
     $dims.append($etapa);
     RECATALOG_DIMENSIONS.forEach(([term, label]) => {
-        $dims.append(buildDimensionSelector(term, label, itemJson, false, valueText));
+        $dims.append(buildDimensionSelector(term, label, valuesFor(recatalog, term), false));
     });
     $panel.append($dims);
     // TASK-064 slice 4: knowledge and criteria are chosen in a tree per block
@@ -72,8 +72,8 @@ function buildRecatalogPanel(config, itemId, itemJson) {
  *
  * `.oer-anchor-edit` es el contrato con `ui/drawerDetails.js`, que es quien
  * cambia el modo del área. Aquí solo se decide SI el botón existe, que es lo
- * que este fichero sabe y aquel no: sin permiso de curación o sin `itemJson`
- * no se pinta, y la barra vacía la colapsa el CSS.
+ * que este fichero sabe y aquel no: si la regla de re-catalogación lo niega
+ * (TASK-035) no se pinta, y la barra vacía la colapsa el CSS.
  */
 function fillAnchorBar($bar, itemId) {
     $bar.attr('data-item-id', itemId)
@@ -130,13 +130,13 @@ function postUndo(config, itemId, force) {
             return;
         }
         window.alert(Omeka.jsTranslate('No se pudo deshacer: ')
-            + messageFor(response.error, Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')));
+            + refusalText(response, Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')));
     }).fail(() => {
         window.alert(Omeka.jsTranslate('No se pudo deshacer.'));
     });
 }
 
-function collectAlignmentPairs($panel) {
+export function collectAlignmentPairs($panel) {
     const pairs = [{ name: 'id', value: $panel.data('item-id') }];
     // La Etapa (data-helper) no se escribe: se excluye de la confirmación.
     $panel.find('.oer-recatalog-dim[data-dirty="1"][data-helper="0"]').each(function () {
@@ -201,34 +201,32 @@ function renderDiff($panel, diff) {
     return !hasInvalid;
 }
 
+/**
+ * Texto de un rechazo del servidor: el motivo que trae (RecatalogRule y demás
+ * negativas de TASK-035, ya en el catálogo de traducción) o el del código.
+ */
+export function refusalText(response, fallback) {
+    if (response && response.message) {
+        return Omeka.jsTranslate(response.message);
+    }
+    return messageFor(response && response.error, fallback);
+}
+
 export function initRecatalog(config) {
     document.addEventListener(ANCHOR_SLOT, (event) => {
-        if (!config.canRecatalog) {
+        const { itemId, recatalog, slot, bar } = event.detail;
+        // TASK-035: el servidor decide por REA y usuario (RecatalogRule) y lo
+        // vuelve a decidir en cada escritura. Si no se puede, se dice por qué
+        // dentro del área de anclaje, que es donde el curador lo busca, y no
+        // se pinta un botón de entrada que no llevaría a ninguna parte. Sin
+        // privilegio de re-catalogar no llega motivo y no se pinta nada.
+        if (!recatalog || !recatalog.allowed) {
+            if (recatalog && recatalog.reason) {
+                $(slot).append($('<p>').addClass('oer-drawer-empty oer-recatalog-refused').text(recatalog.reason));
+            }
             return;
         }
-        const { itemId, itemJson, slot, bar } = event.detail;
-        // `itemJson` puede llegar `null` (REA privado: el `fetch` que lo trae va
-        // contra `/api`, que no autentica — ver drawer.js). El panel de LECTURA
-        // ya no depende de él desde TASK-034: lo sirve `drawer-details`, que sí
-        // autentica. Pero este panel SÍ lo
-        // necesita para prellenar los selectores con lo ya elegido —
-        // `buildDimensionSelector` lee `itemJson[term]` sin guarda—, así que se
-        // avisa con un motivo legible en vez de reventar. Unificarlo en una
-        // sola llamada autenticada es trabajo propio (no se rediseña aquí el
-        // flujo de datos del re-catalogador).
-        if (!itemJson) {
-            // El motivo va dentro del área de anclaje, bajo la lectura: es ahí
-            // donde el curador busca por qué no puede corregir lo que ve. Y no
-            // se pinta el botón de entrada, que no llevaría a ninguna parte.
-            $(slot).append(
-                $('<p>').addClass('oer-drawer-empty').text(Omeka.jsTranslate(
-                    'Re-catalogación no disponible: no se ha podido leer este REA sin autenticar '
-                    + '(puede estar en privado).'
-                ))
-            );
-            return;
-        }
-        $(slot).append(buildRecatalogPanel(config, itemId, itemJson));
+        $(slot).append(buildRecatalogPanel(config, itemId, recatalog));
         const $bar = $(bar);
         fillAnchorBar($bar, itemId);
         renderUndo(config, $bar, itemId);
@@ -263,6 +261,11 @@ export function initRecatalog(config) {
             return;
         }
         $.post(config.recatalogPreviewUrl, $.param(pairs)).done((response) => {
+            if (response.error) {
+                $panel.find('.oer-recatalog-diff').text(refusalText(response, ''));
+                disableApply($panel);
+                return;
+            }
             const ok = renderDiff($panel, response.diff || {});
             $panel.find('.oer-recatalog-apply').prop('disabled', !ok);
         }).fail(() => {
@@ -290,7 +293,7 @@ export function initRecatalog(config) {
                 return;
             }
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar: ')
-                + messageFor(response.error, Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')));
+                + refusalText(response, Omeka.jsTranslate('Error inesperado; inténtalo de nuevo.')));
         }).fail(() => {
             window.alert(Omeka.jsTranslate('No se pudo re-catalogar.'));
         });

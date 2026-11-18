@@ -72,7 +72,7 @@ $.post = (url, data) => {
 };
 
 const config = {
-    canRecatalog: true, curriculumTreeUrl: '/tree', searchTermsUrl: '/s',
+    curriculumTreeUrl: '/tree', searchTermsUrl: '/s',
     recatalogPreviewUrl: '/preview', recatalogLastEventUrl: '/last'
 };
 initTermPicker(config);
@@ -95,10 +95,15 @@ const expect = (name, actual, expected) => {
     }
 };
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
-const res = (v) => ({ value_resource_id: v, display_title: 'T' + v });
+// TASK-035: the panel serves `{allowed, reason, current}`, not raw JSON-LD.
+const res = (v) => ({ id: v, title: 'T' + v });
 document.dispatchEvent(new CustomEvent(ANCHOR_SLOT, { detail: {
     itemId: 7,
-    itemJson: { 'schema:about': [res(500)], 'lrmi:teaches': [res(21), res(90)], 'lrmi:assesses': [] },
+    recatalog: {
+        allowed: true,
+        reason: '',
+        current: { 'schema:about': [res(500)], 'lrmi:teaches': [res(21), res(90)], 'lrmi:assesses': [] }
+    },
     slot: document.querySelector('.oer-anchor-slot'),
     bar: document.querySelector('.oer-anchor-bar')
 } }));

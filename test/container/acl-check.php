@@ -1,4 +1,10 @@
 <?php
+// CLI only: these harnesses bootstrap Omeka and some write to the catalogue,
+// so they must never run over HTTP (security review of TASK-067).
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit;
+}
 
 /**
  * Comprobación de la ACL del módulo en contenedor (TASK-029).
@@ -31,35 +37,36 @@ $services = $application->getServiceManager();
 $acl = $services->get('Omeka\Acl');
 
 /** Rol => [privilegio => ¿debe entrar?] */
+// TASK-067 (ADR-0023): OERManager grants only to the REA roles and global_admin.
+// The full matrix is pinned on the host (ReaAclTest) and over HTTP with real
+// users in rea-roles-check.php; this is the quick read-only check of the real ACL.
+$none = ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false,
+    'curriculum-tree' => false, 'propose' => false];
 $expectedIndex = [
     'global_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true,
-        'curriculum-tree' => true],
-    'site_admin' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => true,
-        'curriculum-tree' => true],
-    // El editor cura pero NO configura: la clave API del LLM y los vocabularios
-    // del catálogo no son suyos.
-    'editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false,
-        'curriculum-tree' => true],
-    // site_editor lo añade IsolatedSites heredando de editor: hereda la curación
-    // y, con el allow por privilegio, NO hereda la configuración.
-    'site_editor' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false,
-        'curriculum-tree' => true],
-    // TASK-064 slice 4: the tree is a curation read, closed like the rest.
-    'researcher' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false,
-        'curriculum-tree' => false],
-    'author' => ['index' => false, 'recatalog-apply' => false, 'recatalog-undo' => false, 'config' => false,
-        'curriculum-tree' => false],
+        'curriculum-tree' => true, 'propose' => true],
+    'rea_curador' => ['index' => true, 'recatalog-apply' => true, 'recatalog-undo' => true, 'config' => false,
+        'curriculum-tree' => true, 'propose' => true],
+    'rea_proponente' => ['propose' => true] + $none,
+    'site_admin' => $none,
+    'editor' => $none,
+    // site_editor (IsolatedSites, parent editor) gets nothing from OERManager.
+    'site_editor' => $none,
+    'reviewer' => $none,
+    'researcher' => $none,
+    'author' => $none,
 ];
 
-// Estadísticas (TASK-006, TASK-047): quien cura las ve, exporta y guarda SU
-// disposición de «Conteo por dimensión» (`layout`, ajuste de usuario).
 $stats = ['index' => true, 'export' => true, 'layout' => true];
 $noStats = ['index' => false, 'export' => false, 'layout' => false];
 $expectedStats = [
     'global_admin' => $stats,
-    'site_admin' => $stats,
-    'editor' => $stats,
-    'reviewer' => $stats,
+    'rea_curador' => $stats,
+    'rea_proponente' => $noStats,
+    'site_admin' => $noStats,
+    'editor' => $noStats,
+    'site_editor' => $noStats,
+    'reviewer' => $noStats,
     'researcher' => $noStats,
     'author' => $noStats,
 ];
@@ -90,6 +97,17 @@ foreach ([[IndexController::class, $expectedIndex], [StatsController::class, $ex
             );
         }
     }
+}
+
+// TASK-067: the REA roles hang from IsolatedSites' site_editor (load order:
+// the core ksorts module ids, so IsolatedSites bootstraps first).
+foreach (['rea_proponente', 'rea_curador'] as $role) {
+    $ok = $acl->hasRole($role) && $acl->hasRole('site_editor') && $acl->inheritsRole($role, 'site_editor', true);
+    $checks++;
+    if (!$ok) {
+        $failures++;
+    }
+    printf("  [%s] %s hereda de site_editor\n", $ok ? ' OK ' : 'FALLA', $role);
 }
 
 // El módulo ya no se configura desde el listado de Módulos: una sola puerta.

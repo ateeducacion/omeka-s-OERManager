@@ -1,12 +1,11 @@
 <?php
 
 /**
- * OERManager — configuración del módulo (FASE 1: scaffolding).
+ * OERManager — configuración del módulo.
  *
- * ACL: punto de extensión pendiente. Los privilegios propios de curación se
- * declararán programáticamente (Omeka\Permissions\Acl) en fases posteriores,
- * cuando exista la matriz rol×acción (PEND-007). En FASE 1 no se concede
- * ningún privilegio: solo el global admin ve la entrada de navegación.
+ * ACL: la concede `Module::onBootstrap()` por privilegio, con la matriz de
+ * `Permissions\ReaAcl` (TASK-067, ADR-0023): solo `rea_proponente`,
+ * `rea_curador` y `global_admin`.
  */
 
 namespace OERManager;
@@ -52,7 +51,9 @@ return [
                     // entidad Job, no de la API de jobs (vetada a editor/reviewer).
                     $container->get(Service\Governance\BatchJobLookup::class),
                     // TASK-064: valida o detecta el conjunto del currículo al guardar.
-                    $container->get(Service\Curriculum\CurriculumTerms::class)
+                    $container->get(Service\Curriculum\CurriculumTerms::class),
+                    // TASK-067: validates the REA site on save.
+                    $container->get(Service\ReaSite::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -84,6 +85,8 @@ return [
     'service_manager' => [
         'invokables' => [
             Service\ItemPanelData::class => Service\ItemPanelData::class,
+            // TASK-067 security review: one shared flag per request.
+            Service\Workflow\StatusGuard::class => Service\Workflow\StatusGuard::class,
             // Patrón de filtros computados (ADR-0013, D4).
             Service\ComputedFilter::class => Service\ComputedFilter::class,
             // Catalogación IA (TASK-010): núcleo puro sin dependencias.
@@ -110,8 +113,13 @@ return [
                 return new Service\IntegrityChecker(
                     $container->get('OERManager\Service\Governance\VocabEntries\Licence'),
                     // TASK-064 slice 5: retired-set ids for «REA linked to a retired term».
-                    $container->get(Service\Curriculum\CurriculumTerms::class)
+                    $container->get(Service\Curriculum\CurriculumTerms::class),
+                    // TASK-067: «REA sin sitio REA», one id-only search per request.
+                    $container->get(Service\ReaSite::class)
                 );
+            },
+            Service\ReaSite::class => function ($container) {
+                return new Service\ReaSite($container->get('Omeka\ApiManager'), $container->get('Omeka\Settings'));
             },
             // Estadísticas (TASK-006): catálogo completo vía ApiManager.
             Service\Stats\CatalogSnapshot::class => function ($container) {
@@ -227,8 +235,21 @@ return [
                     $container->get(Service\Curriculum\CurriculumTerms::class)
                 );
             },
+            // «Cola (N)» (TASK-067): two COUNT-only searches.
+            Service\Workflow\QueueCounter::class => function ($container) {
+                return new Service\Workflow\QueueCounter(
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get('Omeka\ApiManager')
+                );
+            },
             Service\Workflow\WorkflowService::class => function ($container) {
-                return new Service\Workflow\WorkflowService($container->get('Omeka\ApiManager'));
+                // TASK-067: the status value is annotated (who and when, ADR-0002)
+                // with the re-cataloguer's writer, and written by its targeted commit.
+                return new Service\Workflow\WorkflowService(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\Workflow\StatusGuard::class)
+                );
             },
             // Gobernanza (TASK-028 slice 3b, RF-015): lee y escribe las cinco
             // properties de gobernanza por el mismo CurationWriter que el
@@ -521,12 +542,23 @@ return [
                 'label' => 'OER Manager', // @translate
                 'route' => 'admin/oer-manager',
                 'resource' => Controller\Admin\IndexController::class,
+                // TASK-067: curators only (a proposer would land on a 403).
+                'privilege' => 'index',
                 'pages' => [
+                    // «Cola (N)» (ADR-0023 §3): Module::labelQueue() writes N
+                    // before rendering. Points at the master view filtered by
+                    // status until the real queue (TASK-070).
+                    [
+                        'id' => 'oer-queue',
+                        'label' => 'Cola', // @translate
+                        'route' => 'admin/oer-manager',
+                        'query' => ['status' => 'proposed'],
+                        'resource' => Controller\Admin\IndexController::class,
+                        'privilege' => 'index',
+                    ],
                     // TASK-029: la configuración deja el listado de Módulos y
-                    // cuelga de aquí, junto a la vista maestra que es donde se
-                    // trabaja. `privilege` hace que la entrada solo se pinte a
-                    // quien puede entrar (Supervisor y superior): sin él, un
-                    // editor vería un enlace que le devuelve un 403.
+                    // cuelga de aquí. `privilege` hace que la entrada solo se
+                    // pinte a quien puede entrar (global_admin desde TASK-067).
                     [
                         'label' => 'Configuración', // @translate
                         'route' => 'admin/oer-manager',
@@ -541,6 +573,14 @@ return [
                         'privilege' => 'index',
                     ],
                 ],
+            ],
+            // «Mis propuestas» (TASK-067): the proposer's own entry.
+            [
+                'label' => 'Mis propuestas', // @translate
+                'route' => 'admin/oer-manager',
+                'action' => 'my-proposals',
+                'resource' => Controller\Admin\IndexController::class,
+                'privilege' => 'my-proposals',
             ],
         ],
     ],
@@ -566,6 +606,10 @@ return [
         'Ningún término coincide con el filtro.', // @translate
         '1 coincidencia', // @translate
         'coincidencias', // @translate
+        // TASK-035: refusals the re-cataloguer shows from the server's `message`.
+        ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
+        Controller\Admin\IndexController::NOT_FOUND_MESSAGE,
+        Controller\Admin\IndexController::GOVERNANCE_UNDO_MESSAGE,
     ],
     'translator' => [
         'translation_file_patterns' => [

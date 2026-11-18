@@ -56,8 +56,12 @@ export function buildSearchChoice(id, title, justification) {
 /**
  * Selector de términos por dimensión. Cada dimensión solo ofrece términos de su
  * propio metadato (la acotación la hace el endpoint search-terms por dimension).
+ *
+ * `values` son los términos ya elegidos, `[{id, title}]` (TASK-035: los sirve
+ * `drawer-details` con la sesión; antes se leían del JSON-LD de `/api`). La
+ * Etapa, ayuda que no se guarda, pasa `[]`.
  */
-export function buildDimensionSelector(term, label, itemJson, isHelper, valueText) {
+export function buildDimensionSelector(term, label, values, isHelper) {
     const $dim = $('<div>').addClass('oer-recatalog-dim')
         .attr('data-term', term)
         .attr('data-dirty', '0')
@@ -65,10 +69,8 @@ export function buildDimensionSelector(term, label, itemJson, isHelper, valueTex
     $dim.append($('<label>').text(label));
 
     const $choices = $('<ul>').addClass('chosen-choices');
-    (itemJson[term] || []).forEach((value) => {
-        if (value['value_resource_id']) {
-            $choices.append(buildSearchChoice(value['value_resource_id'], valueText(value)));
-        }
+    (values || []).forEach((value) => {
+        $choices.append(buildSearchChoice(value.id, value.title));
     });
     $choices.append(
         $('<li>').addClass('search-field').append(

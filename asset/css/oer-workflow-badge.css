@@ -28,6 +28,15 @@
     border-style: dashed;
 }
 
+.oer-workflow-badge[data-status="discarded"] {
+    border-style: dotted;
+}
+
+.oer-workflow-badge[data-status="published"] {
+    border-style: double;
+    border-width: 3px;
+}
+
 .oer-workflow-badge-glyph {
     font-size: 9px;
     line-height: 1;
@@ -37,4 +46,7 @@
 #page-actions .oer-workflow-badge {
     margin-right: 6px;
     line-height: 22px;
+    /* Centrada sobre los botones de 36px del core (insignia de 24px). */
+    vertical-align: top;
+    margin-top: 6px;
 }

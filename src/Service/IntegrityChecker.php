@@ -6,6 +6,7 @@ use OERManager\Service\Curriculum\CurModel;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Governance\VocabEntries;
+use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Representation\ItemRepresentation;
 
 /**
@@ -31,10 +32,13 @@ class IntegrityChecker
      *        CustomVocab, para no bifurcar la degradación que centraliza.
      * @param CurriculumTerms|null $curriculum Retired-set ids for the rule
      *        «REA linked to a retired term» (TASK-064 slice 5); null = no rule.
+     * @param ReaSite|null $reaSite Membership of the REA site (TASK-067); null =
+     *        no rule. Visibility and status come from the item itself.
      */
     public function __construct(
         private readonly VocabEntries $licenceVocab,
-        private readonly ?CurriculumTerms $curriculum = null
+        private readonly ?CurriculumTerms $curriculum = null,
+        private readonly ?ReaSite $reaSite = null
     ) {
     }
 
@@ -71,7 +75,12 @@ class IntegrityChecker
                 $this->project($item, $terms, $checkLinks),
                 $requiredTerms,
                 $checkLinks,
-                $this->licenceVocab->uris()
+                $this->licenceVocab->uris(),
+                [
+                    'isPublic' => (bool) $item->isPublic(),
+                    'status' => $this->statusOf($item),
+                    'inReaSite' => $this->reaSite?->contains((int) $item->id()),
+                ]
             )
         );
     }
@@ -125,6 +134,12 @@ class IntegrityChecker
         }
 
         return $projected;
+    }
+
+    private function statusOf(ItemRepresentation $item): ?string
+    {
+        $value = $item->value(WorkflowStatus::STATUS_TERM);
+        return null === $value ? null : WorkflowStatus::normalize((string) $value->value());
     }
 
     /** @return list<string> Campos obligatorios de la plantilla, [] si no hay plantilla. */
