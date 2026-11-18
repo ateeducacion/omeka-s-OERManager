@@ -1323,8 +1323,19 @@
     color: var(--oer-warn);
 }
 
+.oer-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
 .oer-history-entry {
-    margin-bottom: 1em;
+    border-top: 1px solid var(--oer-rule);
+    padding: 0.4em 0;
+}
+
+.oer-history-line {
+    cursor: pointer;
 }
 
 /* Reversión (isUndo, TASK-007). Tras el hallazgo 3 de la revisión final de
@@ -1338,9 +1349,21 @@
 }
 
 .oer-history-header {
+    display: block;
     color: var(--oer-muted);
     font-size: 0.9em;
-    margin: 0;
+}
+
+.oer-history-what {
+    display: block;
+}
+
+.oer-history-entry details[open] > .oer-history-line {
+    margin-bottom: 0.4em;
+}
+
+.oer-history-more {
+    margin-top: 0.5em;
 }
 
 .oer-history-change {

@@ -1,6 +1,9 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { parseRecatalog } from '../core/anchorData.js';
-import { historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT } from '../core/historyModel.js';
+import {
+    historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT,
+    summaryParts, retiredId, nextShown, RETIRED_TEXT
+} from '../core/historyModel.js';
 
 /**
  * Lo que queda del panel en cliente después de TASK-034 (ADR-0017 §1).
@@ -57,6 +60,31 @@ function note(text, className) {
     return element;
 }
 
+function t(text) {
+    return Omeka.jsTranslate(text);
+}
+
+/** A title the server could not resolve reads as a retired term, not as a bare id. */
+function displayTitle(title) {
+    const id = retiredId(title);
+    return null === id ? title : t(RETIRED_TEXT).replace('%s', id);
+}
+
+/** «Saberes básicos +2 −1 · Licencia +1», with translated labels. */
+function summaryText(row) {
+    return summaryParts(row).map((part) => {
+        const counts = [];
+        if (part.added) {
+            counts.push(`+${part.added}`);
+        }
+        if (part.removed) {
+            counts.push(`−${part.removed}`);
+        }
+        const tail = part.emptied ? ` (${t('vaciada')})` : '';
+        return `${t(part.label)} ${counts.join(' ')}${tail}`;
+    }).join(' · ');
+}
+
 /**
  * @param {object} change
  * @param {boolean} hasReasons Viene de `historyModel::historyRows` (fila
@@ -70,21 +98,21 @@ function renderChange(change, hasReasons) {
     const label = document.createElement('span');
     label.className = 'oer-history-term';
     label.textContent = change.emptied
-        ? `${change.label} (${Omeka.jsTranslate('vaciada')})`
-        : change.label;
+        ? `${t(change.label)} (${t('vaciada')})`
+        : t(change.label);
     block.appendChild(label);
 
     (change.added || []).forEach((title) => {
         const line = document.createElement('span');
         line.className = 'oer-history-added';
-        line.textContent = `+ ${title}`;
+        line.textContent = `+ ${displayTitle(title)}`;
         block.appendChild(line);
     });
 
     (change.removed || []).forEach((value) => {
         const line = document.createElement('span');
         line.className = 'oer-history-removed';
-        line.textContent = `− ${value.title}`;
+        line.textContent = `− ${displayTitle(value.title)}`;
         block.appendChild(line);
 
         // PEND-013: la justificación de la IA se muestra, pero COLAPSADA. Aquí ya
@@ -126,20 +154,48 @@ function renderHistory(history) {
         return section;
     }
 
-    rows.forEach((row) => {
-        const entry = document.createElement('article');
-        entry.className = row.isUndo ? 'oer-history-entry oer-history-undo' : 'oer-history-entry';
+    // TASK-065: one line per event (newest first), a disclosure with the
+    // detail, and client-side pages of HISTORY_PAGE. `row.summary` (RDF jargon)
+    // is still not shown: `summaryText()` says the same with human labels.
+    const list = document.createElement('ol');
+    list.className = 'oer-history-list';
+    section.appendChild(list);
 
-        const header = document.createElement('p');
-        header.className = 'oer-history-header';
-        header.textContent = `${row.whenLabel} · ${row.contributor}`;
-        entry.appendChild(header);
+    const entry = (row) => {
+        const item = document.createElement('li');
+        item.className = row.isUndo ? 'oer-history-entry oer-history-undo' : 'oer-history-entry';
+        const details = document.createElement('details');
+        const line = document.createElement('summary');
+        line.className = 'oer-history-line';
+        const head = document.createElement('span');
+        head.className = 'oer-history-header';
+        head.textContent = row.isUndo
+            ? `${row.whenLabel} · ${row.contributor} · ${t('Deshecho')}`
+            : `${row.whenLabel} · ${row.contributor}`;
+        const what = document.createElement('span');
+        what.className = 'oer-history-what';
+        what.textContent = summaryText(row);
+        line.append(head, what);
+        details.appendChild(line);
+        row.changes.forEach((change) => details.appendChild(renderChange(change, row.hasReasons)));
+        item.appendChild(details);
+        return item;
+    };
 
-        // `row.summary` (jerga RDF: «lrmi:teaches +1 −2 (vaciada)») se omite a
-        // propósito: el diff de abajo ya dice lo mismo con etiquetas humanas.
-        row.changes.forEach((change) => entry.appendChild(renderChange(change, row.hasReasons)));
-        section.appendChild(entry);
-    });
+    let shown = 0;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'button oer-history-more';
+    more.textContent = t('Ver 5 más');
+    const showMore = () => {
+        const next = nextShown(rows.length, shown);
+        rows.slice(shown, next).forEach((row) => list.appendChild(entry(row)));
+        shown = next;
+        more.hidden = shown >= rows.length;
+    };
+    more.addEventListener('click', showMore);
+    showMore();
+    section.appendChild(more);
 
     return section;
 }
