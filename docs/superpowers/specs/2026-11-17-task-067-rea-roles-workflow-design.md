@@ -328,3 +328,10 @@ users remain.
   panels, focuses the field and closes on Esc, «Cancelar» or a click outside. Checked on
   screenshots of the real partial with the host stylesheet; not yet seen in a logged-in admin.
 
+
+## Re-cataloguing by state and role (2026-11-18, owner's decision)
+
+A private REA could not be re-catalogued from the panel (TASK-035: the pre-fill came from `/api`
+without the session). The fix and the owner's rule on who may re-catalogue in each state — the
+proposer included, on their own Borrador or Rechazado REA, from «Mis propuestas» — are designed in
+[the TASK-035 spec](2026-11-18-task-035-authenticated-panel-recatalog-rules-design.md).
