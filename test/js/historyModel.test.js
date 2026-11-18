@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT
+    historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT,
+    summaryParts, retiredId, nextShown, HISTORY_PAGE, RETIRED_TEXT
 } from '../../asset/js/core/historyModel.js';
 
 const row = (changes, extra = {}) => ({
@@ -96,4 +97,39 @@ test('con un array, sí se ha podido leer, aunque esté vacío', () => {
 test('el texto de "no se pudo leer" existe y no está vacío', () => {
     assert.equal(typeof HISTORY_UNKNOWN_TEXT, 'string');
     assert.ok(HISTORY_UNKNOWN_TEXT.length > 0);
+});
+
+test('el resumen de una fila cuenta añadidos y quitados por dimensión, con etiqueta humana', () => {
+    const [r] = historyRows([row([
+        { term: 'lrmi:teaches', added: ['A', 'B'], removed: [{ title: 'C', reason: '' }], emptied: false },
+        { term: 'dcterms:license', added: ['https://x.test/l'], removed: [], emptied: false }
+    ])]);
+    assert.deepEqual(summaryParts(r), [
+        { label: 'Saberes básicos', added: 2, removed: 1, emptied: false },
+        { label: 'Licencia', added: 1, removed: 0, emptied: false }
+    ]);
+});
+
+test('el curso se llama Curso y los campos de gobernanza tienen etiqueta', () => {
+    const [r] = historyRows([row([
+        { term: 'lrmi:educationalLevel', added: ['1º ESO'], removed: [], emptied: false },
+        { term: 'dcterms:creator', added: ['Ana'], removed: [], emptied: false }
+    ])]);
+    assert.deepEqual(r.changes.map((c) => c.label), ['Curso', 'Autoría']);
+});
+
+test('un título #id es un término retirado; un título normal no', () => {
+    assert.equal(retiredId('#404'), '404');
+    assert.equal(retiredId('Fracciones (2º ESO)'), null);
+    assert.equal(retiredId('#12 cosas'), null);
+    assert.ok(RETIRED_TEXT.includes('%s'));
+});
+
+test('paginación de 5 en 5 (Review Focus 4)', () => {
+    assert.equal(HISTORY_PAGE, 5);
+    assert.equal(nextShown(0, 0), 0);
+    assert.equal(nextShown(5, 0), 5);
+    assert.equal(nextShown(6, 0), 5);
+    assert.equal(nextShown(6, 5), 6);
+    assert.equal(nextShown(12, 5), 10);
 });
