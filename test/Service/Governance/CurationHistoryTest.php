@@ -202,4 +202,82 @@ final class CurationHistoryTest extends TestCase
     {
         $this->assertSame([], CurationHistory::referencedIds([]));
     }
+
+    private function typedEvent(array $terms, string $op = 'governance'): array
+    {
+        return [
+            'when' => '2026-11-18T10:00:00+00:00',
+            'contributor' => 'curadora',
+            'summary' => 'Gobernanza · dcterms:license +1 −1',
+            'payload' => ['v' => 2, 'op' => $op, 'undoOf' => null, 'terms' => $terms],
+        ];
+    }
+
+    /** Review Focus 1: a typed value is text, never `#1`. */
+    public function testAGovernanceEventShowsItsValuesAsText(): void
+    {
+        $rows = CurationHistory::rows([$this->typedEvent([
+            'dcterms:license' => [
+                'before' => [['type' => 'uri', 'uri' => 'https://creativecommons.org/licenses/by/4.0/']],
+                'after' => [['type' => 'uri', 'uri' => 'https://creativecommons.org/licenses/by-sa/4.0/']],
+            ],
+            'dcterms:creator' => [
+                'before' => [],
+                'after' => [['type' => 'literal', 'value' => 'Ana Pérez']],
+            ],
+        ])], []);
+
+        $this->assertSame(['dcterms:license', 'dcterms:creator'], array_column($rows[0]['changes'], 'term'));
+        $this->assertSame(['https://creativecommons.org/licenses/by-sa/4.0/'], $rows[0]['changes'][0]['added']);
+        $this->assertSame(
+            [['title' => 'https://creativecommons.org/licenses/by/4.0/', 'reason' => '']],
+            $rows[0]['changes'][0]['removed']
+        );
+        $this->assertSame(['Ana Pérez'], $rows[0]['changes'][1]['added']);
+        $this->assertFalse($rows[0]['changes'][1]['emptied']);
+    }
+
+    public function testATypedValueWithALabelShowsTheLabel(): void
+    {
+        $rows = CurationHistory::rows([$this->typedEvent([
+            'dcterms:license' => [
+                'before' => [],
+                'after' => [['type' => 'uri', 'uri' => 'https://x.test/l', 'label' => 'CC BY 4.0']],
+            ],
+        ])], []);
+
+        $this->assertSame(['CC BY 4.0'], $rows[0]['changes'][0]['added']);
+    }
+
+    /** Reordering authors is a change in v2 (ADR-0020), but nothing was added or removed. */
+    public function testATypedEntryWithTheSameValuesShowsNoAddedOrRemoved(): void
+    {
+        $same = [['type' => 'literal', 'value' => 'A'], ['type' => 'literal', 'value' => 'B']];
+        $rows = CurationHistory::rows([$this->typedEvent([
+            'dcterms:creator' => ['before' => $same, 'after' => array_reverse($same)],
+        ])], []);
+
+        $this->assertSame([], $rows[0]['changes']);
+    }
+
+    public function testATypedUndoIsMarkedAsSuch(): void
+    {
+        $rows = CurationHistory::rows([$this->typedEvent([
+            'dcterms:source' => ['before' => [['type' => 'literal', 'value' => 'X']], 'after' => []],
+        ], 'undo')], []);
+
+        $this->assertTrue($rows[0]['isUndo']);
+        $this->assertTrue($rows[0]['changes'][0]['emptied']);
+    }
+
+    public function testReferencedIdsIgnoresTypedEvents(): void
+    {
+        $ids = CurationHistory::referencedIds([
+            $this->typedEvent(['dcterms:creator' => ['before' => [], 'after' => [['type' => 'literal', 'value' => 'A']]]]),
+            $this->event(['lrmi:teaches' => ['before' => [5], 'after' => [6]]]),
+        ]);
+
+        sort($ids);
+        $this->assertSame([5, 6], $ids);
+    }
 }
