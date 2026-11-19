@@ -298,14 +298,52 @@ $recatalogAttr = $escape((string) json_encode(
     </section>
     <?php endif; ?>
 
-    <div class="oer-panel-grid">
+    <?php
+    // TASK-065 (spec A1–A2, revised 2026-11-19): the sections become tabs under
+    // the header, with the admin's own sidebar tabs (`.sidebar-section-nav`,
+    // ADR-0014). Every panel is rendered here; `ui/panelTabs.js` switches them
+    // (ARIA tabs: roving tabindex, arrows, Home/End) and remembers the choice.
+    // Currículo is open until the script runs, so nothing jumps without JS.
+    $panelTabs = [
+        'curriculum' => $translate('Currículo'),
+        'governance' => $translate('Gobernanza'),
+        'resource' => $translate('Recurso'),
+        'history' => $translate('Historial'),
+    ];
+    $tabAttrs = static function (string $key) use ($escape): string {
+        $on = 'curriculum' === $key;
+        return sprintf(
+            'role="tab" id="oer-panel-tab-%1$s" data-tab="%1$s" aria-controls="oer-panel-tabpanel-%1$s"'
+            . ' aria-selected="%2$s" tabindex="%3$s"%4$s',
+            $escape($key),
+            $on ? 'true' : 'false',
+            $on ? '0' : '-1',
+            $on ? ' class="active"' : ''
+        );
+    };
+    $panelAttrs = static function (string $key) use ($escape): string {
+        return sprintf(
+            'class="oer-panel-tabpanel" role="tabpanel" id="oer-panel-tabpanel-%1$s"'
+            . ' aria-labelledby="oer-panel-tab-%1$s" tabindex="0"%2$s',
+            $escape($key),
+            'curriculum' === $key ? '' : ' hidden'
+        );
+    };
+    ?>
+    <div class="sidebar-section-nav oer-panel-tabs" role="tablist"
+         aria-label="<?php echo $escape($translate('Secciones del REA')); ?>">
+        <?php foreach ($panelTabs as $key => $label): ?>
+        <button type="button" <?php echo $tabAttrs($key); ?>><?php echo $escape($label); ?></button>
+        <?php endforeach; ?>
+    </div>
+
+    <div <?php echo $panelAttrs('curriculum'); ?>>
         <?php $anchor = $area('alignment'); ?>
         <?php
         // El modo lo lleva la sección. Empieza siempre en lectura, también al
         // recargarse tras confirmar: el re-catalogador repuebla el sidebar entero.
         ?>
         <section class="oer-area oer-area-alignment" data-mode="read">
-            <h4><?php echo $escape($translate(PanelAreas::LABELS['alignment'])); ?></h4>
             <div class="oer-anchor-read">
                 <?php if (PanelAreas::STATE_EMPTY === $anchor['state']): ?>
                 <p class="oer-drawer-empty">
@@ -352,13 +390,12 @@ $recatalogAttr = $escape((string) json_encode(
             <div class="oer-anchor-slot" data-recatalog="<?php echo $recatalogAttr; ?>"></div>
             <div class="oer-anchor-bar"></div>
         </section>
+    </div>
 
-        <div class="oer-panel-side">
+    <div <?php echo $panelAttrs('resource'); ?>>
             <?php $media = $area('media'); ?>
             <section class="oer-area oer-area-media">
-                <?php // TASK-065: a section that opens must look like one; Media starts open. ?>
-                <details class="oer-area-box" open>
-                <summary><h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4></summary>
+                <h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4>
                 <?php if (PanelAreas::STATE_EMPTY === $media['state']): ?>
                 <?php // Un REA sin ningún medio no es un recurso: aviso, no dato. ?>
                 <p class="oer-media-none"><?php echo $escape($translate(PanelAreas::MEDIA_EMPTY_TEXT)); ?></p>
@@ -388,13 +425,11 @@ $recatalogAttr = $escape((string) json_encode(
                     <?php endforeach; ?>
                 </ul>
                 <?php endif; ?>
-                </details>
             </section>
 
             <?php $record = $area('record'); ?>
             <section class="oer-area oer-area-record">
-                <details class="oer-area-box">
-                <summary><h4><?php echo $escape($translate(PanelAreas::LABELS['record'])); ?></h4></summary>
+                <h4><?php echo $escape($translate(PanelAreas::LABELS['record'])); ?></h4>
                 <?php if (PanelAreas::STATE_EMPTY === $record['state']): ?>
                 <p class="oer-drawer-empty"><?php echo $escape($translate('Sin ficha descriptiva.')); ?></p>
                 <?php else: ?>
@@ -405,9 +440,7 @@ $recatalogAttr = $escape((string) json_encode(
                     <?php endforeach; ?>
                 </dl>
                 <?php endif; ?>
-                </details>
             </section>
-        </div>
     </div>
 
     <?php
@@ -446,6 +479,7 @@ $recatalogAttr = $escape((string) json_encode(
         JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT
     )) : null;
     ?>
+    <div <?php echo $panelAttrs('governance'); ?>>
     <section
         class="oer-area oer-area-governance"
         data-mode="read"
@@ -454,7 +488,6 @@ $recatalogAttr = $escape((string) json_encode(
         data-governance="<?php echo $governanceData; ?>"
         <?php endif; ?>
     >
-        <h4><?php echo $escape($translate(PanelAreas::LABELS['governance'])); ?></h4>
         <dl>
             <dt><?php echo $escape($termLabels[GovernanceFields::LICENCE]); ?></dt>
             <dd>
@@ -503,14 +536,14 @@ $recatalogAttr = $escape((string) json_encode(
         <?php // Filled by governance.js from `data-governance` above; empty in read mode. ?>
         <div class="oer-governance-form"></div>
     </section>
+    </div>
 
-    <?php // Nace plegado y su petición NO se lanza hasta que se despliega (P-6). ?>
-    <section class="oer-area oer-area-history">
-        <details class="oer-area-box oer-history-box" data-item-id="<?php echo (int) $identity['id']; ?>">
-            <summary><h4><?php echo $escape($translate('Historial de curación')); ?></h4></summary>
+    <?php // Its request is NOT sent until the tab is first shown (P-6, NFR-004). ?>
+    <div <?php echo $panelAttrs('history'); ?>>
+        <section class="oer-area oer-area-history oer-history-box" data-item-id="<?php echo (int) $identity['id']; ?>">
             <div class="oer-history-body"></div>
-        </details>
-    </section>
+        </section>
+    </div>
 
     <?php // La costura que ofrece el core para que otro módulo amplíe el panel. ?>
     <?php $this->trigger('view.details', ['entity' => $panel]); ?>

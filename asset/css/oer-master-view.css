@@ -1679,82 +1679,45 @@ body.oer-master-view.sidebar-open footer {
 }
 
 /*
- * La rejilla se INVIERTE respecto a TASK-032, y no por capricho: el contenedor
- * pasó de ancho y bajo a estrecho y alto. El anclaje es lo más ancho que hay
- * —términos como «Autorregulación del esfuerzo», y seis selectores Chosen en
- * modo edición—, así que se queda con todo el ancho. Medios e Información son
- * pares etiqueta/valor cortos: caben en dos columnas y puestos así ahorran la
- * mitad del recorrido vertical, que es lo que se paga en un panel alto.
+ * Tabs under the header (TASK-065, spec A1–A2 revised 2026-11-19). The look is
+ * the admin's own `.sidebar-section-nav` (pill buttons, ADR-0014); this only
+ * spaces it from the alerts above and gives the keyboard a visible focus,
+ * which the core's pills do not draw on their own.
  */
-.oer-panel-grid {
-    display: block;
+.oer-panel-tabs {
+    margin-top: 1em;
 }
 
-.oer-panel-side {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5em;
-    margin-top: 1.5em;
-    padding-top: 1.25em;
-    border-top: 1px solid var(--oer-rule);
+.oer-panel-tabs [role="tab"]:focus-visible {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 2px;
 }
 
-/* Consulta de CONTENEDOR, no de viewport: lo que decide si las dos columnas
-   caben es cuánto mide el panel. El mismo sidebar puede estar ancho en un
-   monitor y estrecho en un portátil sin que cambie el ancho de pantalla. */
-/* 42rem y no 34: a 36rem las dos columnas dan ~17rem cada una y los nombres de
-   archivo se partían por la mitad de una palabra. Dos columnas solo cuando el
-   panel es de verdad ancho. */
-@container (max-width: 42rem) {
-    .oer-panel-side {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
+.oer-panel-tabpanel {
+    padding-top: 0.25em;
+}
+
+.oer-panel-tabpanel:focus-visible {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 4px;
 }
 
 .oer-area {
-    border-top: 1px solid var(--oer-rule);
-    padding-top: 0.75em;
     margin-bottom: 1.5em;
 }
 
-.oer-area > h4,
-.oer-area-box > summary > h4 {
+/* Inside a tab, only Recurso stacks two sections: the rule separates them. */
+.oer-area + .oer-area {
+    border-top: 1px solid var(--oer-rule);
+    padding-top: 0.75em;
+}
+
+.oer-area > h4 {
     margin: 0 0 0.5em;
     font-size: 0.8em;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--oer-ink);
-}
-
-/* A section that opens must look like one (owner's review, 2026-11-18): the
-   heading keeps the section style and carries a visible chevron. */
-.oer-area-box > summary {
-    cursor: pointer;
-    list-style: none;
-}
-
-.oer-area-box > summary::-webkit-details-marker {
-    display: none;
-}
-
-.oer-area-box > summary > h4 {
-    display: inline;
-}
-
-.oer-area-box > summary::before {
-    content: "▸";
-    display: inline-block;
-    width: 1.1em;
-    color: var(--oer-muted);
-}
-
-.oer-area-box[open] > summary::before {
-    content: "▾";
-}
-
-.oer-area-box[open] > summary {
-    margin-bottom: 0.5em;
 }
 
 /* ------------------------------------------------------------------

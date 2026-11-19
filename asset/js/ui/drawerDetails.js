@@ -1,5 +1,6 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { parseRecatalog } from '../core/anchorData.js';
+import { wireTabs, PANEL_TAB_SHOWN } from './panelTabs.js';
 import {
     historyRows, historyChecked, HISTORY_EMPTY_NOTICE, HISTORY_UNKNOWN_TEXT,
     summaryParts, retiredId, historyPage, RETIRED_TEXT
@@ -14,7 +15,8 @@ import {
  * puede servir con el panel:
  *
  * 1. **El historial**, que es la parte cara —una lectura de API por id
- *    referenciado— y nace plegado: su petición no se lanza hasta desplegarlo.
+ *    referenciado—: su petición no se lanza hasta abrir su pestaña (TASK-065).
+ *    Las pestañas las cambia `ui/panelTabs.js`, que este fichero engancha.
  * 2. **El hueco de edición del anclaje**, que el partial deja vacío y rellena
  *    el re-catalogador. Este módulo es dueño del modo (`data-mode`) y le pasa
  *    el hueco; aquel decide si hay algo que montar.
@@ -135,8 +137,7 @@ function renderChange(change, hasReasons) {
 }
 
 function renderHistory(history) {
-    // Sin encabezado propio: el <summary> del <details> que envuelve esto ya
-    // dice «Historial de curación», y pintarlo dos veces era ruido.
+    // Sin encabezado propio: la pestaña «Historial» ya lo nombra.
     const section = document.createElement('section');
     section.className = 'oer-drawer-section oer-drawer-history';
 
@@ -209,8 +210,8 @@ function renderHistory(history) {
 }
 
 /**
- * Engancha el `<details>` que el partial deja plegado y vacío. La petición no
- * sale hasta el primer despliegue (P-6).
+ * Engancha el panel «Historial», que el partial deja vacío. La petición no
+ * sale hasta que su pestaña se muestra por primera vez (P-6, NFR-004).
  */
 function wireHistory(content, historyUrl) {
     const box = content.querySelector('.oer-history-box');
@@ -221,8 +222,8 @@ function wireHistory(content, historyUrl) {
 
     const itemId = box.dataset.itemId;
     let loaded = false;
-    box.addEventListener('toggle', () => {
-        if (!box.open || loaded) {
+    box.addEventListener(PANEL_TAB_SHOWN, () => {
+        if (loaded) {
             return;
         }
         loaded = true;
@@ -272,7 +273,10 @@ export function initDrawerDetails(config) {
     document.addEventListener(DRAWER_RENDERED, (event) => {
         const { itemId, content } = event.detail;
 
+        // Before the tabs: a remembered «Historial» tab is shown while the tabs
+        // are wired, and its panel must already be listening.
         wireHistory(content, config.drawerHistoryUrl);
+        wireTabs(content);
 
         // `.oer-area-governance` is absent entirely when `drawer-details`
         // could not read the item (same branch the anchor slot check below

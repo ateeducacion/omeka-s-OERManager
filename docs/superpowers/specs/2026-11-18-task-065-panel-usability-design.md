@@ -39,18 +39,31 @@ feedback from TASK-070 may still lead to a later pass.
 
 ## Part A: structure and style of the panel
 
-### A1. Visible sections
+### A1–A2. Sections as tabs (revised 2026-11-19)
 
-Each `.oer-area` becomes a block with a top rule (`--oer-rule`) and more space between blocks
-(about 1.5em instead of 1.25em). Its `h4` keeps the small caps and gains some contrast. The order does
-not change: header (title, state, alerts) → Curricular alignment → Media → Record → Governance → History.
+**Revision.** The first version of A1–A2 (a top rule per section; Media, Record and History as
+`<details>` with a chevron) was implemented and reviewed by the owner. It still did not separate the
+sections clearly and kept the long scroll. The owner asked for tabs under the panel header instead
+(2026-11-19) and chose this grouping.
 
-### A2. Collapsible sections with a visible indicator
-
-History, Media and Record use `<details>`/`<summary>` with a visible chevron (▸ closed, ▾ open) and the
-same heading style as the other sections, so they read as sections that open. History still loads on
-first open (NFR-004). Curricular alignment and Governance are always open: they are the ones edited.
-Media opens by default; Record and History start closed.
+- **Always visible, above the tabs:** title, header (thumbnail, visibility, verdict), workflow state and
+  actions, and integrity alerts.
+- **Four tabs:** **Currículo** (curricular alignment and the «Re-catalogar / Deshacer» bar; the default
+  tab) · **Gobernanza** (licence and authorship) · **Recurso** (Media, then Record, each with its
+  heading, not collapsible) · **Historial** (the timeline of A4).
+- **Native look (ADR-0014):** the admin's own sidebar tabs, `.sidebar-section-nav` (pill buttons with
+  `role="tab"`). The core's script for them lives in `resource-form.js`, which the master view does not
+  load, so a small module script switches them, scoped to the drawer.
+- **Rendered by the server:** all four panels come with `drawer-details`; switching makes no request,
+  except History, which still loads on its first opening (NFR-004).
+- **The chosen tab is remembered** while moving from one REA to another in the master view
+  (`sessionStorage`; if unavailable, Currículo).
+- **Editing survives a tab switch:** the hidden panel keeps its DOM, so an open re-cataloguing or
+  governance edit is still there on return.
+- **Accessibility (NFR-006):** the ARIA tabs pattern. Tabs have `role="tab"`, `aria-selected` and
+  `aria-controls`; panels have `role="tabpanel"`, `aria-labelledby` and `hidden`. Arrow keys, Home and
+  End move between tabs (roving `tabindex`); Tab enters the panel.
+- The two-column grid of alignment | media + record is removed.
 
 ### A3. The re-cataloguing bar
 
@@ -175,7 +188,7 @@ ArrowRight/ArrowLeft on a branch).
 
 ## Testing
 
-- **JavaScript (`make test-js`):** `historyModel` (event summary, paging), `alignmentTree` (build, values
+- **JavaScript (`make test-js`):** `historyModel` (event summary, paging), `panelTabs` (initial tab, keyboard), `alignmentTree` (build, values
   that do not fit, operations, serialization, summaries, grouped diff).
 - **PHPUnit (`make test`):** the payload version with labels, reading older payloads, the «término
   retirado» fallback. The existing apply tests stay valid because the contract does not change.
