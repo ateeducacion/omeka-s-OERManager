@@ -42,14 +42,23 @@ function reasonForms(section) {
     return Array.from(section.querySelectorAll('.oer-workflow-reason'));
 }
 
+/**
+ * The form's id ATTRIBUTE. `form.id` is not it here: each form holds an
+ * `<input name="id">` (the REA id it posts), and a named control shadows the
+ * form's own property, so `form.id` is that input.
+ */
+function formId(form) {
+    return form.getAttribute('id');
+}
+
 function openReason(section) {
     const form = reasonForms(section).find((one) => !one.hidden);
-    return form ? form.id : null;
+    return form ? formId(form) : null;
 }
 
 function setReason(section, id) {
     reasonForms(section).forEach((form) => {
-        form.hidden = form.id !== id;
+        form.hidden = formId(form) !== id;
     });
     section.querySelectorAll('.oer-workflow-reason-toggle').forEach((button) => {
         button.setAttribute('aria-expanded', button.getAttribute('aria-controls') === id ? 'true' : 'false');
