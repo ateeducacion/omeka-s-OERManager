@@ -29,18 +29,19 @@ function swapIntegrity(panelEl, fresh) {
         sidebar.dataset.integrity = status;
     }
 
+    // The verdict and the summary link share one place in the header, right
+    // after the visibility: at most one of them is there.
     const visibility = panelEl.querySelector('.oer-panel-visibility');
+    const afterVisibility = (node) => visibility && visibility.insertAdjacentElement('afterend', node);
     swapNode(
         panelEl.querySelector('.oer-panel-verdict'),
         fresh.querySelector('.oer-panel-verdict'),
-        (node) => visibility && visibility.insertAdjacentElement('afterend', node)
+        afterVisibility
     );
-
-    const tabs = panelEl.querySelector('.oer-panel-tabs');
     swapNode(
         panelEl.querySelector('.oer-integrity-summary'),
         fresh.querySelector('.oer-integrity-summary'),
-        (node) => tabs && tabs.insertAdjacentElement('beforebegin', node)
+        afterVisibility
     );
 
     // The tab's label and count are its children; its state (selected,

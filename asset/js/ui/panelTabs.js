@@ -3,10 +3,11 @@ import { initialTab, keyTarget } from '../core/panelTabs.js';
 /**
  * Tabs of the detail panel (TASK-065, spec A1–A2 revised 2026-11-19).
  *
- * The markup is the admin's own sidebar tabs (`.sidebar-section-nav`, ADR-0014),
- * rendered by `drawer-details.phtml` with every panel in it. The core switches
- * them from `resource-form.js`, which the master view does not load, so this
- * file does it, scoped to one freshly-rendered drawer.
+ * The markup is the admin's own section tabs (`.section-nav`, as Omeka's
+ * SectionNav helper renders them on the item page; ADR-0014), rendered by
+ * `drawer-details.phtml` with every panel in it. The core binds its script to
+ * `.section-nav` links on page load only, so this file switches these, scoped
+ * to one freshly-rendered drawer. The links' `href` is only the no-JS fallback.
  *
  * Panels are hidden, never removed: an open re-cataloguing or governance edit
  * survives a tab switch. Showing a panel dispatches `PANEL_TAB_SHOWN` on it, so
@@ -49,7 +50,11 @@ export function wireTabs(content) {
         tabs.forEach((other) => {
             const on = other === tab;
             other.setAttribute('aria-selected', on ? 'true' : 'false');
-            other.classList.toggle('active', on);
+            // The native look marks the <li>, not the link.
+            const item = other.closest('li');
+            if (item) {
+                item.classList.toggle('active', on);
+            }
             other.tabIndex = on ? 0 : -1;
             const panel = panelOf(other);
             if (panel) {
@@ -71,6 +76,7 @@ export function wireTabs(content) {
     nav.addEventListener('click', (event) => {
         const tab = event.target.closest('[role="tab"]');
         if (tab && nav.contains(tab)) {
+            event.preventDefault();
             select(tab);
         }
     });
@@ -102,6 +108,7 @@ export function wireTabs(content) {
         if (!tab) {
             return;
         }
+        event.preventDefault();
         select(tab);
         const panel = panelOf(tab);
         if (panel) {

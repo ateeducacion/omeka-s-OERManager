@@ -51,9 +51,10 @@ sections clearly and kept the long scroll. The owner asked for tabs under the pa
 - **Four tabs:** **Currículo** (curricular alignment and the «Re-catalogar / Deshacer» bar; the default
   tab) · **Gobernanza** (licence and authorship) · **Recurso** (Media, then Record, each with its
   heading, not collapsible) · **Historial** (the timeline of A4).
-- **Native look (ADR-0014):** the admin's own sidebar tabs, `.sidebar-section-nav` (pill buttons with
-  `role="tab"`). The core's script for them lives in `resource-form.js`, which the master view does not
-  load, so a small module script switches them, scoped to the drawer.
+- **Native look (ADR-0014):** the admin's own section tabs, `.section-nav`, with the markup of Omeka's
+  SectionNav helper, as on the item page. The first version used the pill-shaped `.sidebar-section-nav`;
+  the owner asked for the standard tabs on 2026-11-19. The core binds its `.section-nav` script on page
+  load only, so a small module script switches these, scoped to the drawer.
 - **Rendered by the server:** all four panels come with `drawer-details`; switching makes no request,
   except History, which still loads on its first opening (NFR-004).
 - **The chosen tab is remembered** while moving from one REA to another in the master view
@@ -111,13 +112,16 @@ The owner asked to make the two zones above the tabs smaller, and chose these tw
 
 - **A compact flow bar.**
   - The state is the same badge as the table and the item page, including «Publicado fuera del flujo».
-    «Borrador» has no badge, so it shows as plain text.
+    «Borrador» has no badge, so it shows as plain text. All buttons keep the native height; the secondary
+    ones draw their outline with the core's inset shadow, not a border, and have no bottom margin.
   - The actions are native buttons in one row: «Confirmar y publicar» and «Reabrir» act at once.
     «Rechazar…», «Descartar…» and «Despublicar…» open ONE inline reason form under the bar, one at a
     time. It has a visible label, the full verb and «Cancelar», and Escape closes it.
   - Each action keeps its own form, AJAX submit, CSRF hash and required reason.
 - **Integrity summary and issues per tab.**
-  - Above the tabs there is one line, for example «⚠ 4 avisos · impiden publicar». «impiden publicar»
+  - In the panel header, where «Sin incidencias» goes when there are none, there is one link, for example
+    «⚠ 4 avisos · impiden publicar». The owner asked for a link in the header, not a button above the
+    tabs (2026-11-19). «impiden publicar»
     appears only to whoever can publish and only when the publish gate would refuse. The gate and the
     panel share `IntegrityPolicy::PUBLISH_GATE_IGNORES`.
   - The summary opens the first tab with issues.

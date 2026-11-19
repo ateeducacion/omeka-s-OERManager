@@ -171,6 +171,28 @@ $issueLine = static function (array $line) use ($escape, $severityPrefix): strin
         $escape($line['text'])
     );
 };
+// The one line that replaces the issue list (spec A6): how many, whether they
+// stop the publication (only to whoever can publish) and a link to the first
+// tab with issues. It sits in the header, where «Sin incidencias» sits when
+// there are none.
+$summaryCounts = [];
+foreach ($issueGroups as $severity => $issues) {
+    $total = count(array_filter(
+        $issues,
+        static fn (array $issue): bool => PanelIssues::FLOW !== PanelIssues::tabOf((string) $issue['field'])
+    ));
+    if (0 === $total) {
+        continue;
+    }
+    $forms = $severityCounts[$severity] ?? [$severity, $severity];
+    $summaryCounts[] = sprintf('%d %s', $total, 1 === $total ? $forms[0] : $forms[1]);
+}
+$summaryText = implode(', ', $summaryCounts);
+if (!empty($canPublish) && PanelIssues::blockingPublish($integrity['issues'] ?? []) > 0) {
+    $summaryText .= ' · ' . $translate('impiden publicar');
+}
+$summarySeverity = isset($issueGroups['error']) ? 'error' : 'warning';
+
 $tabIssues = static function (string $tab) use ($panelIssues, $issueLine): string {
     $lines = $panelIssues['tabs'][$tab] ?? [];
     if (!$lines) {
@@ -227,7 +249,12 @@ $recatalogAttr = $escape((string) json_encode(
             // además de color (ADR-0014 §3), porque «no se pudo comprobar» y «se
             // comprobó y está limpio» no pueden acabar pintando lo mismo.
             ?>
-            <?php if (!$issueGroups): ?>
+            <?php if ($panelIssues['tabs']): ?>
+            <a class="oer-integrity-summary oer-integrity-summary-<?php echo $escape($summarySeverity); ?>"
+               href="#oer-panel-tabpanel-<?php echo $escape((string) $panelIssues['first']); ?>"
+               data-goto-tab="<?php echo $escape((string) $panelIssues['first']); ?>"><span class="oer-visually-hidden"><?php
+                echo $escape($translate(PanelAreas::LABELS['integrity'])); ?>: </span><?php echo $escape($summaryText); ?></a>
+            <?php elseif (!$issueGroups): ?>
             <span class="oer-panel-verdict oer-panel-verdict-<?php echo $checked ? 'ok' : 'unknown'; ?>">
                 <?php echo $escape($checked
                     ? $translate('Sin incidencias')
@@ -330,43 +357,14 @@ $recatalogAttr = $escape((string) json_encode(
     </section>
     <?php endif; ?>
 
-    <?php if ($panelIssues['tabs']): ?>
-    <?php
-    // TASK-065 (spec A6): one line instead of the list. Each issue is read in
-    // the tab that fixes it; the line says how many, whether they stop the
-    // publication (only to whoever can publish), and opens the first tab.
-    $summaryCounts = [];
-    foreach ($issueGroups as $severity => $issues) {
-        $total = count(array_filter(
-            $issues,
-            static fn (array $issue): bool => PanelIssues::FLOW !== PanelIssues::tabOf((string) $issue['field'])
-        ));
-        if (0 === $total) {
-            continue;
-        }
-        $forms = $severityCounts[$severity] ?? [$severity, $severity];
-        $summaryCounts[] = sprintf('%d %s', $total, 1 === $total ? $forms[0] : $forms[1]);
-    }
-    $summaryText = implode(', ', $summaryCounts);
-    if ($canPublish && PanelIssues::blockingPublish($integrity['issues'] ?? []) > 0) {
-        $summaryText .= ' · ' . $translate('impiden publicar');
-    }
-    $worstTab = isset($issueGroups['error']) ? 'error' : 'warning';
-    ?>
-    <p class="oer-integrity-summary oer-integrity-summary-<?php echo $escape($worstTab); ?>">
-        <button type="button" class="oer-integrity-summary-link"
-                data-goto-tab="<?php echo $escape((string) $panelIssues['first']); ?>">
-            <span class="oer-visually-hidden"><?php echo $escape($translate(PanelAreas::LABELS['integrity'])); ?>:</span>
-            <?php echo $escape($summaryText); ?>
-        </button>
-    </p>
-    <?php endif; ?>
 
     <?php
     // TASK-065 (spec A1–A2, revised 2026-11-19): the sections become tabs under
-    // the header, with the admin's own sidebar tabs (`.sidebar-section-nav`,
-    // ADR-0014). Every panel is rendered here; `ui/panelTabs.js` switches them
-    // (ARIA tabs: roving tabindex, arrows, Home/End) and remembers the choice.
+    // the header, with the admin's own section tabs (`.section-nav`, the markup
+    // of Omeka's SectionNav helper, as on the item page; ADR-0014). Every panel
+    // is rendered here; `ui/panelTabs.js` switches them (ARIA tabs: roving
+    // tabindex, arrows, Home/End) and remembers the choice. The core binds its
+    // own `.section-nav` script on page load only, so it never sees these.
     // Currículo is open until the script runs, so nothing jumps without JS.
     $panelTabs = [
         'curriculum' => $translate('Currículo'),
@@ -377,12 +375,11 @@ $recatalogAttr = $escape((string) json_encode(
     $tabAttrs = static function (string $key) use ($escape): string {
         $on = 'curriculum' === $key;
         return sprintf(
-            'role="tab" id="oer-panel-tab-%1$s" data-tab="%1$s" aria-controls="oer-panel-tabpanel-%1$s"'
-            . ' aria-selected="%2$s" tabindex="%3$s"%4$s',
+            'href="#oer-panel-tabpanel-%1$s" role="tab" id="oer-panel-tab-%1$s" data-tab="%1$s"'
+            . ' aria-controls="oer-panel-tabpanel-%1$s" aria-selected="%2$s" tabindex="%3$s"',
             $escape($key),
             $on ? 'true' : 'false',
-            $on ? '0' : '-1',
-            $on ? ' class="active"' : ''
+            $on ? '0' : '-1'
         );
     };
     $panelAttrs = static function (string $key) use ($escape): string {
@@ -394,11 +391,11 @@ $recatalogAttr = $escape((string) json_encode(
         );
     };
     ?>
-    <div class="sidebar-section-nav oer-panel-tabs" role="tablist"
-         aria-label="<?php echo $escape($translate('Secciones del REA')); ?>">
+    <nav class="section-nav oer-panel-tabs" aria-label="<?php echo $escape($translate('Secciones del REA')); ?>">
+    <ul role="tablist">
         <?php foreach ($panelTabs as $key => $label): ?>
         <?php $tabCount = $panelIssues['counts'][$key] ?? []; ?>
-        <button type="button" <?php echo $tabAttrs($key); ?>><?php echo $escape($label); ?><?php
+        <li role="presentation"<?php echo 'curriculum' === $key ? ' class="active"' : ''; ?>><a <?php echo $tabAttrs($key); ?>><?php echo $escape($label); ?><?php
         if ($tabCount):
             $tabTotal = array_sum($tabCount);
             $tabSeverity = isset($tabCount['error']) ? 'error' : 'warning';
@@ -407,9 +404,10 @@ $recatalogAttr = $escape((string) json_encode(
             echo $escape(sprintf(', %d %s', $tabTotal, 1 === $tabTotal ? $tabForms[0] : $tabForms[1]));
             ?></span><?php
         endif;
-        ?></button>
+        ?></a></li>
         <?php endforeach; ?>
-    </div>
+    </ul>
+    </nav>
 
     <div <?php echo $panelAttrs('curriculum'); ?>>
         <?php echo $tabIssues('curriculum'); ?>

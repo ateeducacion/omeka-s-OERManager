@@ -952,7 +952,8 @@
 .oer-recatalog-undo-btn {
     margin: 0;
     background: transparent;
-    border: 1px solid var(--oer-rule);
+    border: 0;
+    box-shadow: 0 0 0 1px var(--oer-rule) inset;
     color: var(--oer-ink);
 }
 
@@ -1344,27 +1345,11 @@
     border-left: 3px solid var(--oer-warn);
 }
 
-/* The one line above the tabs: how many, and whether they stop publishing.
-   It opens the first tab with issues. */
+/* The summary in the header, where «Sin incidencias» goes when there are
+   none: a link to the first tab with issues, not a button. */
 .oer-integrity-summary {
-    margin: 0 0 0.25em;
     font-size: 0.9em;
-}
-
-.oer-integrity-summary-link {
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    color: inherit;
-    text-decoration: underline;
     text-underline-offset: 2px;
-    cursor: pointer;
-}
-
-.oer-integrity-summary-link:focus-visible {
-    outline: 2px solid var(--oer-accent);
-    outline-offset: 2px;
 }
 
 .oer-integrity-summary-warning {
@@ -1756,13 +1741,21 @@ body.oer-master-view.sidebar-open footer {
     margin: 0;
 }
 
-/* Secondary: they open a reason, they do not act yet. Same treatment as
-   «Deshacer» in the re-cataloguing bar. */
+/* The core gives every button `margin: 0 0 12px`: inside forms it pushed the
+   buttons out of line with the rest of the bar. */
+.oer-panel-workflow button,
+.oer-panel-workflow .button {
+    margin: 0;
+}
+
+/* Secondary: they open a reason, or close it, and do not act yet. Same
+   treatment as «Deshacer» in the re-cataloguing bar. The outline is the
+   core's own inset shadow, not a border, so the height stays the native one. */
 .oer-workflow-reason-toggle,
 .oer-workflow-reason-cancel {
-    margin: 0;
     background: transparent;
-    border: 1px solid var(--oer-rule);
+    border: 0;
+    box-shadow: 0 0 0 1px var(--oer-rule) inset;
     color: var(--oer-ink);
 }
 
@@ -1784,7 +1777,10 @@ body.oer-master-view.sidebar-open footer {
     gap: 0.5em;
 }
 
-/* `display: flex` above would otherwise win over the `hidden` attribute. */
+/* The reason forms are `hidden` until their button is pressed. The form rule
+   `.oer-panel-workflow .oer-drawer-workflow-form { display: flex }` comes
+   later with the same weight, so this one needs one more class to win. */
+.oer-panel-workflow .oer-drawer-workflow-form[hidden],
 .oer-panel-workflow [hidden] {
     display: none;
 }
@@ -1819,12 +1815,18 @@ body.oer-master-view.sidebar-open footer {
 
 /*
  * Tabs under the header (TASK-065, spec A1–A2 revised 2026-11-19). The look is
- * the admin's own `.sidebar-section-nav` (pill buttons, ADR-0014); this only
- * spaces it from the alerts above and gives the keyboard a visible focus,
- * which the core's pills do not draw on their own.
+ * the admin's own `.section-nav`, as on the item page (ADR-0014); this only
+ * resets the list, spaces it from the flow bar and gives the keyboard a
+ * visible focus.
  */
 .oer-panel-tabs {
     margin-top: 1em;
+}
+
+.oer-panel-tabs ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 .oer-panel-tabs [role="tab"]:focus-visible {
