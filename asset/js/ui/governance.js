@@ -1,8 +1,7 @@
 import { TERMS, buildPayload, validate, rows } from '../core/governanceModel.js';
 import { messageFor } from '../core/messages.js';
-import { integrityGroups, integrityChecked, INTEGRITY_OK_TEXT, INTEGRITY_UNKNOWN_TEXT } from '../core/integrityModel.js';
-import { TERM_LABELS } from '../core/drawerModel.js';
 import { GOVERNANCE_SLOT } from './drawerDetails.js';
+import { refreshIntegrity } from './panelIntegrity.js';
 import {
     firstEntryRaw,
     buildVocabField,
@@ -57,25 +56,16 @@ import {
  * server-side; only fields the current form values disagree with their
  * initial (as loaded, or as the default rights holder pre-filled) are sent.
  *
- * On success the response's own `values`/`licenceStatus`/`integrity` repaint
- * the section, the Licence cell of the row and the integrity banner — never
- * recomputed here, per the slice's standing rule that duplicating a
- * server-side judgement in the browser only invites the two to drift.
+ * On success the response's own `values`/`licenceStatus` repaint the section
+ * and the Licence cell of the row; the panel's integrity (summary, tab counts,
+ * issues per tab) is re-read from the server by `ui/panelIntegrity.js` (TASK-065).
+ * Nothing is recomputed here, per the slice's standing rule that duplicating
+ * a server-side judgement in the browser only invites the two to drift.
  */
 
 const FIELD_ERROR_TEXT = {
     'not-http-uri': 'Debe ser una URL http o https.',
     'too-many': 'Solo se admite un valor.'
-};
-
-const SEVERITY_HEADING = {
-    error: 'Errores',
-    warning: 'Avisos'
-};
-
-const SEVERITY_COUNT_FORMS = {
-    error: ['error', 'errores'],
-    warning: ['aviso', 'avisos']
 };
 
 const SINGLE_FIELDS = [
@@ -312,95 +302,6 @@ function updateLicenceCell(itemId, governanceAnswer) {
 }
 
 /**
- * The integrity banner and header verdict (`.oer-panel-alert`/
- * `.oer-panel-verdict`) plus the rail attribute on both the panel and the
- * sidebar (`data-integrity`, ADR-0014 §4) — from the answer's own recomputed
- * `integrity`, grouped by `integrityModel.js`'s `integrityGroups()` exactly
- * as `drawer-details.phtml` groups it server-side. Not every field an
- * integrity issue can name has a client-side label (`TERM_LABELS` covers the
- * curriculum terms and the licence, not the other four governance terms —
- * see the report), but only the licence can realistically appear here today:
- * nothing in this codebase yet makes the other four governance terms
- * required.
- */
-function renderIntegrity(panelEl, integrity) {
-    const status = (integrity && integrity.status) || 'ok';
-    panelEl.dataset.integrity = status;
-    const sidebar = document.getElementById('oer-detail-sidebar');
-    if (sidebar) {
-        sidebar.dataset.integrity = status;
-    }
-
-    const header = panelEl.querySelector('.oer-panel-header');
-    const meta = header && header.querySelector('.oer-panel-meta');
-    const visibility = meta && meta.querySelector('.oer-panel-visibility');
-    let verdict = panelEl.querySelector('.oer-panel-verdict');
-    let alert = panelEl.querySelector('.oer-panel-alert');
-    const groups = integrityGroups(integrity);
-
-    if (!groups.length) {
-        if (alert) {
-            alert.remove();
-        }
-        if (!verdict && visibility) {
-            verdict = document.createElement('span');
-            visibility.insertAdjacentElement('afterend', verdict);
-        }
-        if (verdict) {
-            const checked = integrityChecked(integrity);
-            verdict.className = `oer-panel-verdict oer-panel-verdict-${checked ? 'ok' : 'unknown'}`;
-            verdict.textContent = Omeka.jsTranslate(checked ? INTEGRITY_OK_TEXT : INTEGRITY_UNKNOWN_TEXT);
-        }
-        return;
-    }
-
-    if (verdict) {
-        verdict.remove();
-    }
-
-    const worst = groups[0].severity;
-    if (!alert) {
-        alert = document.createElement('section');
-        // Same position the phtml renders it in: after the header AND after
-        // the reject/publish workflow section when there is one (a panel
-        // with neither has `anchor` fall through to `header`, and one with
-        // neither section at all falls through to prepending).
-        const anchor = panelEl.querySelector('.oer-panel-workflow') || header;
-        panelEl.insertBefore(alert, anchor ? anchor.nextSibling : panelEl.firstChild);
-    }
-    alert.className = `oer-panel-alert oer-panel-alert-${worst}`;
-    alert.textContent = '';
-
-    const heading = document.createElement('h4');
-    const counts = groups.map((group) => {
-        const forms = SEVERITY_COUNT_FORMS[group.severity];
-        const total = group.issues.length;
-        const word = forms ? (1 === total ? forms[0] : forms[1]) : group.severity;
-        return `${total} ${Omeka.jsTranslate(word)}`;
-    });
-    heading.textContent = `${Omeka.jsTranslate('Integridad')} · ${counts.join(', ')}`;
-    alert.appendChild(heading);
-
-    groups.forEach((group) => {
-        const subheading = document.createElement('h5');
-        subheading.textContent = Omeka.jsTranslate(SEVERITY_HEADING[group.severity] || group.severity);
-        alert.appendChild(subheading);
-
-        const list = document.createElement('ul');
-        list.className = `oer-integrity-issues oer-integrity-issues-${group.severity}`;
-        group.issues.forEach((issue) => {
-            const item = document.createElement('li');
-            const label = TERM_LABELS[issue.field] || issue.field;
-            // `issue.message` is server text, already complete — not passed
-            // through `jsTranslate()`, same as the phtml never re-translates it.
-            item.textContent = `${Omeka.jsTranslate(label)}: ${issue.message}`;
-            list.appendChild(item);
-        });
-        alert.appendChild(list);
-    });
-}
-
-/**
  * Wires one governance area, freshly rendered. Called from the `GOVERNANCE_SLOT`
  * listener `initGovernance()` sets up below, once per slot event — i.e. once
  * per drawer render, same cadence as the direct call this replaced in fix
@@ -484,7 +385,9 @@ function mountSection(section) {
                 const csrf = governance.csrf;
                 renderReadRows(section, response);
                 updateLicenceCell(itemId, response);
-                renderIntegrity(panelEl, response.integrity);
+                // TASK-065 (spec A6): the server places and words the issues;
+                // only the integrity pieces of the panel are swapped.
+                refreshIntegrity(panelEl, itemId);
                 // Refresh the embedded snapshot so a second «Editar» starts
                 // from what was just saved, not the page's original load —
                 // the CSRF hash is not part of the answer, so it is carried

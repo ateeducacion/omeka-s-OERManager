@@ -50,6 +50,8 @@ use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Governance\LicenceStatus;
 use OERManager\Service\Governance\ValueText;
 use OERManager\Service\PanelAreas;
+use OERManager\Service\PanelIssues;
+use OERManager\Service\Workflow\WorkflowStatus;
 
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
@@ -66,7 +68,7 @@ $area = function (string $id) use ($areas): array {
 
 $termLabels = [
     'dcterms:description' => $translate('Descripción'),
-    'lrmi:educationalLevel' => $translate('Etapa'),
+    'lrmi:educationalLevel' => $translate('Curso'),
     'schema:about' => $translate('Materia'),
     'lrmi:assesses' => $translate('Criterios de evaluación'),
     'lrmi:teaches' => $translate('Saberes básicos'),
@@ -142,6 +144,45 @@ if (null !== $integrity) {
 }
 $checked = null !== $integrity && !empty($integrity['status']);
 
+// TASK-065 (spec A6): where each issue is read and how it is worded. A REA
+// published out of the flow already says so in its badge, so that issue is
+// not repeated as a note under it.
+$outOfFlow = null !== $panel
+    && 'out_of_flow' === WorkflowStatus::pageBadge($workflowStatus ?? null, (bool) $panel['identity']['isPublic']);
+$panelIssues = PanelIssues::build(
+    array_values(array_filter(
+        $integrity['issues'] ?? [],
+        static fn (array $issue): bool => !($outOfFlow && 'published_out_of_flow' === ($issue['code'] ?? ''))
+    )),
+    $termLabels,
+    $translate
+);
+// The glyph comes from the list marker; the severity is said in words for
+// screen readers (ADR-0014 rule 3), as the hidden <h5> did before.
+$severityPrefix = [
+    'error' => $translate('Error:'),
+    'warning' => $translate('Aviso:'),
+];
+$issueLine = static function (array $line) use ($escape, $severityPrefix): string {
+    return sprintf(
+        '<li class="oer-issue-%s"><span class="oer-visually-hidden">%s </span>%s</li>',
+        $escape($line['severity']),
+        $escape($severityPrefix[$line['severity']] ?? ''),
+        $escape($line['text'])
+    );
+};
+$tabIssues = static function (string $tab) use ($panelIssues, $issueLine): string {
+    $lines = $panelIssues['tabs'][$tab] ?? [];
+    if (!$lines) {
+        return '';
+    }
+    $html = '<ul class="oer-integrity-issues oer-tab-issues">';
+    foreach ($lines as $line) {
+        $html .= $issueLine($line);
+    }
+    return $html . '</ul>';
+};
+
 // TASK-035: the anchor slot's data; the reason is translated here, once.
 $recatalogData = $recatalog ?? ['allowed' => false, 'reason' => '', 'current' => []];
 if ('' !== $recatalogData['reason']) {
@@ -209,93 +250,116 @@ $recatalogAttr = $escape((string) json_encode(
     // drawer entero es 100% AJAX (ADR-0017 §1), a diferencia de la página
     // nativa— para no perder el filtro activo del curador al ir y volver.
     ?>
-    <?php if ($canReject || $canPublish || $canDiscard || $canUnpublish || $canReopen): ?>
+    <?php
+    // TASK-065 (spec A6): one bar. The state is the same badge as the table
+    // and the item page (`common/workflow-badge`); the actions are native
+    // buttons in a row. An action that needs a reason opens ONE inline form
+    // under the bar (`workflowDrawer.js`), so the reasons are not three
+    // always-open fields any more. Each action keeps its own form, its AJAX
+    // submit, its CSRF hash and its required reason.
+    $badge = WorkflowStatus::pageBadge($workflowStatus, (bool) $identity['isPublic']);
+    $reasonActions = [
+        'reject' => [$canReject, $rejectUrl, $translate('Rechazar…'), $translate('Motivo del rechazo'), $translate('Rechazar propuesta')],
+        'discard' => [$canDiscard, $discardUrl, $translate('Descartar…'), $translate('Motivo del descarte'), $translate('Descartar')],
+        'unpublish' => [$canUnpublish, $unpublishUrl, $translate('Despublicar…'), $translate('Motivo para despublicar'), $translate('Despublicar')],
+    ];
+    $hasActions = $canReject || $canPublish || $canDiscard || $canUnpublish || $canReopen;
+    ?>
+    <?php if ($hasActions || $panelIssues['flow']): ?>
     <section class="oer-panel-workflow" data-status="<?php echo $escape((string) $workflowStatus); ?>">
-        <p class="oer-workflow-status">
-            <?php echo $escape(sprintf(
-                $translate('Estado del flujo: %s'),
-                $workflowStatus ?? $translate('Borrador')
-            )); ?>
-        </p>
-        <?php
-        // TASK-067: rechazar, descartar y despublicar llevan motivo obligatorio.
-        $reasonForms = [
-            [$canReject, $rejectUrl, $translate('Motivo del rechazo'), $translate('Rechazar propuesta')],
-            [$canDiscard, $discardUrl, $translate('Motivo del descarte'), $translate('Descartar')],
-            [$canUnpublish, $unpublishUrl, $translate('Motivo para despublicar'), $translate('Despublicar')],
-        ];
-        foreach ($reasonForms as [$show, $url, $placeholder, $label]):
-            if (!$show) {
-                continue;
-            }
+        <div class="oer-workflow-bar">
+            <span class="oer-workflow-state">
+                <span class="oer-visually-hidden"><?php echo $escape($translate('Estado del flujo:')); ?></span>
+                <?php if (null !== $badge): ?>
+                <?php echo $this->partial('oer-manager/common/workflow-badge', ['badge' => $badge]); ?>
+                <?php else: ?>
+                <span class="oer-workflow-draft"><?php echo $escape($translate('Borrador')); ?></span>
+                <?php endif; ?>
+            </span>
+            <?php if ($canPublish): ?>
+            <?php
+            // «Confirmar y publicar» (ADR-0023 §3): workflowDrawer.js añade la
+            // re-catalogación pendiente del editor abierto, si la hay; el
+            // servidor la escribe primero y no publica si falla.
             ?>
-        <form method="post" action="<?php echo $escape($url); ?>" class="oer-workflow-form oer-drawer-workflow-form">
+            <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form oer-drawer-publish-form">
+                <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
+                <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
+                <button type="submit" class="button"><?php echo $escape($translate('Confirmar y publicar')); ?></button>
+            </form>
+            <?php endif; ?>
+            <?php if ($canReopen): ?>
+            <form method="post" action="<?php echo $escape($reopenUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form">
+                <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
+                <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
+                <button type="submit" class="button"><?php echo $escape($translate('Reabrir')); ?></button>
+            </form>
+            <?php endif; ?>
+            <?php foreach ($reasonActions as $key => [$show, , $toggle]): ?>
+            <?php if ($show): ?>
+            <button type="button" class="button oer-workflow-reason-toggle" aria-expanded="false"
+                    aria-controls="oer-workflow-reason-<?php echo $escape($key); ?>"><?php echo $escape($toggle); ?></button>
+            <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php foreach ($reasonActions as $key => [$show, $url, , $reasonLabel, $submit]): ?>
+        <?php if ($show): ?>
+        <form method="post" action="<?php echo $escape($url); ?>" hidden
+              id="oer-workflow-reason-<?php echo $escape($key); ?>"
+              class="oer-workflow-form oer-drawer-workflow-form oer-workflow-reason">
             <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
             <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
-            <input
-                type="text"
-                name="reason"
-                required
-                maxlength="200"
-                placeholder="<?php echo $escape($placeholder); ?>"
-                aria-label="<?php echo $escape($placeholder); ?>"
-            >
-            <button type="submit" class="button"><?php echo $escape($label); ?></button>
-        </form>
-        <?php endforeach; ?>
-        <?php if ($canPublish): ?>
-        <?php
-        // «Confirmar y publicar» (ADR-0023 §3): workflowDrawer.js añade la
-        // re-catalogación pendiente del editor abierto, si la hay; el
-        // servidor la escribe primero y no publica si falla.
-        ?>
-        <form method="post" action="<?php echo $escape($publishUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form oer-drawer-publish-form">
-            <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
-            <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
-            <button type="submit" class="button"><?php echo $translate('Confirmar y publicar'); ?></button>
+            <label for="oer-workflow-reason-<?php echo $escape($key); ?>-text"><?php echo $escape($reasonLabel); ?></label>
+            <input type="text" name="reason" required maxlength="200"
+                   id="oer-workflow-reason-<?php echo $escape($key); ?>-text">
+            <span class="oer-workflow-reason-actions">
+                <button type="submit" class="button"><?php echo $escape($submit); ?></button>
+                <button type="button" class="button oer-workflow-reason-cancel"><?php echo $escape($translate('Cancelar')); ?></button>
+            </span>
         </form>
         <?php endif; ?>
-        <?php if ($canReopen): ?>
-        <form method="post" action="<?php echo $escape($reopenUrl); ?>" class="oer-workflow-form oer-drawer-workflow-form">
-            <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
-            <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
-            <button type="submit" class="button"><?php echo $translate('Reabrir'); ?></button>
-        </form>
+        <?php endforeach; ?>
+        <?php if ($panelIssues['flow']): ?>
+        <ul class="oer-integrity-issues oer-workflow-notes">
+            <?php foreach ($panelIssues['flow'] as $line): ?>
+            <?php echo $issueLine($line); ?>
+            <?php endforeach; ?>
+        </ul>
         <?php endif; ?>
         <p class="oer-workflow-error" hidden></p>
     </section>
     <?php endif; ?>
 
-    <?php if ($issueGroups): ?>
-    <?php $worst = array_key_first($issueGroups); ?>
-    <section class="oer-panel-alert oer-panel-alert-<?php echo $escape($worst); ?>">
-        <h4>
-            <?php
-            $counts = [];
-            foreach ($issueGroups as $severity => $issues) {
-                $forms = $severityCounts[$severity] ?? null;
-                $total = count($issues);
-                $counts[] = $forms
-                    ? sprintf('%d %s', $total, 1 === $total ? $forms[0] : $forms[1])
-                    : sprintf('%d %s', $total, $severity);
-            }
-            echo $escape(sprintf('%s · %s', $translate(PanelAreas::LABELS['integrity']), implode(', ', $counts)));
-            ?>
-        </h4>
-        <?php foreach ($issueGroups as $severity => $issues): ?>
-        <?php // El <h5> no se ve (lo oculta el CSS): es el nombre accesible del glifo. ?>
-        <h5><?php echo $escape($severityLabels[$severity] ?? $severity); ?></h5>
-        <ul class="oer-integrity-issues oer-integrity-issues-<?php echo $escape($severity); ?>">
-            <?php foreach ($issues as $issue): ?>
-            <li><?php echo $escape(sprintf(
-                '%s: %s',
-                $termLabels[$issue['field']] ?? $issue['field'],
-                $issue['message']
-            )); ?></li>
-            <?php endforeach; ?>
-        </ul>
-        <?php endforeach; ?>
-    </section>
+    <?php if ($panelIssues['tabs']): ?>
+    <?php
+    // TASK-065 (spec A6): one line instead of the list. Each issue is read in
+    // the tab that fixes it; the line says how many, whether they stop the
+    // publication (only to whoever can publish), and opens the first tab.
+    $summaryCounts = [];
+    foreach ($issueGroups as $severity => $issues) {
+        $total = count(array_filter(
+            $issues,
+            static fn (array $issue): bool => PanelIssues::FLOW !== PanelIssues::tabOf((string) $issue['field'])
+        ));
+        if (0 === $total) {
+            continue;
+        }
+        $forms = $severityCounts[$severity] ?? [$severity, $severity];
+        $summaryCounts[] = sprintf('%d %s', $total, 1 === $total ? $forms[0] : $forms[1]);
+    }
+    $summaryText = implode(', ', $summaryCounts);
+    if ($canPublish && PanelIssues::blockingPublish($integrity['issues'] ?? []) > 0) {
+        $summaryText .= ' · ' . $translate('impiden publicar');
+    }
+    $worstTab = isset($issueGroups['error']) ? 'error' : 'warning';
+    ?>
+    <p class="oer-integrity-summary oer-integrity-summary-<?php echo $escape($worstTab); ?>">
+        <button type="button" class="oer-integrity-summary-link"
+                data-goto-tab="<?php echo $escape((string) $panelIssues['first']); ?>">
+            <span class="oer-visually-hidden"><?php echo $escape($translate(PanelAreas::LABELS['integrity'])); ?>:</span>
+            <?php echo $escape($summaryText); ?>
+        </button>
+    </p>
     <?php endif; ?>
 
     <?php
@@ -333,11 +397,22 @@ $recatalogAttr = $escape((string) json_encode(
     <div class="sidebar-section-nav oer-panel-tabs" role="tablist"
          aria-label="<?php echo $escape($translate('Secciones del REA')); ?>">
         <?php foreach ($panelTabs as $key => $label): ?>
-        <button type="button" <?php echo $tabAttrs($key); ?>><?php echo $escape($label); ?></button>
+        <?php $tabCount = $panelIssues['counts'][$key] ?? []; ?>
+        <button type="button" <?php echo $tabAttrs($key); ?>><?php echo $escape($label); ?><?php
+        if ($tabCount):
+            $tabTotal = array_sum($tabCount);
+            $tabSeverity = isset($tabCount['error']) ? 'error' : 'warning';
+            $tabForms = $severityCounts[$tabSeverity] ?? [$tabSeverity, $tabSeverity];
+            ?> <span class="oer-tab-count oer-tab-count-<?php echo $escape($tabSeverity); ?>" aria-hidden="true"><?php echo (int) $tabTotal; ?></span><span class="oer-visually-hidden"><?php
+            echo $escape(sprintf(', %d %s', $tabTotal, 1 === $tabTotal ? $tabForms[0] : $tabForms[1]));
+            ?></span><?php
+        endif;
+        ?></button>
         <?php endforeach; ?>
     </div>
 
     <div <?php echo $panelAttrs('curriculum'); ?>>
+        <?php echo $tabIssues('curriculum'); ?>
         <?php $anchor = $area('alignment'); ?>
         <?php
         // El modo lo lleva la sección. Empieza siempre en lectura, también al
@@ -393,6 +468,7 @@ $recatalogAttr = $escape((string) json_encode(
     </div>
 
     <div <?php echo $panelAttrs('resource'); ?>>
+        <?php echo $tabIssues('resource'); ?>
             <?php $media = $area('media'); ?>
             <section class="oer-area oer-area-media">
                 <h4><?php echo $escape($translate(PanelAreas::LABELS['media'])); ?></h4>
@@ -480,6 +556,7 @@ $recatalogAttr = $escape((string) json_encode(
     )) : null;
     ?>
     <div <?php echo $panelAttrs('governance'); ?>>
+        <?php echo $tabIssues('governance'); ?>
     <section
         class="oer-area oer-area-governance"
         data-mode="read"

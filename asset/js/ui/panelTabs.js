@@ -88,6 +88,27 @@ export function wireTabs(content) {
         select(tabs[next], { focus: true });
     });
 
+    // The integrity summary (spec A6) opens the tab that holds the issues and
+    // moves the focus to its panel, where they are listed first. Delegated on
+    // `.oer-detail-panel`: it is new on every render (unlike `content`, which
+    // outlives it), and `ui/panelIntegrity.js` may replace the summary later.
+    const panelEl = nav.closest('.oer-detail-panel') || content;
+    panelEl.addEventListener('click', (event) => {
+        const link = event.target.closest('[data-goto-tab]');
+        if (!link || !panelEl.contains(link)) {
+            return;
+        }
+        const tab = tabs.find((one) => one.dataset.tab === link.dataset.gotoTab);
+        if (!tab) {
+            return;
+        }
+        select(tab);
+        const panel = panelOf(tab);
+        if (panel) {
+            panel.focus();
+        }
+    });
+
     const first = initialTab(remembered(), tabs.map((tab) => tab.dataset.tab));
     const start = tabs.find((tab) => tab.dataset.tab === first);
     if (start) {

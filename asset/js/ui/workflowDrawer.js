@@ -9,6 +9,7 @@
  */
 import { reopenDrawer } from './drawer.js';
 import { collectAlignmentPairs } from './recatalog.js';
+import { nextOpen } from '../core/workflowReason.js';
 
 function errorBox(form) {
     return form.closest('.oer-panel-workflow')?.querySelector('.oer-workflow-error') || null;
@@ -32,6 +33,45 @@ function clearError(form) {
     }
 }
 
+/**
+ * TASK-065 (spec A6): the actions that need a reason are buttons in the flow
+ * bar; each opens its own form under the bar, one at a time. The form keeps
+ * its class, so the submit below still sends it.
+ */
+function reasonForms(section) {
+    return Array.from(section.querySelectorAll('.oer-workflow-reason'));
+}
+
+function openReason(section) {
+    const form = reasonForms(section).find((one) => !one.hidden);
+    return form ? form.id : null;
+}
+
+function setReason(section, id) {
+    reasonForms(section).forEach((form) => {
+        form.hidden = form.id !== id;
+    });
+    section.querySelectorAll('.oer-workflow-reason-toggle').forEach((button) => {
+        button.setAttribute('aria-expanded', button.getAttribute('aria-controls') === id ? 'true' : 'false');
+    });
+    if (id) {
+        const field = section.querySelector(`#${id} [name="reason"]`);
+        if (field) {
+            field.focus();
+        }
+    }
+}
+
+/** Closes the open reason form and gives the focus back to its button. */
+function closeReason(section) {
+    const open = openReason(section);
+    setReason(section, null);
+    const toggle = open && section.querySelector(`[aria-controls="${open}"]`);
+    if (toggle) {
+        toggle.focus();
+    }
+}
+
 function messageFor(result) {
     if (result.issues && result.issues.length) {
         return result.issues.map((issue) => issue.message).join(' · ');
@@ -40,6 +80,36 @@ function messageFor(result) {
 }
 
 export function initWorkflowDrawer() {
+    document.addEventListener('click', (event) => {
+        const toggle = event.target.closest('.oer-workflow-reason-toggle');
+        const cancel = event.target.closest('.oer-workflow-reason-cancel');
+        const section = (toggle || cancel)?.closest('.oer-panel-workflow');
+        if (!section) {
+            return;
+        }
+        const next = nextOpen(openReason(section), toggle ? toggle.getAttribute('aria-controls') : null);
+        if (null === next) {
+            closeReason(section);
+            return;
+        }
+        setReason(section, next);
+    });
+
+    // Escape inside a reason closes the reason, not the whole drawer: this runs
+    // in the capture phase, before `drawer.js` closes the sidebar on Escape.
+    document.addEventListener('keydown', (event) => {
+        if ('Escape' !== event.key) {
+            return;
+        }
+        const form = event.target.closest && event.target.closest('.oer-workflow-reason');
+        const section = form && form.closest('.oer-panel-workflow');
+        if (!section) {
+            return;
+        }
+        event.stopPropagation();
+        closeReason(section);
+    }, true);
+
     document.addEventListener('submit', (event) => {
         const form = event.target.closest('.oer-drawer-workflow-form');
         if (!form) {

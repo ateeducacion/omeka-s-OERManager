@@ -1325,6 +1325,89 @@
     color: var(--oer-warn);
 }
 
+/* TASK-065 (spec A6): the same glyphs, per line, where the issues now live. */
+.oer-integrity-issues > li.oer-issue-error {
+    list-style-type: "⛔ ";
+    color: var(--oer-bad);
+}
+
+.oer-integrity-issues > li.oer-issue-warning {
+    list-style-type: "⚠ ";
+    color: var(--oer-warn);
+}
+
+/* Issues at the top of the tab that fixes them. */
+.oer-tab-issues {
+    margin: 0 0 1em;
+    padding: 0.5em 0.9em 0.5em 2.1em;
+    background: #fff;
+    border-left: 3px solid var(--oer-warn);
+}
+
+/* The one line above the tabs: how many, and whether they stop publishing.
+   It opens the first tab with issues. */
+.oer-integrity-summary {
+    margin: 0 0 0.25em;
+    font-size: 0.9em;
+}
+
+.oer-integrity-summary-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.oer-integrity-summary-link:focus-visible {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 2px;
+}
+
+.oer-integrity-summary-warning {
+    color: var(--oer-warn);
+}
+
+.oer-integrity-summary-error {
+    color: var(--oer-bad);
+}
+
+.oer-integrity-summary-warning::before {
+    content: "⚠ ";
+}
+
+.oer-integrity-summary-error::before {
+    content: "⛔ ";
+}
+
+/* Count of a tab's issues, with the glyph of the worst (shape, not only
+   colour: ADR-0014 rule 3). Its words are in a visually hidden span. */
+.oer-tab-count {
+    margin-left: 0.35em;
+    font-weight: 600;
+}
+
+.oer-tab-count-warning {
+    color: var(--oer-warn);
+}
+
+.oer-tab-count-error {
+    color: var(--oer-bad);
+}
+
+.oer-tab-count-warning::before {
+    content: "⚠";
+    margin-right: 0.15em;
+}
+
+.oer-tab-count-error::before {
+    content: "⛔";
+    margin-right: 0.15em;
+}
+
 .oer-history-list {
     list-style: none;
     margin: 0;
@@ -1649,10 +1732,66 @@ body.oer-master-view.sidebar-open footer {
     border-left: 3px solid var(--oer-rule);
 }
 
-.oer-panel-workflow .oer-workflow-status {
-    margin: 0 0 0.6em;
+/* TASK-065 (spec A6): the state and the actions on one line. The state is
+   the table's own badge; «Borrador» has none, so it reads as plain text. */
+.oer-workflow-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.oer-workflow-state {
+    margin-right: 0.25em;
+}
+
+.oer-workflow-draft {
     font-size: 0.85em;
     color: var(--oer-muted);
+}
+
+/* The forms in the bar hold one button each: no row of their own. */
+.oer-panel-workflow .oer-workflow-bar .oer-drawer-workflow-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+/* Secondary: they open a reason, they do not act yet. Same treatment as
+   «Deshacer» in the re-cataloguing bar. */
+.oer-workflow-reason-toggle,
+.oer-workflow-reason-cancel {
+    margin: 0;
+    background: transparent;
+    border: 1px solid var(--oer-rule);
+    color: var(--oer-ink);
+}
+
+.oer-panel-workflow .oer-workflow-reason {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35em;
+    margin: 0.75em 0 0;
+}
+
+.oer-workflow-reason label {
+    font-size: 0.85em;
+    color: var(--oer-muted);
+}
+
+.oer-workflow-reason-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+
+/* `display: flex` above would otherwise win over the `hidden` attribute. */
+.oer-panel-workflow [hidden] {
+    display: none;
+}
+
+.oer-workflow-notes {
+    margin: 0.6em 0 0;
+    font-size: 0.85em;
 }
 
 .oer-panel-workflow .oer-drawer-workflow-form {

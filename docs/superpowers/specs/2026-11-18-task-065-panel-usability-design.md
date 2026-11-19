@@ -105,6 +105,34 @@ container, 16 REA hold 51 events; 8 are governance events (the `#1` above) and t
 296 ids that no longer exist (terms of the old graph, deleted when the curriculum moved to `cur:`). No
 referenced id was unreadable for a non-administrator editor. Those 296 now read «término retirado (#n)».
 
+### A6. Flow bar and integrity (added 2026-11-19)
+
+The owner asked to make the two zones above the tabs smaller, and chose these two proposals:
+
+- **A compact flow bar.**
+  - The state is the same badge as the table and the item page, including «Publicado fuera del flujo».
+    «Borrador» has no badge, so it shows as plain text.
+  - The actions are native buttons in one row: «Confirmar y publicar» and «Reabrir» act at once.
+    «Rechazar…», «Descartar…» and «Despublicar…» open ONE inline reason form under the bar, one at a
+    time. It has a visible label, the full verb and «Cancelar», and Escape closes it.
+  - Each action keeps its own form, AJAX submit, CSRF hash and required reason.
+- **Integrity summary and issues per tab.**
+  - Above the tabs there is one line, for example «⚠ 4 avisos · impiden publicar». «impiden publicar»
+    appears only to whoever can publish and only when the publish gate would refuse. The gate and the
+    panel share `IntegrityPolicy::PUBLISH_GATE_IGNORES`.
+  - The summary opens the first tab with issues.
+  - Each tab carries its count, for example «Currículo ⚠4», and lists its issues at the top in plain
+    language. The missing anchors become one sentence («Falta el anclaje curricular: curso, materia,
+    saberes básicos y criterios de evaluación»). Quoted RDF terms are replaced by their labels.
+  - Workflow issues (`curation:status`, `o:site`) are notes in the flow bar. An out-of-flow REA is not
+    repeated, because its badge says it.
+  - The pure `PanelIssues` class decides where each issue goes and how it is worded. The rules and the
+    gate do not change.
+- **After a governance save**, `ui/panelIntegrity.js` re-reads the panel from the server and swaps only
+  the integrity pieces. Logic is not duplicated in the browser, and an open re-cataloguing in another tab
+  is not lost.
+- The server label of `lrmi:educationalLevel` becomes «Curso».
+
 ## Part B: the re-cataloguer as a tree
 
 The server already provides what the tree needs: `search-terms` narrows subjects by the chosen courses
@@ -188,9 +216,9 @@ ArrowRight/ArrowLeft on a branch).
 
 ## Testing
 
-- **JavaScript (`make test-js`):** `historyModel` (event summary, paging), `panelTabs` (initial tab, keyboard), `alignmentTree` (build, values
+- **JavaScript (`make test-js`):** `historyModel` (event summary, paging), `panelTabs` (initial tab, keyboard), `workflowReason` (one reason form at a time), `alignmentTree` (build, values
   that do not fit, operations, serialization, summaries, grouped diff).
-- **PHPUnit (`make test`):** the payload version with labels, reading older payloads, the «término
+- **PHPUnit (`make test`):** `PanelIssues` (tab per field, grouped missing anchors, labels instead of RDF terms, publish gate count); the payload version with labels, reading older payloads, the «término
   retirado» fallback. The existing apply tests stay valid because the contract does not change.
 - **Container:** a harness confirms the cause of `#<id>` in A5. Visual review of the panel with throwaway
   non-administrator users holding REA roles, in a disposable environment.
