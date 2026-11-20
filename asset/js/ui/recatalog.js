@@ -1,9 +1,9 @@
-import { diffRows, RECATALOG_DIMENSIONS } from '../core/diffModel.js';
+import { groupedDiff, RELATION, TERM_LABELS } from '../core/alignmentTree.js';
 import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
 import { valuesFor } from '../core/anchorData.js';
 import { buildDimensionSelector, disableApply } from './termPicker.js';
-import { mountLeafTrees } from './leafTree.js';
+import { buildAlignmentEditor, openAlignmentEditor, editorPairs, editorState } from './alignmentEditor.js';
 import { reopenDrawer } from './drawer.js';
 import { ANCHOR_SLOT } from './drawerDetails.js';
 
@@ -24,45 +24,41 @@ import { ANCHOR_SLOT } from './drawerDetails.js';
 function buildRecatalogPanel(config, itemId, recatalog) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
 
-    const $dims = $('<div>').addClass('oer-recatalog-dims');
-    // Etapa: ayuda de navegación de la cascada (ADR-0022). No se escribe en
-    // el REA; solo acota Curso → Asignatura → Saberes/Criterios. La advertencia
-    // va en su propia línea: una etiqueta etiqueta, y antes hacía dos trabajos.
-    const $etapa = buildDimensionSelector('etapa', Omeka.jsTranslate('Etapa'), [], true);
-    $etapa.append($('<p>').addClass('oer-dim-hint')
-        .text(Omeka.jsTranslate('Solo acota la búsqueda. No se guarda en el REA.')));
-    $dims.append($etapa);
-    RECATALOG_DIMENSIONS.forEach(([term, label]) => {
-        $dims.append(buildDimensionSelector(term, label, valuesFor(recatalog, term), false));
-    });
-    $panel.append($dims);
-    // TASK-064 slice 4: knowledge and criteria are chosen in a tree per block
-    // of the chosen course subject, loaded when the editor opens.
-    if (config.curriculumTreeUrl) {
-        mountLeafTrees($panel);
+    // TASK-065 part B (spec B5): the AI proposal fills the same tree, so it
+    // sits at the top of the editor.
+    if (config.aiEnabled) {
+        $panel.append($('<div>').addClass('oer-recatalog-ai-bar')
+            .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-ai')
+                .text(Omeka.jsTranslate('Proponer con IA')))
+            .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-ai-cancel')
+                .text(Omeka.jsTranslate('Detener la propuesta'))));
     }
 
-    const $actions = $('<div>').addClass('oer-recatalog-actions');
-    // Pre-relleno IA (TASK-010): propone, el curador revisa y confirma.
-    if (config.aiEnabled) {
-        $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai')
-            .text(Omeka.jsTranslate('Proponer con IA')));
-        // Cancelar el propose asíncrono en marcha (TASK-020). Se llamaba
-        // «Cancelar», que desde TASK-033 chocaría con el «Cancelar» que sale
-        // de la edición: dos botones vecinos, mismo nombre, distinto efecto.
-        $actions.append($('<button>').attr('type', 'button').addClass('oer-recatalog-ai-cancel')
-            .text(Omeka.jsTranslate('Detener la propuesta')));
-    }
-    $actions
-        .append($('<button>').attr('type', 'button').addClass('oer-recatalog-preview')
+    // Courses, subjects, knowledge and criteria: the tree (spec B1).
+    $panel.append(buildAlignmentEditor(config, $panel, recatalog));
+
+    // The thematic axis stays a flat selector, as today.
+    const $dims = $('<div>').addClass('oer-recatalog-dims');
+    $dims.append(buildDimensionSelector(
+        RELATION,
+        Omeka.jsTranslate(TERM_LABELS[RELATION]),
+        valuesFor(recatalog, RELATION),
+        false
+    ));
+    $panel.append($dims);
+
+    // Sticky footer (spec B6): the actions and the diff stay in sight.
+    const $footer = $('<div>').addClass('oer-recatalog-footer');
+    $footer.append($('<div>').addClass('oer-recatalog-actions')
+        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-preview')
             .text(Omeka.jsTranslate('Previsualizar cambios')))
-        .append($('<button>').attr('type', 'button').addClass('oer-recatalog-apply')
+        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-apply')
             .prop('disabled', true)
             .text(Omeka.jsTranslate('Confirmar')))
-        .append($('<button>').attr('type', 'button').addClass('oer-recatalog-cancel')
-            .text(Omeka.jsTranslate('Cancelar')));
-    $panel.append($actions);
-    $panel.append($('<div>').addClass('oer-recatalog-diff'));
+        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-cancel')
+            .text(Omeka.jsTranslate('Cancelar'))));
+    $footer.append($('<div>').addClass('oer-recatalog-diff').attr({ role: 'status', 'aria-live': 'polite' }));
+    $panel.append($footer);
     return $panel;
 }
 
@@ -138,65 +134,47 @@ function postUndo(config, itemId, force) {
 
 export function collectAlignmentPairs($panel) {
     const pairs = [{ name: 'id', value: $panel.data('item-id') }];
-    // La Etapa (data-helper) no se escribe: se excluye de la confirmación.
-    $panel.find('.oer-recatalog-dim[data-dirty="1"][data-helper="0"]').each(function () {
-        const $dim = $(this);
-        const term = $dim.data('term');
-        const ids = $dim.find('.chosen-choices .search-choice').map(function () {
+    // Courses, subjects, knowledge and criteria: only the terms whose set
+    // changed, from the tree's model (TASK-065 part B).
+    editorPairs($panel).forEach((pair) => pairs.push(pair));
+    // The thematic axis: its chips, when modified, as before.
+    $panel.find(`.oer-recatalog-dim[data-term="${RELATION}"][data-dirty="1"]`).each(function () {
+        const ids = $(this).find('.chosen-choices .search-choice').map(function () {
             return $(this).data('id');
         }).get();
         if (!ids.length) {
-            // Dimensión modificada y vaciada: borrado intencional explícito.
-            pairs.push({ name: `alignment[${term}][]`, value: '' });
-        } else {
-            ids.forEach((id) => {
-                pairs.push({ name: `alignment[${term}][]`, value: id });
-            });
+            pairs.push({ name: `alignment[${RELATION}][]`, value: '' });
         }
-        // Justificación IA (TASK-023): solo saberes/criterios; se emite el
-        // texto oculto de cada chip que la lleve (los añadidos a mano no).
-        if ('lrmi:teaches' === term || 'lrmi:assesses' === term) {
-            $dim.find('.chosen-choices .search-choice').each(function () {
-                const $choice = $(this);
-                const why = $choice.attr('data-justification');
-                if (why) {
-                    pairs.push({
-                        name: `justification[${term}][${$choice.data('id')}]`,
-                        value: why
-                    });
-                }
-            });
-        }
+        ids.forEach((id) => pairs.push({ name: `alignment[${RELATION}][]`, value: id }));
     });
     return pairs;
 }
 
 /**
- * D7: el diff muestra QUÉ cambia, no cuántos. Antes se pintaba «+N/−M», que
- * obligaba a confirmar una escritura RDF a ciegas.
+ * D7 and spec B6: the diff says WHAT changes, by name, grouped by course and
+ * subject, with the thematic axis as its own row.
  */
 function renderDiff($panel, diff) {
-    const { rows, hasInvalid } = diffRows(diff);
+    const { sections, hasInvalid } = groupedDiff(diff, editorState($panel));
     const $diff = $panel.find('.oer-recatalog-diff').empty();
-    rows.forEach((row) => {
-        const $row = $('<p>').addClass('oer-diff-row');
-        $row.append($('<strong>').text(row.label + ': '));
-        if (row.unchanged) {
-            $row.append($('<span>').text(Omeka.jsTranslate('sin cambios')));
-        }
-        if (row.added.length) {
-            $row.append($('<span>').addClass('oer-diff-added')
-                .text('+ ' + row.added.join(', ')));
-        }
-        if (row.removed.length) {
-            $row.append($('<span>').addClass('oer-diff-removed')
-                .text('− ' + row.removed.join(', ')));
-        }
-        if (row.invalid.length) {
-            $row.append($('<span>').addClass('oer-diff-invalid')
-                .text(Omeka.jsTranslate('inválidos: ') + row.invalid.join(', ')));
-        }
-        $diff.append($row);
+    if (!sections.length) {
+        $diff.text(Omeka.jsTranslate('sin cambios'));
+        return true;
+    }
+    const titleOf = (section) => ('course' === section.kind
+        ? section.title
+        : Omeka.jsTranslate('relation' === section.kind ? TERM_LABELS[RELATION] : 'Sin encajar'));
+    const classOf = { '+': 'oer-diff-added', '−': 'oer-diff-removed', '!': 'oer-diff-invalid' };
+    sections.forEach((section) => {
+        const $section = $('<div>').addClass('oer-diff-section');
+        $section.append($('<p>').addClass('oer-diff-heading').text(titleOf(section)));
+        section.lines.forEach((line) => {
+            const label = Omeka.jsTranslate(TERM_LABELS[line.term]);
+            const where = line.subject ? `${label} (${line.subject})` : label;
+            const sign = '!' === line.sign ? Omeka.jsTranslate('inválido:') : line.sign;
+            $section.append($('<p>').addClass('oer-diff-row ' + classOf[line.sign]).text(`${sign} ${where}: ${line.title}`));
+        });
+        $diff.append($section);
     });
     return !hasInvalid;
 }
@@ -230,6 +208,14 @@ export function initRecatalog(config) {
         const $bar = $(bar);
         fillAnchorBar($bar, itemId);
         renderUndo(config, $bar, itemId);
+    });
+
+    // Opening the editor is the first moment the trees are needed.
+    $(document).on('click', '.oer-anchor-edit', function () {
+        const $panel = $(this).closest('.oer-area-alignment').find('.oer-recatalog');
+        if ($panel.length) {
+            openAlignmentEditor(config, $panel);
+        }
     });
 
     // Salir de la edición reconstruye la fila entera en vez de solo esconder

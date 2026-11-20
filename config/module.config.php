@@ -621,6 +621,34 @@ return [
         'Editor', // @translate
         'Titular de derechos', // @translate
         'Fuente', // @translate
+        // TASK-065 part B: the re-cataloguer as a tree.
+        'Cursos', // @translate
+        'Añadir curso', // @translate
+        'Añadir materia de', // @translate
+        'Curso añadido:', // @translate
+        'Materia añadida:', // @translate
+        'Quitar curso', // @translate
+        'Quitar materia', // @translate
+        'Quitar', // @translate
+        'Quitado:', // @translate
+        '¿Quitar', // @translate
+        'y sus', // @translate
+        'términos?', // @translate
+        'materia', // @translate
+        'materias', // @translate
+        'saber', // @translate
+        'saberes', // @translate
+        'criterio', // @translate
+        'criterios', // @translate
+        'Sin encajar', // @translate
+        'No cuelgan de un curso o una materia elegidos. Quítalos o añade lo que les falta.', // @translate
+        'Añadir su curso', // @translate
+        'Añade un curso para empezar.', // @translate
+        'IA', // @translate
+        'Sustituto:', // @translate
+        '1 resultado', // @translate
+        'resultados', // @translate
+        'inválido:', // @translate
         // TASK-035: refusals the re-cataloguer shows from the server's `message`.
         ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
         Controller\Admin\IndexController::NOT_FOUND_MESSAGE,
