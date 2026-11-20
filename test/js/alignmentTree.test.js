@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     COURSE, SUBJECT, TEACHES, ASSESSES, CURRICULAR_TERMS, LEAF_TERMS,
-    createState, learnTrees, learnSubject, subjectName, placement, summaryText, treeBatches
+    createState, learnTrees, learnSubject, subjectName, placement, summaryText, treeBatches,
+    addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse
 } from '../../asset/js/core/alignmentTree.js';
 
 const t = (text) => text;
@@ -105,4 +106,55 @@ test('los árboles se piden en lotes de 10 materias', () => {
     const ids = Array.from({ length: 23 }, (_, i) => String(i + 1));
     assert.deepEqual(treeBatches(ids).map((batch) => batch.length), [10, 10, 3]);
     assert.deepEqual(treeBatches([]), []);
+});
+
+const base = () => learnTrees(createState(current), trees);
+
+test('añadir un curso, una materia y una hoja; repetir no duplica', () => {
+    let state = addCourse(createState({}), { id: 2, title: '2º ESO' });
+    state = addCourse(state, { id: 2, title: '2º ESO' });
+    state = addSubject(state, { id: 20, title: 'Lengua · 2º ESO' }, '2');
+    state = setLeaf(state, TEACHES, { id: 500, title: 'Oración', subjectId: '20' }, true);
+    assert.deepEqual(state.values[COURSE].map((c) => c.id), ['2']);
+    assert.equal(state.courseOf['20'], '2');
+    assert.equal(state.subjectOf['500'], '20');
+    const view = placement({ ...state, loaded: { 20: true } });
+    assert.deepEqual(view.courses[0].subjects[0][TEACHES].map((l) => l.id), ['500']);
+});
+
+test('desmarcar una hoja la quita y no toca las demás', () => {
+    const state = setLeaf(base(), TEACHES, { id: 100, title: 'Números', subjectId: '10' }, false);
+    assert.deepEqual(state.values[TEACHES].map((l) => l.id), ['300']);
+    assert.deepEqual(state.values[ASSESSES].map((l) => l.id), ['200']);
+});
+
+/** Review Focus 2: only the leaves of THAT subject go with it. */
+test('quitar una materia se lleva solo sus hojas', () => {
+    let state = base();
+    state = addSubject(state, { id: 11, title: 'Matemáticas · 2º ESO' }, '2');
+    state = setLeaf(state, TEACHES, { id: 110, title: 'Números 2', subjectId: '11' }, true);
+    const { state: next, removed } = removeSubject(state, '10');
+    assert.equal(removed, 2);
+    assert.deepEqual(next.values[SUBJECT].map((s) => s.id), ['20', '11']);
+    assert.deepEqual(next.values[TEACHES].map((l) => l.id), ['300', '110']);
+    assert.deepEqual(next.values[ASSESSES], []);
+});
+
+test('quitar un curso se lleva sus materias y las hojas de ellas', () => {
+    const { state, removed } = removeCourse(base(), '1');
+    assert.equal(removed, 3);
+    assert.deepEqual(state.values[COURSE], []);
+    assert.deepEqual(state.values[SUBJECT].map((s) => s.id), ['20']);
+    assert.deepEqual(state.values[TEACHES].map((l) => l.id), ['300']);
+});
+
+test('quitar un valor suelto no toca a los demás términos', () => {
+    const state = removeValue(base(), TEACHES, '300');
+    assert.deepEqual(state.values[TEACHES].map((l) => l.id), ['100']);
+    assert.deepEqual(state.values[SUBJECT].map((s) => s.id), ['10', '20']);
+});
+
+test('lo añadido por la IA lleva su marca y su porqué', () => {
+    const state = setLeaf(createState({}), ASSESSES, { id: 7, title: 'CE7' }, true, { ai: true, why: 'Porque sí' });
+    assert.deepEqual(state.values[ASSESSES], [{ id: '7', title: 'CE7', why: 'Porque sí', ai: true }]);
 });

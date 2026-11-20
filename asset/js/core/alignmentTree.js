@@ -207,3 +207,81 @@ export function treeBatches(ids, size = 10) {
     }
     return batches;
 }
+
+function withValues(state, term, list) {
+    return { ...state, values: { ...state.values, [term]: list } };
+}
+
+function addValue(state, term, value, extra = {}) {
+    const id = key(value && value.id);
+    if (!ID.test(id) || state.values[term].some((one) => one.id === id)) {
+        return state;
+    }
+    return withValues(state, term, state.values[term].concat([entry(value, extra)]));
+}
+
+export function removeValue(state, term, id) {
+    const target = key(id);
+    return withValues(state, term, state.values[term].filter((one) => one.id !== target));
+}
+
+export function addCourse(state, course, extra = {}) {
+    const next = addValue(state, COURSE, course, extra);
+    const id = key(course && course.id);
+    if (next === state || !ID.test(id)) {
+        return next;
+    }
+    return { ...next, courseTitles: { ...next.courseTitles, [id]: String(course.title || '') } };
+}
+
+export function addSubject(state, subject, courseId, extra = {}) {
+    const next = addValue(state, SUBJECT, subject, extra);
+    const id = key(subject && subject.id);
+    const course = key(courseId);
+    if (!ID.test(id) || !ID.test(course)) {
+        return next;
+    }
+    return { ...next, courseOf: { ...next.courseOf, [id]: course } };
+}
+
+/** Checks or unchecks a knowledge item or criterion found in a subject's tree. */
+export function setLeaf(state, term, leaf, checked, extra = {}) {
+    if (!checked) {
+        return removeValue(state, term, leaf.id);
+    }
+    const next = addValue(state, term, leaf, extra);
+    const id = key(leaf.id);
+    const subject = key(leaf.subjectId);
+    if (!ID.test(subject)) {
+        return next;
+    }
+    return { ...next, subjectOf: { ...next.subjectOf, [id]: subject } };
+}
+
+/** Removes a subject and the knowledge and criteria found in ITS tree. */
+export function removeSubject(state, subjectId) {
+    const target = key(subjectId);
+    let next = removeValue(state, SUBJECT, target);
+    let removed = 0;
+    LEAF_TERMS.forEach((term) => {
+        const keep = next.values[term].filter((leaf) => next.subjectOf[leaf.id] !== target);
+        removed += next.values[term].length - keep.length;
+        next = withValues(next, term, keep);
+    });
+    return { state: next, removed };
+}
+
+/** Removes a course, its subjects and their knowledge and criteria. */
+export function removeCourse(state, courseId) {
+    const target = key(courseId);
+    let next = removeValue(state, COURSE, target);
+    let removed = 0;
+    state.values[SUBJECT]
+        .filter((subject) => state.courseOf[subject.id] === target)
+        .forEach((subject) => {
+            const result = removeSubject(next, subject.id);
+            next = result.state;
+            removed += 1 + result.removed;
+        });
+    return { state: next, removed };
+}
