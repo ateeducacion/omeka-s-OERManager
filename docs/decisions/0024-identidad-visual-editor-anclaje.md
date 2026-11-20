@@ -2,10 +2,11 @@
 
 ## Estado
 
-**Propuesto (2026-11-20)**, at the owner's request («pide excepción en este caso»), after reviewing a
-prototype of the editor (<https://claude.ai/artifact/Ap5xxptk6H8jyFrRjy4LYX>). It becomes **Aceptado** when
-the owner approves it together with the revised spec of TASK-065 part B. It is an exception to rule 1 of
-ADR-0014, limited to one component. It replaces no ADR.
+**Aceptado (2026-11-20)** by the owner, together with spec B8 of TASK-065 part B. It was proposed the
+same day at the owner's request («pide excepción en este caso»), after a review of the prototype of the
+editor (<https://claude.ai/artifact/Ap5xxptk6H8jyFrRjy4LYX>). It is an exception to rule 1 of ADR-0014,
+limited to one component, and replaces no ADR. The contrast measurement of point 3 is mandatory before the
+implementation merges, and a test pins it.
 
 ## Contexto
 
@@ -48,7 +49,9 @@ its review step) may use its own visual identity, under these limits:
 3. **Own palette, with contrast measured.** The ink, ground, selection accent, AI accent, unfitted
    amber, added and removed colours are tokens declared once as CSS variables at the editor's root. Every
    text and state pair is measured against WCAG 2.2 AA (4.5:1 for text, 3:1 for large text and UI
-   boundaries) before acceptance, and the results are recorded in the spec.
+   boundaries) by a test that reads the stylesheet. Measured while planning, the prototype's control
+   border `#C8CFD9` gave 1.57:1 and failed. It became `#7C8695`, at 3.68:1 on white and 3.40:1 on the
+   ground.
 4. **ADR-0014 rules 2–4 still hold inside the editor.**
    - Every state the curator acts on has its own shape as well as colour: the «IA» mark, the unfitted
      block's icon and the +/− signs.
