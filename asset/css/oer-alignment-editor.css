@@ -1,0 +1,48 @@
+/*
+ * The curricular alignment editor's own look (ADR-0024, spec B8 of TASK-065).
+ * Scope: every rule hangs from .oer-align-editor; nothing here may style the
+ * drawer outside the editor, which keeps ADR-0014. Fonts are bundled
+ * (asset/fonts/README.md); the tokens are declared once and their contrast is
+ * pinned by test/js/editorContrast.test.js.
+ */
+
+@font-face {
+    font-family: "OER Public Sans";
+    src: url("../fonts/public-sans-latin-wght-normal.woff2") format("woff2");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "OER Plex Mono";
+    src: url("../fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+.oer-align-editor {
+    --ae-ground: #F4F6F8;
+    --ae-surface: #FFFFFF;
+    --ae-ink: #18212F;
+    --ae-muted: #5B6474;
+    --ae-rule: #DCE1E8;
+    --ae-control: #7C8695;
+    --ae-accent: #0B6B5E;
+    --ae-accent-ink: #0B6B5E;
+    --ae-accent-soft: #E3F2EF;
+    --ae-on-accent: #FFFFFF;
+    --ae-ai: #4A3196;
+    --ae-ai-soft: #EEE9FB;
+    --ae-ai-line: #CFC4F2;
+    --ae-unfit: #7A3A00;
+    --ae-unfit-soft: #FDF0E1;
+    --ae-added: #08493F;
+    --ae-added-soft: #E3F2EF;
+    --ae-removed: #8A2222;
+    --ae-removed-soft: #FBE9E9;
+    --ae-danger: #A12C2C;
+    --ae-sans: "OER Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --ae-mono: "OER Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
