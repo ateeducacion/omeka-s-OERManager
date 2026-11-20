@@ -143,6 +143,16 @@ The server already provides what the tree needs: `search-terms` narrows subjects
 (`level`), and `curriculum-tree` returns knowledge and criteria grouped by subject (`trees[].subject`).
 Part B is a client-side restructuring.
 
+**Status (2026-11-20): part B implemented** on branch `feature/task-065b-alignment-tree`
+([plan](../plans/2026-11-20-task-065b-alignment-tree.md)). Decisions taken while planning and implementing:
+
+- `curriculum-tree` now returns each subject's `course` {id, title}. This additive field is the only
+  server change; the editor needs it to place an REA's existing subjects.
+- Etapa and the thematic axis keep their chip selectors.
+- Clearing a tree's text filter opens the tree where something is checked, instead of restoring the exact
+  open state the filter found.
+- `leafTree.js` is retired; its model (`leafTreeModel.js`) is reused per subject.
+
 ### B1. Shape of the editor
 
 While editing, the sidebar widens.
