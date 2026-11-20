@@ -214,7 +214,9 @@ export function initTermPicker(config) {
         }, 200);
     });
 
-    $(document).on('click', '.chosen-results .active-result', function () {
+    // Scoped to the chip selectors (Etapa, Eje temático): the tree editor's
+    // search boxes (ui/termSearch.js) handle their own results.
+    $(document).on('click', '.oer-recatalog-dim .chosen-results .active-result', function () {
         const $result = $(this);
         const $dim = $result.closest('.oer-recatalog-dim');
         const $container = $result.closest('.chosen-container');
