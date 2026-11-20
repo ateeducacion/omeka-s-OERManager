@@ -398,3 +398,30 @@ export function groupedDiff(diff, state) {
     const rank = { course: 0, unfitted: 1, relation: 2 };
     return { sections: Array.from(sections.values()).sort((a, b) => rank[a.kind] - rank[b.kind]), hasInvalid };
 }
+
+/** Pending changes for the footer, counted by set as `alignmentPairs` sends them. */
+export function changeCounts(state) {
+    let added = 0;
+    let removed = 0;
+    CURRICULAR_TERMS.forEach((term) => {
+        const now = state.values[term].map((one) => one.id);
+        const before = state.initial[term];
+        added += now.filter((id) => !before.includes(id)).length;
+        removed += before.filter((id) => !now.includes(id)).length;
+    });
+    return { added, removed };
+}
+
+/** Curricular values the AI proposed and the curator has not removed. */
+export function aiCount(state) {
+    return CURRICULAR_TERMS.reduce((sum, term) => sum + state.values[term].filter((one) => one.ai).length, 0);
+}
+
+/** The subject the detail shows: the current one while it is placed, else the first placed. */
+export function focusSubject(layout, current) {
+    const ids = layout.courses.flatMap((course) => course.subjects.map((subject) => subject.id));
+    if (current && ids.includes(String(current))) {
+        return String(current);
+    }
+    return ids.length ? ids[0] : null;
+}

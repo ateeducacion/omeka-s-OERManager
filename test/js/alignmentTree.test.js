@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     COURSE, SUBJECT, TEACHES, ASSESSES, RELATION, CURRICULAR_TERMS, LEAF_TERMS,
-    changedTerms, alignmentPairs, mergeProposal, groupedDiff,
+    changedTerms, alignmentPairs, mergeProposal, groupedDiff, changeCounts, aiCount, focusSubject,
     createState, learnTrees, learnSubject, subjectName, placement, summaryText, treeBatches,
     addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse
 } from '../../asset/js/core/alignmentTree.js';
@@ -234,4 +234,30 @@ test('un id inválido se señala y bloquea la confirmación', () => {
     const { hasInvalid, sections } = groupedDiff({ [COURSE]: { added: [], removed: [], invalid: [5], titles: {} } }, base());
     assert.equal(hasInvalid, true);
     assert.deepEqual(sections[0].lines, [{ sign: '!', term: COURSE, subject: '', title: '#5' }]);
+});
+
+/** Review Focus 4: the footer counts what will be sent, by set. */
+test('el pie cuenta añadidos y quitados como conjuntos', () => {
+    let state = base();
+    assert.deepEqual(changeCounts(state), { added: 0, removed: 0 });
+    state = setLeaf(state, TEACHES, { id: 101, title: 'Fracciones', subjectId: '10' }, true);
+    state = setLeaf(state, ASSESSES, { id: 200, title: 'CE1', subjectId: '10' }, false);
+    assert.deepEqual(changeCounts(state), { added: 1, removed: 1 });
+    state = setLeaf(state, ASSESSES, { id: 200, title: 'CE1', subjectId: '10' }, true);
+    assert.deepEqual(changeCounts(state), { added: 1, removed: 0 });
+});
+
+test('la cabecera cuenta lo que propuso la IA', () => {
+    const { state } = mergeProposal(base(), { [TEACHES]: [{ id: 400, title: 'Energía' }], [SUBJECT]: [{ id: 30, title: 'Física' }] }, {});
+    assert.equal(aiCount(state), 2);
+    assert.equal(aiCount(base()), 0);
+});
+
+/** Review Focus 5: no subject, no focus; a removed focus moves to the first subject. */
+test('la materia en foco sigue mientras exista y si no pasa a la primera', () => {
+    const layout = placement(base());
+    assert.equal(focusSubject(layout, '10'), '10');
+    assert.equal(focusSubject(layout, '99'), '10');
+    assert.equal(focusSubject(layout, null), '10');
+    assert.equal(focusSubject(placement(createState({})), null), null);
 });
