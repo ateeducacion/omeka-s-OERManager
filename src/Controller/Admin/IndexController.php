@@ -24,6 +24,7 @@ use OERManager\Service\CurriculumSearch;
 use OERManager\Service\Curriculum\CurModel;
 use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\GovernanceFields;
+use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\GovernanceService;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\ItemPanelData;
@@ -1487,7 +1488,7 @@ class IndexController extends AbstractActionController
         }
         $issues = array_values(array_filter(
             $this->integrityChecker->check($item, true)->getIssues(),
-            static fn (array $issue): bool => !in_array($issue['code'], self::PUBLISH_GATE_IGNORES, true)
+            static fn (array $issue): bool => !in_array($issue['code'], IntegrityPolicy::PUBLISH_GATE_IGNORES, true)
         ));
         if ([] !== $issues) {
             if ($ajax) {
@@ -1513,9 +1514,6 @@ class IndexController extends AbstractActionController
 
     // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
     public const GOVERNANCE_UNDO_MESSAGE = 'El último cambio de este REA es de licencia o autoría: solo el equipo curador puede deshacerlo.'; // @translate
-
-    /** Integrity codes the publish gate does not block on (they are what publishing fixes). */
-    private const PUBLISH_GATE_IGNORES = ['published_out_of_flow'];
 
     /**
      * Esqueleto común de una transición: POST, CSRF, motivo si hace falta,

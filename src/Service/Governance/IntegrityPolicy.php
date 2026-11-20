@@ -48,6 +48,13 @@ final class IntegrityPolicy
     public const LICENSE_TERM = 'dcterms:license';
 
     /**
+     * Codes the publish gate does not block on: they are what publishing fixes.
+     * Shared by the gate (`IndexController`) and the panel (`PanelIssues`), so
+     * «impiden publicar» says exactly what the server will refuse.
+     */
+    public const PUBLISH_GATE_IGNORES = ['published_out_of_flow'];
+
+    /**
      * @param array<string, list<array{type:string, hasResource:bool, hasUri?:bool,
      *        retired?:array{label:string, replacedBy:list<string>}}>> $values
      *        Término → sus valores. Basta con incluir los términos de anclaje,

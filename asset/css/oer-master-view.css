@@ -937,7 +937,7 @@
    área de anclaje —revertir no exige abrir los selectores—, así que ya no
    necesita filete propio: lo separa el ancho de la barra. */
 .oer-recatalog-undo {
-    display: inline-block;
+    display: flex;
 }
 
 /* Sin evento que revertir el hueco existe pero no ocupa: si no, el `gap` de la
@@ -947,11 +947,14 @@
     display: none;
 }
 
+/* Same native button as «Re-catalogar» (same font size, padding and height,
+   TASK-065); only the colours make it secondary. */
 .oer-recatalog-undo-btn {
-    background: none;
-    border: 1px solid var(--oer-rule);
-    color: var(--oer-muted);
-    font-size: 0.9em;
+    margin: 0;
+    background: transparent;
+    border: 0;
+    box-shadow: 0 0 0 1px var(--oer-rule) inset;
+    color: var(--oer-ink);
 }
 
 .oer-recatalog-undo-btn:hover,
@@ -1323,8 +1326,86 @@
     color: var(--oer-warn);
 }
 
+/* TASK-065 (spec A6): the same glyphs, per line, where the issues now live. */
+.oer-integrity-issues > li.oer-issue-error {
+    list-style-type: "⛔ ";
+    color: var(--oer-bad);
+}
+
+.oer-integrity-issues > li.oer-issue-warning {
+    list-style-type: "⚠ ";
+    color: var(--oer-warn);
+}
+
+/* Issues at the top of the tab that fixes them. */
+.oer-tab-issues {
+    margin: 0 0 1em;
+    padding: 0.5em 0.9em 0.5em 2.1em;
+    background: #fff;
+    border-left: 3px solid var(--oer-warn);
+}
+
+/* The summary in the header, where «Sin incidencias» goes when there are
+   none: a link to the first tab with issues, not a button. */
+.oer-integrity-summary {
+    font-size: 0.9em;
+    text-underline-offset: 2px;
+}
+
+.oer-integrity-summary-warning {
+    color: var(--oer-warn);
+}
+
+.oer-integrity-summary-error {
+    color: var(--oer-bad);
+}
+
+.oer-integrity-summary-warning::before {
+    content: "⚠ ";
+}
+
+.oer-integrity-summary-error::before {
+    content: "⛔ ";
+}
+
+/* Count of a tab's issues, with the glyph of the worst (shape, not only
+   colour: ADR-0014 rule 3). Its words are in a visually hidden span. */
+.oer-tab-count {
+    margin-left: 0.35em;
+    font-weight: 600;
+}
+
+.oer-tab-count-warning {
+    color: var(--oer-warn);
+}
+
+.oer-tab-count-error {
+    color: var(--oer-bad);
+}
+
+.oer-tab-count-warning::before {
+    content: "⚠";
+    margin-right: 0.15em;
+}
+
+.oer-tab-count-error::before {
+    content: "⛔";
+    margin-right: 0.15em;
+}
+
+.oer-history-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
 .oer-history-entry {
-    margin-bottom: 1em;
+    border-top: 1px solid var(--oer-rule);
+    padding: 0.4em 0;
+}
+
+.oer-history-line {
+    cursor: pointer;
 }
 
 /* Reversión (isUndo, TASK-007). Tras el hallazgo 3 de la revisión final de
@@ -1338,9 +1419,21 @@
 }
 
 .oer-history-header {
+    display: block;
     color: var(--oer-muted);
     font-size: 0.9em;
-    margin: 0;
+}
+
+.oer-history-what {
+    display: block;
+}
+
+.oer-history-entry details[open] > .oer-history-line {
+    margin-bottom: 0.4em;
+}
+
+.oer-history-more {
+    margin-top: 0.5em;
 }
 
 .oer-history-change {
@@ -1624,10 +1717,77 @@ body.oer-master-view.sidebar-open footer {
     border-left: 3px solid var(--oer-rule);
 }
 
-.oer-panel-workflow .oer-workflow-status {
-    margin: 0 0 0.6em;
+/* TASK-065 (spec A6): the state and the actions on one line. The state is
+   the table's own badge; «Borrador» has none, so it reads as plain text. */
+.oer-workflow-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5em;
+}
+
+.oer-workflow-state {
+    margin-right: 0.25em;
+}
+
+.oer-workflow-draft {
     font-size: 0.85em;
     color: var(--oer-muted);
+}
+
+/* The forms in the bar hold one button each: no row of their own. */
+.oer-panel-workflow .oer-workflow-bar .oer-drawer-workflow-form {
+    display: inline-flex;
+    margin: 0;
+}
+
+/* The core gives every button `margin: 0 0 12px`: inside forms it pushed the
+   buttons out of line with the rest of the bar. */
+.oer-panel-workflow button,
+.oer-panel-workflow .button {
+    margin: 0;
+}
+
+/* Secondary: they open a reason, or close it, and do not act yet. Same
+   treatment as «Deshacer» in the re-cataloguing bar. The outline is the
+   core's own inset shadow, not a border, so the height stays the native one. */
+.oer-workflow-reason-toggle,
+.oer-workflow-reason-cancel {
+    background: transparent;
+    border: 0;
+    box-shadow: 0 0 0 1px var(--oer-rule) inset;
+    color: var(--oer-ink);
+}
+
+.oer-panel-workflow .oer-workflow-reason {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35em;
+    margin: 0.75em 0 0;
+}
+
+.oer-workflow-reason label {
+    font-size: 0.85em;
+    color: var(--oer-muted);
+}
+
+.oer-workflow-reason-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+}
+
+/* The reason forms are `hidden` until their button is pressed. The form rule
+   `.oer-panel-workflow .oer-drawer-workflow-form { display: flex }` comes
+   later with the same weight, so this one needs one more class to win. */
+.oer-panel-workflow .oer-drawer-workflow-form[hidden],
+.oer-panel-workflow [hidden] {
+    display: none;
+}
+
+.oer-workflow-notes {
+    margin: 0.6em 0 0;
+    font-size: 0.85em;
 }
 
 .oer-panel-workflow .oer-drawer-workflow-form {
@@ -1654,41 +1814,43 @@ body.oer-master-view.sidebar-open footer {
 }
 
 /*
- * La rejilla se INVIERTE respecto a TASK-032, y no por capricho: el contenedor
- * pasó de ancho y bajo a estrecho y alto. El anclaje es lo más ancho que hay
- * —términos como «Autorregulación del esfuerzo», y seis selectores Chosen en
- * modo edición—, así que se queda con todo el ancho. Medios e Información son
- * pares etiqueta/valor cortos: caben en dos columnas y puestos así ahorran la
- * mitad del recorrido vertical, que es lo que se paga en un panel alto.
+ * Tabs under the header (TASK-065, spec A1–A2 revised 2026-11-19). The look is
+ * the admin's own `.section-nav`, as on the item page (ADR-0014); this only
+ * resets the list, spaces it from the flow bar and gives the keyboard a
+ * visible focus.
  */
-.oer-panel-grid {
-    display: block;
+.oer-panel-tabs {
+    margin-top: 1em;
 }
 
-.oer-panel-side {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5em;
-    margin-top: 1.5em;
-    padding-top: 1.25em;
-    border-top: 1px solid var(--oer-rule);
+.oer-panel-tabs ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
-/* Consulta de CONTENEDOR, no de viewport: lo que decide si las dos columnas
-   caben es cuánto mide el panel. El mismo sidebar puede estar ancho en un
-   monitor y estrecho en un portátil sin que cambie el ancho de pantalla. */
-/* 42rem y no 34: a 36rem las dos columnas dan ~17rem cada una y los nombres de
-   archivo se partían por la mitad de una palabra. Dos columnas solo cuando el
-   panel es de verdad ancho. */
-@container (max-width: 42rem) {
-    .oer-panel-side {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
+.oer-panel-tabs [role="tab"]:focus-visible {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 2px;
+}
+
+.oer-panel-tabpanel {
+    padding-top: 0.25em;
+}
+
+.oer-panel-tabpanel:focus-visible {
+    outline: 2px solid var(--oer-accent);
+    outline-offset: 4px;
 }
 
 .oer-area {
-    margin-bottom: 1.25em;
+    margin-bottom: 1.5em;
+}
+
+/* Inside a tab, only Recurso stacks two sections: the rule separates them. */
+.oer-area + .oer-area {
+    border-top: 1px solid var(--oer-rule);
+    padding-top: 0.75em;
 }
 
 .oer-area > h4 {
@@ -1696,7 +1858,7 @@ body.oer-master-view.sidebar-open footer {
     font-size: 0.8em;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--oer-muted);
+    color: var(--oer-ink);
 }
 
 /* ------------------------------------------------------------------
@@ -1728,7 +1890,7 @@ body.oer-master-view.sidebar-open footer {
    que se lea como algo que falta. */
 .oer-anchor-bar {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 0.75em;
     margin-top: 1em;
 }
@@ -1851,14 +2013,6 @@ body.oer-master-view.sidebar-open footer {
 .oer-media-none {
     color: var(--oer-warn);
     font-style: italic;
-}
-
-.oer-history-box > summary {
-    cursor: pointer;
-    font-size: 0.8em;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--oer-muted);
 }
 
 /* La fila madre de un detalle abierto se marca como el estante que la

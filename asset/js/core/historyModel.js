@@ -71,3 +71,57 @@ export function historyRows(history) {
         };
     });
 }
+
+/** Events shown at first and added by each «Ver 5 más». */
+export const HISTORY_PAGE = 5;
+
+/**
+ * Text for a term the server could not name (`CurationHistory::UNRESOLVED_PREFIX`):
+ * the event predates stored labels and the term can no longer be read.
+ */
+export const RETIRED_TEXT = 'término retirado (#%s)';
+
+/**
+ * @param {string} title
+ * @returns {string|null} the id of an unresolved `#<id>` title, or null
+ */
+export function retiredId(title) {
+    const match = /^#([1-9][0-9]*)$/.exec(String(title));
+    return match ? match[1] : null;
+}
+
+/**
+ * One part per changed dimension, for the one-line summary of an event.
+ * @param {object} row a row from historyRows()
+ * @returns {Array<{label: string, added: number, removed: number, emptied: boolean}>}
+ */
+export function summaryParts(row) {
+    return (row.changes || []).map((change) => ({
+        label: change.label,
+        added: (change.added || []).length,
+        removed: (change.removed || []).length,
+        emptied: Boolean(change.emptied)
+    }));
+}
+
+/**
+ * @param {number} total events in the history
+ * @param {number} shown events shown now
+ * @returns {number} events to show after one more page
+ */
+export function nextShown(total, shown) {
+    return Math.min(total, shown + HISTORY_PAGE);
+}
+
+/**
+ * One more page: rows `from`..`to` to append, `from` is the entry that takes
+ * the focus after «Ver 5 más» (NFR-006: the button may vanish under the
+ * keyboard), and `done` hides the button.
+ * @param {number} total
+ * @param {number} shown
+ * @returns {{from: number, to: number, done: boolean}}
+ */
+export function historyPage(total, shown) {
+    const to = nextShown(total, shown);
+    return { from: shown, to, done: to >= total };
+}

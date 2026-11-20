@@ -7,12 +7,16 @@
  */
 export const TERM_LABELS = Object.freeze({
     'dcterms:description': 'Descripción',
-    'lrmi:educationalLevel': 'Etapa',
+    'lrmi:educationalLevel': 'Curso',
     'schema:about': 'Materia',
     'lrmi:assesses': 'Criterios de evaluación',
     'lrmi:teaches': 'Saberes básicos',
     'dcterms:relation': 'Eje temático',
     'schema:isPartOf': 'Proyecto',
     'lrmi:learningResourceType': 'Tipo de recurso',
-    'dcterms:license': 'Licencia'
+    'dcterms:license': 'Licencia',
+    'dcterms:creator': 'Autoría',
+    'dcterms:publisher': 'Editor',
+    'dcterms:rightsHolder': 'Titular de derechos',
+    'dcterms:source': 'Fuente'
 });

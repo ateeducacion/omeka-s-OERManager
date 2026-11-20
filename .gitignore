@@ -7,3 +7,7 @@
 
 /coverage.xml
 /coverage/
+
+# Editor swap files
+.*.sw?
+*.swp

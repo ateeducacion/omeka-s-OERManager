@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace OERManager\Service\Governance;
 
+use OERManager\Service\CurationEvent;
+
 /**
  * Modelo de presentación del historial de curación (ADR-0015).
  *
@@ -41,37 +43,12 @@ final class CurationHistory
             $changes = [];
 
             foreach ($payload['terms'] ?? [] as $term => $entry) {
-                $before = array_map('intval', $entry['before'] ?? []);
-                $after = array_map('intval', $entry['after'] ?? []);
-                $addedIds = array_values(array_diff($after, $before));
-                $removedIds = array_values(array_diff($before, $after));
-
-                if ([] === $addedIds && [] === $removedIds) {
-                    continue;
+                $change = CurationEvent::isTyped($payload)
+                    ? self::typedChange((string) $term, $entry)
+                    : self::linkChange((string) $term, $entry, $titles);
+                if (null !== $change) {
+                    $changes[] = $change;
                 }
-
-                $why = [];
-                foreach ($entry['why'] ?? [] as $id => $reason) {
-                    $why[(int) $id] = (string) $reason;
-                }
-
-                $removed = [];
-                foreach ($removedIds as $id) {
-                    $removed[] = [
-                        'title' => self::title($id, $titles),
-                        'reason' => $why[$id] ?? '',
-                    ];
-                }
-
-                $changes[] = [
-                    'term' => (string) $term,
-                    'added' => array_map(
-                        static fn (int $id): string => self::title($id, $titles),
-                        $addedIds
-                    ),
-                    'removed' => $removed,
-                    'emptied' => [] === $after && [] !== $before,
-                ];
             }
 
             $rows[] = [
@@ -97,6 +74,9 @@ final class CurationHistory
     {
         $ids = [];
         foreach ($events as $event) {
+            if (CurationEvent::isTyped($event['payload'])) {
+                continue;
+            }
             foreach ($event['payload']['terms'] ?? [] as $entry) {
                 $allIds = [
                     ...($entry['before'] ?? []),
@@ -110,11 +90,102 @@ final class CurationHistory
         return array_map('intval', array_keys($ids));
     }
 
-    /** @param array<int,string> $titles */
-    private static function title(int $id, array $titles): string
+    /**
+     * @param array<string,mixed> $entry
+     * @param array<int,string> $titles
+     * @return array{term:string,added:list<string>,removed:list<array{title:string,reason:string}>,emptied:bool}|null
+     */
+    private static function linkChange(string $term, array $entry, array $titles): ?array
     {
-        $title = trim((string) ($titles[$id] ?? ''));
-        return '' === $title ? self::UNRESOLVED_PREFIX . $id : $title;
+        $before = array_map('intval', $entry['before'] ?? []);
+        $after = array_map('intval', $entry['after'] ?? []);
+        $addedIds = array_values(array_diff($after, $before));
+        $removedIds = array_values(array_diff($before, $after));
+        if ([] === $addedIds && [] === $removedIds) {
+            return null;
+        }
+
+        $why = [];
+        foreach ($entry['why'] ?? [] as $id => $reason) {
+            $why[(int) $id] = (string) $reason;
+        }
+        $stored = [];
+        foreach ($entry['labels'] ?? [] as $id => $label) {
+            $stored[(int) $id] = (string) $label;
+        }
+
+        $removed = [];
+        foreach ($removedIds as $id) {
+            $removed[] = ['title' => self::title($id, $titles, $stored), 'reason' => $why[$id] ?? ''];
+        }
+
+        return [
+            'term' => $term,
+            'added' => array_map(static fn (int $id): string => self::title($id, $titles, $stored), $addedIds),
+            'removed' => $removed,
+            'emptied' => [] === $after && [] !== $before,
+        ];
+    }
+
+    /**
+     * Governance values (ADR-0020) are not links: they are compared by their
+     * canonical form and shown as their label, URI or literal.
+     *
+     * @param array<string,mixed> $entry
+     * @return array{term:string,added:list<string>,removed:list<array{title:string,reason:string}>,emptied:bool}|null
+     */
+    private static function typedChange(string $term, array $entry): ?array
+    {
+        $before = self::keyed($entry['before'] ?? []);
+        $after = self::keyed($entry['after'] ?? []);
+        $added = array_values(array_diff_key($after, $before));
+        $removed = array_values(array_diff_key($before, $after));
+        if ([] === $added && [] === $removed) {
+            return null;
+        }
+        return [
+            'term' => $term,
+            'added' => $added,
+            'removed' => array_map(static fn (string $text): array => ['title' => $text, 'reason' => ''], $removed),
+            'emptied' => [] === $after && [] !== $before,
+        ];
+    }
+
+    /**
+     * Canonical key → display text of each typed value.
+     *
+     * @param list<mixed> $values
+     * @return array<string,string>
+     */
+    private static function keyed(array $values): array
+    {
+        $out = [];
+        foreach ($values as $value) {
+            if (!is_array($value)) {
+                continue;
+            }
+            ksort($value);
+            $text = 'uri' === ($value['type'] ?? '')
+                ? ValueText::of($value['label'] ?? null, $value['uri'] ?? null)
+                : trim((string) ($value['value'] ?? ''));
+            $out[(string) json_encode($value)] = $text;
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<int,string> $titles live titles
+     * @param array<int,string> $stored labels the event stored when it was written
+     */
+    private static function title(int $id, array $titles, array $stored = []): string
+    {
+        foreach ([$titles[$id] ?? '', $stored[$id] ?? ''] as $candidate) {
+            $candidate = trim((string) $candidate);
+            if ('' !== $candidate) {
+                return $candidate;
+            }
+        }
+        return self::UNRESOLVED_PREFIX . $id;
     }
 
     /**

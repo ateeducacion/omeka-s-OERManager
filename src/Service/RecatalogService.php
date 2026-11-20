@@ -139,10 +139,13 @@ class RecatalogService
                     implode(', ', $invalid)
                 ));
             }
+            $addedIds = array_values(array_diff($ids, $current['ids']));
             $dimensions[$term] = [
                 'before' => $current['ids'],
                 'after' => $ids,
                 'why' => $current['reasons'],
+                'labels' => $current['titles']
+                    + $this->titlesFor($addedIds, array_fill_keys($addedIds, $term)),
             ];
             // Limpiar SOLO esta property (clear_property_values) y anexar sus
             // nuevos valores. Vaciar una dimensión = limpiarla sin anexar.

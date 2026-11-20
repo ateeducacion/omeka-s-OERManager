@@ -34,7 +34,7 @@ class CurationEvent
      * sin cambios no es un evento: reescribirlo re-sellaría todas las
      * anotaciones con una fecha nueva y falsificaría la auditoría).
      *
-     * @param array<string,array{before:int[],after:int[],why?:array<int,string>}> $dimensions
+     * @param array<string,array{before:int[],after:int[],why?:array<int,string>,labels?:array<int,string>}> $dimensions
      * @param string|null $undoOf `dcterms:modified` del evento que esto revierte
      * @return array<string,mixed>|null
      */
@@ -59,6 +59,19 @@ class CurationEvent
             }
             if ($why) {
                 $entry['why'] = $why;
+            }
+            // Display only (TASK-065): the name each touched value had, so the
+            // history can still name a term that is later deleted or that the
+            // reader cannot open. Undo never reads it.
+            $labels = [];
+            $touched = array_merge($before, $after);
+            foreach ($state['labels'] ?? [] as $id => $label) {
+                if (in_array((int) $id, $touched, true) && '' !== trim((string) $label)) {
+                    $labels[(int) $id] = (string) $label;
+                }
+            }
+            if ($labels) {
+                $entry['labels'] = $labels;
             }
             $terms[$term] = $entry;
         }

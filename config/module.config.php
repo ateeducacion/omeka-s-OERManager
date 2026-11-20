@@ -606,6 +606,21 @@ return [
         'Ningún término coincide con el filtro.', // @translate
         '1 coincidencia', // @translate
         'coincidencias', // @translate
+        // TASK-065: history timeline and the labels the client now translates.
+        'término retirado (#%s)', // @translate
+        'Ver 5 más', // @translate
+        'Deshecho', // @translate
+        'vaciada', // @translate
+        'Curso', // @translate
+        'Saberes básicos', // @translate
+        'Criterios de evaluación', // @translate
+        'Materia', // @translate
+        'Eje temático', // @translate
+        'Licencia', // @translate
+        'Autoría', // @translate
+        'Editor', // @translate
+        'Titular de derechos', // @translate
+        'Fuente', // @translate
         // TASK-035: refusals the re-cataloguer shows from the server's `message`.
         ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
         Controller\Admin\IndexController::NOT_FOUND_MESSAGE,

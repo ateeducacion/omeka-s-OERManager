@@ -329,4 +329,25 @@ final class CurationEventTest extends TestCase
         $this->assertSame('governance', CurationEvent::scopeOf($decoded));
         $this->assertSame(CurationEvent::OP_GOVERNANCE, $decoded['op']);
     }
+
+    public function testLabelsOfTheTouchedValuesTravelInTheEvent(): void
+    {
+        $payload = CurationEvent::build([
+            'lrmi:teaches' => [
+                'before' => [1],
+                'after' => [2],
+                'labels' => [1 => 'Uno (1º ESO)', 2 => 'Dos (1º ESO)', 9 => 'Ajeno', 3 => '  '],
+            ],
+        ]);
+
+        $this->assertSame([1 => 'Uno (1º ESO)', 2 => 'Dos (1º ESO)'], $payload['terms']['lrmi:teaches']['labels']);
+        $this->assertSame(1, $payload['v']);
+    }
+
+    public function testAnEventWithoutLabelsHasNoLabelsKey(): void
+    {
+        $payload = CurationEvent::build(['lrmi:teaches' => ['before' => [], 'after' => [2]]]);
+
+        $this->assertArrayNotHasKey('labels', $payload['terms']['lrmi:teaches']);
+    }
 }
