@@ -2,7 +2,9 @@ import { decide, POLL_MS, POLL_MAX } from '../core/proposalState.js';
 import { pendingChips } from '../core/proposalMerge.js';
 import { extractionSummary } from '../core/extraction.js';
 import { messageFor } from '../core/messages.js';
+import { RELATION } from '../core/alignmentTree.js';
 import { addChip, chipIdsByTerm } from './termPicker.js';
+import { proposeIntoEditor } from './alignmentEditor.js';
 
 /**
  * Pre-relleno con IA del panel de re-catalogación (TASK-010/020), extraído de
@@ -77,34 +79,25 @@ function buildAiDebugPanel(debug, content) {
 }
 
 /**
- * Pre-rellena el panel con la propuesta IA. Qué falta por añadir lo decide
- * core/proposalMerge.js; aquí solo se insertan los chips.
- *
- * Se salta las dimensiones que no existen en el panel: el núcleo no conoce el
- * DOM y devuelve una entrada por cada término de la propuesta, pero inyectar
- * chips en dimensiones que el panel no muestra sería un cambio de comportamiento
- * respecto al original (`if (!$dim.length) return;`).
+ * Pre-fills the panel with the AI proposal (TASK-010; TASK-065 part B): the
+ * curricular terms go into the tree, marked as AI with their reason; the
+ * thematic axis into its chips, as before. Nothing is written until
+ * «Confirmar».
  */
-function applyAiProposal($panel, alignment, justifications) {
-    const proposal = pendingChips(alignment, chipIdsByTerm($panel), justifications);
-    let added = 0;
-    Object.keys(proposal).forEach((term) => {
-        const $dim = $panel.find(`.oer-recatalog-dim[data-term="${term}"]`);
-        if (!$dim.length) {
-            return;
+function applyAiProposal(ctx, alignment, justifications) {
+    let added = proposeIntoEditor(ctx.config, ctx.$panel, alignment, justifications);
+    const axis = pendingChips({ [RELATION]: (alignment || {})[RELATION] || [] }, chipIdsByTerm(ctx.$panel), {});
+    const $dim = ctx.$panel.find(`.oer-recatalog-dim[data-term="${RELATION}"]`);
+    (axis[RELATION] || []).forEach((candidate) => {
+        if ($dim.length && addChip($dim, candidate.id, candidate.title)) {
+            added += 1;
         }
-        proposal[term].forEach((candidate) => {
-            // La justificación (solo saberes/criterios) viaja oculta en el chip.
-            if (addChip($dim, candidate.id, candidate.title, candidate.justification)) {
-                added += 1;
-            }
-        });
     });
     return added;
 }
 
 function handleProposalPayload(ctx, response) {
-    const added = applyAiProposal(ctx.$panel, response.alignment, response.justifications);
+    const added = applyAiProposal(ctx, response.alignment, response.justifications);
     let note = added
         ? Omeka.jsTranslate('Propuesta de IA añadida: revísala y previsualiza antes de confirmar.')
         : Omeka.jsTranslate('La IA no propuso cambios nuevos.');

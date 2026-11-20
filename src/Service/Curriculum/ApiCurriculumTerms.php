@@ -109,7 +109,11 @@ class ApiCurriculumTerms implements CurriculumTerms
         if (null === $subject || null === $schemeId) {
             return null;
         }
-        $tree = ['subject' => ['id' => $courseSubjectId, 'title' => CurModel::label($subject)]];
+        $tree = [
+            'subject' => ['id' => $courseSubjectId, 'title' => CurModel::label($subject)],
+            // TASK-065 part B: the tree editor groups subjects under their course.
+            'course' => CurModel::ref($subject, CurModel::EDGE_CURSO),
+        ];
         foreach (CurModel::treeDimensions() as $dimension) {
             $shape = CurModel::treeShape($dimension);
             $rows = [];

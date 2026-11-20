@@ -23,6 +23,8 @@ $drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details
 // disparador con su id, que es lo que el sidebar del core pide y descarga.
 
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+// ADR-0024: the alignment editor's own look (fonts load only when it renders).
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-alignment-editor.css', 'OERManager'));
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
 // TASK-028: única entrada, módulos ES (asset/js/main.js).
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');

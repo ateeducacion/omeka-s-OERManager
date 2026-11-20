@@ -262,9 +262,15 @@ export function initDrawerDetails(config) {
             return;
         }
         section.dataset.mode = 'edit';
+        // TASK-065 part B (spec B1): the sidebar widens while editing; the
+        // next render (Confirm, Cancel, undo) brings it back.
+        const sidebar = document.getElementById('oer-detail-sidebar');
+        if (sidebar) {
+            sidebar.classList.add('oer-editing');
+        }
         // El foco sigue a la composición: quien llegó al botón con el teclado
         // se quedaría mirando un botón que acaba de desaparecer.
-        const first = section.querySelector('.oer-term-search');
+        const first = section.querySelector('.oer-align-course-search input, .oer-term-search');
         if (first) {
             first.focus();
         }
@@ -272,6 +278,10 @@ export function initDrawerDetails(config) {
 
     document.addEventListener(DRAWER_RENDERED, (event) => {
         const { itemId, content } = event.detail;
+        const sidebar = document.getElementById('oer-detail-sidebar');
+        if (sidebar) {
+            sidebar.classList.remove('oer-editing');
+        }
 
         // Before the tabs: a remembered «Historial» tab is shown while the tabs
         // are wired, and its panel must already be listening.
