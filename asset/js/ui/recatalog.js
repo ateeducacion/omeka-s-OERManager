@@ -1,9 +1,8 @@
 import { groupedDiff, RELATION, TERM_LABELS } from '../core/alignmentTree.js';
 import { undoLabel } from '../core/curationEvent.js';
 import { messageFor } from '../core/messages.js';
-import { valuesFor } from '../core/anchorData.js';
-import { buildDimensionSelector, disableApply } from './termPicker.js';
-import { buildAlignmentEditor, openAlignmentEditor, editorPairs, editorState } from './alignmentEditor.js';
+import { disableApply } from './termPicker.js';
+import { buildAlignmentEditor, openAlignmentEditor, editorPairs, editorState, showReview } from './alignmentEditor.js';
 import { reopenDrawer } from './drawer.js';
 import { ANCHOR_SLOT } from './drawerDetails.js';
 
@@ -23,42 +22,9 @@ import { ANCHOR_SLOT } from './drawerDetails.js';
 
 function buildRecatalogPanel(config, itemId, recatalog) {
     const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', itemId);
-
-    // TASK-065 part B (spec B5): the AI proposal fills the same tree, so it
-    // sits at the top of the editor.
-    if (config.aiEnabled) {
-        $panel.append($('<div>').addClass('oer-recatalog-ai-bar')
-            .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-ai')
-                .text(Omeka.jsTranslate('Proponer con IA')))
-            .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-ai-cancel')
-                .text(Omeka.jsTranslate('Detener la propuesta'))));
-    }
-
-    // Courses, subjects, knowledge and criteria: the tree (spec B1).
+    // TASK-065 B8: header, navigator, detail, footer and review step are the
+    // editor's (ui/alignmentEditor.js); this file keeps preview/apply/cancel.
     $panel.append(buildAlignmentEditor(config, $panel, recatalog));
-
-    // The thematic axis stays a flat selector, as today.
-    const $dims = $('<div>').addClass('oer-recatalog-dims');
-    $dims.append(buildDimensionSelector(
-        RELATION,
-        Omeka.jsTranslate(TERM_LABELS[RELATION]),
-        valuesFor(recatalog, RELATION),
-        false
-    ));
-    $panel.append($dims);
-
-    // Sticky footer (spec B6): the actions and the diff stay in sight.
-    const $footer = $('<div>').addClass('oer-recatalog-footer');
-    $footer.append($('<div>').addClass('oer-recatalog-actions')
-        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-preview')
-            .text(Omeka.jsTranslate('Previsualizar cambios')))
-        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-apply')
-            .prop('disabled', true)
-            .text(Omeka.jsTranslate('Confirmar')))
-        .append($('<button>').attr('type', 'button').addClass('button oer-recatalog-cancel')
-            .text(Omeka.jsTranslate('Cancelar'))));
-    $footer.append($('<div>').addClass('oer-recatalog-diff').attr({ role: 'status', 'aria-live': 'polite' }));
-    $panel.append($footer);
     return $panel;
 }
 
@@ -156,7 +122,7 @@ export function collectAlignmentPairs($panel) {
  */
 function renderDiff($panel, diff) {
     const { sections, hasInvalid } = groupedDiff(diff, editorState($panel));
-    const $diff = $panel.find('.oer-recatalog-diff').empty();
+    const $diff = $panel.find('.oer-ae-review-body').empty();
     if (!sections.length) {
         $diff.text(Omeka.jsTranslate('sin cambios'));
         return true;
@@ -254,6 +220,7 @@ export function initRecatalog(config) {
             }
             const ok = renderDiff($panel, response.diff || {});
             $panel.find('.oer-recatalog-apply').prop('disabled', !ok);
+            showReview($panel);
         }).fail(() => {
             $panel.find('.oer-recatalog-diff').text(Omeka.jsTranslate('No se pudo previsualizar.'));
         });
@@ -261,9 +228,7 @@ export function initRecatalog(config) {
 
     $(document).on('click', '.oer-recatalog-apply', function () {
         const $panel = $(this).closest('.oer-recatalog');
-        if (!window.confirm(Omeka.jsTranslate('¿Confirmar la re-catalogación de este REA?'))) {
-            return;
-        }
+        // The review step is the confirmation now (spec B8): no second dialog.
         const itemId = $panel.data('item-id');
         const pairs = collectAlignmentPairs($panel);
         pairs.push({ name: 'csrf', value: config.recatalogCsrf });
