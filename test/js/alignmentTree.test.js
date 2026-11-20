@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    COURSE, SUBJECT, TEACHES, ASSESSES, CURRICULAR_TERMS, LEAF_TERMS,
+    COURSE, SUBJECT, TEACHES, ASSESSES, RELATION, CURRICULAR_TERMS, LEAF_TERMS,
+    changedTerms, alignmentPairs, mergeProposal, groupedDiff,
     createState, learnTrees, learnSubject, subjectName, placement, summaryText, treeBatches,
     addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse
 } from '../../asset/js/core/alignmentTree.js';
@@ -157,4 +158,80 @@ test('quitar un valor suelto no toca a los demás términos', () => {
 test('lo añadido por la IA lleva su marca y su porqué', () => {
     const state = setLeaf(createState({}), ASSESSES, { id: 7, title: 'CE7' }, true, { ai: true, why: 'Porque sí' });
     assert.deepEqual(state.values[ASSESSES], [{ id: '7', title: 'CE7', why: 'Porque sí', ai: true }]);
+});
+
+/** Review Focus 1 and 3: nothing touched, nothing sent; same set, nothing sent. */
+test('sin cambios no se envía nada, aunque se quite y se vuelva a poner', () => {
+    let state = base();
+    assert.deepEqual(changedTerms(state), []);
+    assert.deepEqual(alignmentPairs(state), []);
+    state = setLeaf(state, TEACHES, { id: 100, title: 'Números', subjectId: '10' }, false);
+    state = setLeaf(state, TEACHES, { id: 100, title: 'Números', subjectId: '10' }, true);
+    assert.deepEqual(alignmentPairs(state), []);
+});
+
+test('solo se envían los términos que cambian, con su lista entera', () => {
+    const state = setLeaf(base(), TEACHES, { id: 101, title: 'Fracciones', subjectId: '10' }, true);
+    assert.deepEqual(alignmentPairs(state), [
+        { name: 'alignment[lrmi:teaches][]', value: '100' },
+        { name: 'alignment[lrmi:teaches][]', value: '300' },
+        { name: 'alignment[lrmi:teaches][]', value: '101' }
+    ]);
+});
+
+test('un término vaciado se envía vacío, como borrado explícito', () => {
+    const { state } = removeCourse(base(), '1');
+    assert.deepEqual(
+        alignmentPairs(state).filter((pair) => pair.name === 'alignment[lrmi:educationalLevel][]'),
+        [{ name: 'alignment[lrmi:educationalLevel][]', value: '' }]
+    );
+});
+
+test('el porqué de la IA viaja solo con saberes y criterios que lo tienen', () => {
+    const state = setLeaf(base(), ASSESSES, { id: 201, title: 'CE2', subjectId: '10' }, true, { ai: true, why: 'Evalúa X' });
+    assert.deepEqual(alignmentPairs(state), [
+        { name: 'alignment[lrmi:assesses][]', value: '200' },
+        { name: 'alignment[lrmi:assesses][]', value: '201' },
+        { name: 'justification[lrmi:assesses][201]', value: 'Evalúa X' }
+    ]);
+});
+
+/** Review Focus 5: the AI fills the same tree; what does not fit is still shown. */
+test('la propuesta de la IA crea lo que falta, con su marca, sin duplicar', () => {
+    const { state, added } = mergeProposal(base(), {
+        [COURSE]: [{ id: 1, title: '1º ESO' }],
+        [SUBJECT]: [{ id: 30, title: 'Física · 3º ESO' }],
+        [TEACHES]: [{ id: 400, title: 'Energía' }],
+        [RELATION]: [{ id: 9, title: 'Eje' }]
+    }, { [TEACHES]: { 400: 'Trata la energía' } });
+    assert.equal(added, 2);
+    assert.deepEqual(state.values[SUBJECT].slice(-1), [{ id: '30', title: 'Física · 3º ESO', why: '', ai: true }]);
+    assert.deepEqual(state.values[TEACHES].slice(-1), [{ id: '400', title: 'Energía', why: 'Trata la energía', ai: true }]);
+    const view = placement(learnTrees(state, { trees: [{
+        subject: { id: 30, title: 'Física · 3º ESO' }, course: { id: 3, title: '3º ESO' },
+        [TEACHES]: [{ id: 400, selectable: true, children: [] }], [ASSESSES]: []
+    }], invalid: [], retired: [] }));
+    // Lengua (20) was already unfitted in base(); the proposed Física joins it, marked.
+    assert.deepEqual(view.unfitted.subjects.map((s) => [s.id, s.ai]), [['20', false], ['30', true]]);
+});
+
+test('el diff se agrupa por curso, con la materia de cada hoja y el eje aparte', () => {
+    let state = setLeaf(base(), TEACHES, { id: 101, title: 'Fracciones', subjectId: '10' }, true);
+    state = removeValue(state, TEACHES, '300');
+    const { sections, hasInvalid } = groupedDiff({
+        [TEACHES]: { added: [101], removed: [300], invalid: [], titles: { 101: 'Fracciones', 300: 'Retirado' } },
+        [RELATION]: { added: [9], removed: [], invalid: [], titles: { 9: 'Eje' } }
+    }, state);
+    assert.equal(hasInvalid, false);
+    assert.deepEqual(sections, [
+        { kind: 'course', title: '1º ESO', lines: [{ sign: '+', term: TEACHES, subject: 'Matemáticas', title: 'Fracciones' }] },
+        { kind: 'unfitted', title: '', lines: [{ sign: '−', term: TEACHES, subject: '', title: 'Retirado' }] },
+        { kind: 'relation', title: '', lines: [{ sign: '+', term: RELATION, subject: '', title: 'Eje' }] }
+    ]);
+});
+
+test('un id inválido se señala y bloquea la confirmación', () => {
+    const { hasInvalid, sections } = groupedDiff({ [COURSE]: { added: [], removed: [], invalid: [5], titles: {} } }, base());
+    assert.equal(hasInvalid, true);
+    assert.deepEqual(sections[0].lines, [{ sign: '!', term: COURSE, subject: '', title: '#5' }]);
 });

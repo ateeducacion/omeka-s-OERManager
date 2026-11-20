@@ -285,3 +285,116 @@ export function removeCourse(state, courseId) {
         });
     return { state: next, removed };
 }
+
+function sameSet(ids, others) {
+    return ids.length === others.length && ids.every((id) => others.includes(id));
+}
+
+/** Terms whose set of ids differs from the REA's: the only ones sent. */
+export function changedTerms(state) {
+    return CURRICULAR_TERMS.filter((term) => !sameSet(state.values[term].map((one) => one.id), state.initial[term]));
+}
+
+/**
+ * The `recatalog-preview`/`recatalog-apply` pairs of the curricular terms.
+ * The same contract the chips produced: the whole list of a changed term, an
+ * empty value for an emptied one, and the AI's reason of each knowledge item
+ * or criterion that has one.
+ */
+export function alignmentPairs(state) {
+    const pairs = [];
+    changedTerms(state).forEach((term) => {
+        const list = state.values[term];
+        if (!list.length) {
+            pairs.push({ name: `alignment[${term}][]`, value: '' });
+        }
+        list.forEach((one) => pairs.push({ name: `alignment[${term}][]`, value: one.id }));
+        if (LEAF_TERMS.includes(term)) {
+            list.filter((one) => one.why).forEach((one) => {
+                pairs.push({ name: `justification[${term}][${one.id}]`, value: one.why });
+            });
+        }
+    });
+    return pairs;
+}
+
+/** Adds the AI proposal's curricular values that are missing, marked as AI. */
+export function mergeProposal(state, alignment, justifications) {
+    let next = state;
+    let added = 0;
+    const reasons = justifications || {};
+    CURRICULAR_TERMS.forEach((term) => {
+        ((alignment && alignment[term]) || []).forEach((candidate) => {
+            const before = next;
+            const extra = { ai: true, why: (reasons[term] || {})[candidate.id] || '' };
+            next = COURSE === term ? addCourse(next, candidate, extra) : addValue(next, term, candidate, extra);
+            if (next !== before) {
+                added += 1;
+            }
+        });
+    });
+    return { state: next, added };
+}
+
+/**
+ * The preview's flat diff, grouped by course (each leaf with its subject),
+ * then what does not fit, then the thematic axis.
+ */
+export function groupedDiff(diff, state) {
+    const sections = new Map();
+    let hasInvalid = false;
+    const section = (sectionKey, kind, title) => {
+        if (!sections.has(sectionKey)) {
+            sections.set(sectionKey, { kind, title, lines: [] });
+        }
+        return sections.get(sectionKey);
+    };
+    const unfittedSection = () => section('unfitted', 'unfitted', '');
+    const courseSection = (courseId) => (courseId && undefined !== state.courseTitles[courseId]
+        ? section('course:' + courseId, 'course', state.courseTitles[courseId])
+        : unfittedSection());
+    const subjectTitles = {};
+    state.values[SUBJECT].forEach((subject) => {
+        subjectTitles[subject.id] = subject.title;
+    });
+    Object.entries((diff && diff[SUBJECT] && diff[SUBJECT].titles) || {}).forEach(([id, title]) => {
+        subjectTitles[key(id)] = subjectTitles[key(id)] || title;
+    });
+
+    [COURSE, SUBJECT, ...LEAF_TERMS, RELATION].forEach((term) => {
+        const change = diff && diff[term];
+        if (!change) {
+            return;
+        }
+        const titles = change.titles || {};
+        [['+', change.added], ['−', change.removed], ['!', change.invalid]].forEach(([sign, ids]) => {
+            (ids || []).forEach((raw) => {
+                const id = key(raw);
+                if ('!' === sign) {
+                    hasInvalid = true;
+                }
+                let target;
+                let subject = '';
+                if (RELATION === term) {
+                    target = section('relation', 'relation', '');
+                } else if ('!' === sign) {
+                    target = unfittedSection();
+                } else if (COURSE === term) {
+                    target = courseSection(id);
+                } else if (SUBJECT === term) {
+                    target = courseSection(state.courseOf[id]);
+                } else {
+                    const subjectId = state.subjectOf[id];
+                    target = subjectId ? courseSection(state.courseOf[subjectId]) : unfittedSection();
+                    subject = subjectId
+                        ? subjectName(subjectTitles[subjectId] || '', state.courseTitles[state.courseOf[subjectId]] || '')
+                        : '';
+                }
+                target.lines.push({ sign, term, subject, title: titles[raw] || titles[id] || '#' + id });
+            });
+        });
+    });
+    // Courses first (in the order met), then «Sin encajar», then the axis.
+    const rank = { course: 0, unfitted: 1, relation: 2 };
+    return { sections: Array.from(sections.values()).sort((a, b) => rank[a.kind] - rank[b.kind]), hasInvalid };
+}
