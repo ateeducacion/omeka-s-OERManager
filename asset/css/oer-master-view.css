@@ -1879,6 +1879,9 @@ body.oer-master-view.sidebar-open footer {
 .oer-area-alignment[data-mode="read"] .oer-recatalog-dims,
 .oer-area-alignment[data-mode="read"] .oer-recatalog-actions,
 .oer-area-alignment[data-mode="read"] .oer-recatalog-diff,
+.oer-area-alignment[data-mode="read"] .oer-align-editor,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-ai-bar,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-footer,
 .oer-area-alignment[data-mode="edit"] .oer-anchor-read,
 .oer-area-alignment[data-mode="edit"] .oer-anchor-bar,
 .oer-detail-panel[data-mode="edit"] .oer-anchor-bar {

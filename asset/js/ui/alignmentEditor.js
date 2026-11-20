@@ -77,14 +77,16 @@ function loadTrees($panel, subjectIds) {
                 view.trees[String(id)] = null;
             });
             retiredById(response).forEach((value, id) => view.retired.set(id, value));
-            setState($panel, learnTrees(editorState($panel), response));
+            // Learning where values hang is not a change of selection: the
+            // last preview stays valid (final review I3).
+            $panel.data(STATE, learnTrees(editorState($panel), response));
             renderEditor($panel);
         }).fail(() => {
             batch.forEach((id) => {
                 view.trees[id] = null;
                 view.errors[id] = true;
             });
-            setState($panel, learnTrees(editorState($panel), { trees: [], invalid: batch }));
+            $panel.data(STATE, learnTrees(editorState($panel), { trees: [], invalid: batch }));
             renderEditor($panel);
         });
     });
@@ -339,6 +341,21 @@ function renderUnfitted($panel, unfitted) {
         }
         $li.append($('<button>').attr({ type: 'button', 'data-kind': 'subject', 'data-id': subject.id, 'data-name': subject.title })
             .addClass('button oer-align-remove').text(t('Quitar')));
+        // Its knowledge and criteria are listed too, never hidden (spec B3;
+        // final review I1).
+        const $leaves = $('<ul>');
+        LEAF_TERMS.forEach((term) => subject[term].forEach((leaf) => {
+            const $leaf = $('<li>').text(t(TERM_LABELS[term]) + ': ' + leaf.title + ' ');
+            if (leaf.ai) {
+                $leaf.append(aiMark(leaf.why));
+            }
+            $leaf.append($('<button>').attr({ type: 'button', 'data-kind': term, 'data-id': leaf.id, 'data-name': leaf.title })
+                .addClass('button oer-align-remove').text(t('Quitar')));
+            $leaves.append($leaf);
+        }));
+        if ($leaves.children().length) {
+            $li.append($leaves);
+        }
         items.push($li);
     });
     LEAF_TERMS.forEach((term) => unfitted[term].forEach((leaf) => {
@@ -371,6 +388,19 @@ function renderEditor($panel) {
     const focus = view.focus || (document.activeElement && document.activeElement.id);
     view.focus = null;
     const layout = placement(editorState($panel));
+    // What the curator opened, closed or typed survives the re-render (final
+    // review I2): branch toggles by the id they control, search boxes by id.
+    // Group toggles (courses, subjects) are kept in `view.expanded`.
+    const opened = {};
+    $editor.find('.oer-tree-toggle[aria-controls]:not([data-group])').each(function () {
+        opened[$(this).attr('aria-controls')] = 'true' === $(this).attr('aria-expanded');
+    });
+    const typed = {};
+    $editor.find('.oer-align-tree .oer-term-searchbox-input').each(function () {
+        if (this.id && this.value) {
+            typed[this.id] = this.value;
+        }
+    });
     $editor.children('.oer-align-tree, .oer-align-unfitted, .oer-align-pending, .oer-align-empty').remove();
     const $parts = [];
     if (!layout.courses.length) {
@@ -388,6 +418,18 @@ function renderEditor($panel) {
         $parts.push($('<p>').addClass('oer-align-pending oer-leaf-tree-note').text(t('Cargando…')));
     }
     $editor.children('.oer-align-head').after($parts);
+    $editor.find('.oer-tree-toggle[aria-controls]:not([data-group])').each(function () {
+        const target = $(this).attr('aria-controls');
+        if (Object.prototype.hasOwnProperty.call(opened, target)) {
+            toggle($(this), opened[target]);
+        }
+    });
+    Object.entries(typed).forEach(([id, value]) => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.value = value;
+        }
+    });
     if (focus) {
         const element = document.getElementById(focus);
         if (element) {
