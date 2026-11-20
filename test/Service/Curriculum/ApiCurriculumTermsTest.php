@@ -164,11 +164,12 @@ final class ApiCurriculumTermsTest extends TestCase
             'cur:BloqueCompetencial' => 4767,
             'cur:CriterioEvaluacion' => 4768,
         ];
+        $course = $this->curItem(502, 'cur:Curso', '1º ESO', [], [46259]);
         $subject = $this->curItem(500, 'cur:MateriaCurso', 'Matemáticas · 1º ESO', [
             'skos:prefLabel' => [$this->value('Matemáticas · 1º ESO')],
+            'cur:curso' => [$this->value('', $course, 'resource:item')],
         ], [46259]);
         $otherSet = $this->curItem(501, 'cur:MateriaCurso', 'Fuera', [], [7]);
-        $course = $this->curItem(502, 'cur:Curso', '1º ESO', [], [46259]);
         $lit = fn (string $text) => [$this->value($text)];
         $node = function (int $id, string $class, string $notation, $parent = null, string $edge = '') use ($lit) {
             $values = [
@@ -270,6 +271,15 @@ final class ApiCurriculumTermsTest extends TestCase
         );
         // Page 2 has one row (< page size), so there is no page 3.
         $this->assertSame([1, 2], $pages);
+    }
+
+    /** TASK-065 part B: the tree editor places each subject under its course. */
+    public function testCourseSubjectTreeNamesTheCourseOfTheSubject(): void
+    {
+        [$terms] = $this->treeFixture();
+        $tree = $terms->courseSubjectTree(500);
+
+        $this->assertSame(['id' => 502, 'title' => '1º ESO'], $tree['course']);
     }
 
     public function testCourseSubjectTreeStopsAtThePageCap(): void
