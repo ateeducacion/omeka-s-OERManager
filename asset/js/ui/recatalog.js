@@ -212,15 +212,26 @@ export function initRecatalog(config) {
             disableApply($panel);
             return;
         }
-        $.post(config.recatalogPreviewUrl, $.param(pairs)).done((response) => {
+        // What is previewed is exactly what «Confirmar» may send (final review
+        // B8, I1): an answer that arrives after the selection changed is stale.
+        const snapshot = $.param(pairs);
+        $panel.removeData('oerPreviewed');
+        $.post(config.recatalogPreviewUrl, snapshot).done((response) => {
+            if ($.param(collectAlignmentPairs($panel)) !== snapshot) {
+                $panel.find('.oer-recatalog-diff')
+                    .text(Omeka.jsTranslate('La selección cambió: revisa los cambios de nuevo.'));
+                disableApply($panel);
+                return;
+            }
             if (response.error) {
                 $panel.find('.oer-recatalog-diff').text(refusalText(response, ''));
                 disableApply($panel);
                 return;
             }
             const ok = renderDiff($panel, response.diff || {});
+            $panel.data('oerPreviewed', snapshot);
             $panel.find('.oer-recatalog-apply').prop('disabled', !ok);
-            showReview($panel);
+            showReview($panel, response.diff || {});
         }).fail(() => {
             $panel.find('.oer-recatalog-diff').text(Omeka.jsTranslate('No se pudo previsualizar.'));
         });
@@ -229,8 +240,15 @@ export function initRecatalog(config) {
     $(document).on('click', '.oer-recatalog-apply', function () {
         const $panel = $(this).closest('.oer-recatalog');
         // The review step is the confirmation now (spec B8): no second dialog.
+        // Only what was previewed is sent (final review B8, I1).
         const itemId = $panel.data('item-id');
         const pairs = collectAlignmentPairs($panel);
+        if ($panel.data('oerPreviewed') !== $.param(pairs)) {
+            $panel.find('.oer-recatalog-diff')
+                .text(Omeka.jsTranslate('La selección cambió: revisa los cambios de nuevo.'));
+            disableApply($panel);
+            return;
+        }
         pairs.push({ name: 'csrf', value: config.recatalogCsrf });
         $.post(config.recatalogApplyUrl, $.param(pairs)).done((response) => {
             if (response.updated) {

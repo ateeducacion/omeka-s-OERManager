@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     COURSE, SUBJECT, TEACHES, ASSESSES, RELATION, CURRICULAR_TERMS, LEAF_TERMS,
-    changedTerms, alignmentPairs, mergeProposal, groupedDiff, changeCounts, aiCount, focusSubject,
+    changedTerms, alignmentPairs, mergeProposal, groupedDiff, changeCounts, aiCount, focusSubject, setDelta, diffCounts,
     createState, learnTrees, learnSubject, subjectName, placement, summaryText, treeBatches,
     addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse
 } from '../../asset/js/core/alignmentTree.js';
@@ -261,3 +261,20 @@ test('la materia en foco sigue mientras exista y si no pasa a la primera', () =>
     assert.equal(focusSubject(layout, null), '10');
     assert.equal(focusSubject(placement(createState({})), null), null);
 });
+
+/** Final review B8, I3: the axis is counted like the rest, by set. */
+test('la diferencia entre dos conjuntos de ids', () => {
+    assert.deepEqual(setDelta(['1', '2'], ['2', '3', '4']), { added: 2, removed: 1 });
+    assert.deepEqual(setDelta([1, 2], ['2', '1']), { added: 0, removed: 0 });
+    assert.deepEqual(setDelta([], []), { added: 0, removed: 0 });
+});
+
+/** Final review B8, I3: the review summary is the server's diff, axis included. */
+test('el resumen de la revisión suma el diff del servidor, eje incluido', () => {
+    assert.deepEqual(diffCounts({
+        [TEACHES]: { added: [1, 2], removed: [3], invalid: [] },
+        [RELATION]: { added: [9], removed: [], invalid: [] }
+    }), { added: 3, removed: 1 });
+    assert.deepEqual(diffCounts(null), { added: 0, removed: 0 });
+});
+

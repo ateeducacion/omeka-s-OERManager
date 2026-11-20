@@ -653,6 +653,7 @@ return [
         'Anclaje curricular', // @translate
         'Estructura del anclaje', // @translate
         'Acotar por etapa', // @translate
+        'La selección cambió: revisa los cambios de nuevo.', // @translate
         'Añadir curso…', // @translate
         'propuestas de la IA', // @translate
         'Añadir', // @translate

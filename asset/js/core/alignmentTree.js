@@ -425,3 +425,27 @@ export function focusSubject(layout, current) {
     }
     return ids.length ? ids[0] : null;
 }
+
+/** Ids added and removed between two sets (ids compared as strings). */
+export function setDelta(before, after) {
+    const was = (before || []).map(key);
+    const now = (after || []).map(key);
+    return {
+        added: now.filter((id) => !was.includes(id)).length,
+        removed: was.filter((id) => !now.includes(id)).length
+    };
+}
+
+/**
+ * What the preview says will change, every term included (the thematic axis
+ * too): the review step's summary is the server's diff, not a local guess.
+ */
+export function diffCounts(diff) {
+    let added = 0;
+    let removed = 0;
+    Object.values(diff || {}).forEach((entry) => {
+        added += ((entry && entry.added) || []).length;
+        removed += ((entry && entry.removed) || []).length;
+    });
+    return { added, removed };
+}

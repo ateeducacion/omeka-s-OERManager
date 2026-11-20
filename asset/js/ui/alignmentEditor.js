@@ -2,12 +2,12 @@ import {
     COURSE, SUBJECT, TEACHES, LEAF_TERMS, RELATION, TERM_LABELS,
     createState, learnTrees, learnSubject, placement, summaryText, treeBatches,
     addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse,
-    alignmentPairs, mergeProposal, changeCounts, aiCount, focusSubject
+    alignmentPairs, mergeProposal, changeCounts, aiCount, focusSubject, setDelta, diffCounts
 } from '../core/alignmentTree.js';
 import { treeViews, filterTrees, filterStatus, retiredById, selectableIds } from '../core/leafTreeModel.js';
 import { valuesFor } from '../core/anchorData.js';
 import { buildTermSearch } from './termSearch.js';
-import { buildDimensionSelector, chipIdsByTerm, disableApply } from './termPicker.js';
+import { buildDimensionSelector, chipIdsByTerm, disableApply, CHIPS_CHANGED } from './termPicker.js';
 
 /**
  * The curricular alignment editor (TASK-065 part B, spec B8; look: ADR-0024).
@@ -40,8 +40,15 @@ export function editorState($panel) {
 
 function setState($panel, state) {
     $panel.data(STATE, state);
-    // A change of selection invalidates the last preview.
+    // A change of selection invalidates the last preview. If it happens while
+    // the review step is open (an AI proposal finishing, say), the curator is
+    // taken back to editing and told why (final review B8, I2).
     disableApply($panel);
+    const $review = $panel.find('.oer-ae-review');
+    if ($review.length && !$review.prop('hidden')) {
+        showEdit($panel);
+        $panel.find('.oer-recatalog-diff').text(t('La selección cambió: revisa los cambios de nuevo.'));
+    }
 }
 
 function ui($panel) {
@@ -102,7 +109,9 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
     $panel.data(STATE, createState(recatalog.current));
     $panel.data(UI, {
         config, subject: null, tab: TEACHES, trees: {}, errors: {},
-        retired: new Map(), filters: {}, focus: null
+        retired: new Map(), filters: {}, focus: null,
+        // The axis is counted too (final review B8, I3): its ids when opened.
+        axisInitial: valuesFor(recatalog, RELATION).map((one) => String(one.id))
     });
 
     const $editor = $('<div>').addClass('oer-align-editor');
@@ -199,10 +208,13 @@ export function proposeIntoEditor(config, $panel, alignment, justifications) {
     return added;
 }
 
-/** Switches to the review step, fills its summary, focuses its heading. */
-export function showReview($panel) {
+/**
+ * Switches to the review step, fills its summary from the server's diff (the
+ * thematic axis included), focuses its heading.
+ */
+export function showReview($panel, diff) {
     const state = editorState($panel);
-    const counts = changeCounts(state);
+    const counts = diffCounts(diff);
     const $editor = $panel.find('.oer-align-editor');
     $editor.find('.oer-ae-summary').empty().append(
         $('<dt>').text(t('Se añaden')), $('<dd>').addClass('oer-ae-added').text('+' + counts.added),
@@ -483,7 +495,10 @@ function renderDetail($panel, layout) {
 
 function renderChrome($panel) {
     const state = editorState($panel);
-    const { added, removed } = changeCounts(state);
+    const curricular = changeCounts(state);
+    const axis = setDelta(ui($panel).axisInitial, chipIdsByTerm($panel)[RELATION] || []);
+    const added = curricular.added + axis.added;
+    const removed = curricular.removed + axis.removed;
     const total = added + removed;
     const $changes = $panel.find('.oer-ae-changes').empty();
     $changes.append($('<strong>').text(total
@@ -692,5 +707,10 @@ export function initAlignmentEditor(config) {
 
     $(document).on('click', '.oer-align-editor .oer-ae-back', function () {
         showEdit(panelOf(this));
+    });
+
+    // The axis chips change the pending count as well (final review B8, I3).
+    $(document).on(CHIPS_CHANGED, `.oer-align-editor .oer-recatalog-dim[data-term="${RELATION}"]`, function () {
+        renderChrome(panelOf(this));
     });
 }
