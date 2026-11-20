@@ -291,6 +291,34 @@ to «Sin encajar», the operations, the AI marks and the accessibility rules do 
 - The look is scoped to `asset/css/oer-alignment-editor.css`. The drawer outside the editor keeps
   ADR-0014.
 
+**Status (2026-11-20): implemented** ([plan](../plans/2026-11-20-task-065b-master-detail-look.md)).
+- Fonts: Public Sans 5.3.0 (variable) and IBM Plex Mono 500 5.3.0, latin subset, about 41 KB, served by
+  the module.
+- The admin styles bare `header` and `footer` elements and gives every `button` a shadow, so the editor
+  builds those parts as `div` and resets buttons inside its root. `editorMarkup.test.js` pins it.
+- Contrast measured by `test/js/editorContrast.test.js`. Text needs 4.5:1; the last three rows are
+  control boundaries and need 3:1.
+
+| Pair | Ratio |
+| --- | --- |
+| `--ae-ink` on `--ae-surface` | 16.19:1 |
+| `--ae-ink` on `--ae-ground` | 14.94:1 |
+| `--ae-ink` on `--ae-accent-soft` | 14.04:1 |
+| `--ae-muted` on `--ae-surface` | 5.97:1 |
+| `--ae-muted` on `--ae-ground` | 5.51:1 |
+| `--ae-accent-ink` on `--ae-surface` | 6.40:1 |
+| `--ae-accent-ink` on `--ae-accent-soft` | 5.55:1 |
+| `--ae-on-accent` on `--ae-accent` | 6.40:1 |
+| `--ae-ai` on `--ae-ai-soft` | 8.15:1 |
+| `--ae-ai` on `--ae-surface` | 9.67:1 |
+| `--ae-unfit` on `--ae-unfit-soft` | 7.70:1 |
+| `--ae-added` on `--ae-added-soft` | 8.95:1 |
+| `--ae-removed` on `--ae-removed-soft` | 7.69:1 |
+| `--ae-danger` on `--ae-surface` | 7.21:1 |
+| `--ae-control` on `--ae-surface` | 3.68:1 |
+| `--ae-control` on `--ae-ground` | 3.40:1 |
+| `--ae-accent` on `--ae-surface` | 6.40:1 |
+
 **Accessibility (B7, plus):**
 - the navigator rows are buttons with `aria-current`;
 - the tabs follow the ARIA tabs pattern;
