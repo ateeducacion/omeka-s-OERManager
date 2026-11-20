@@ -108,7 +108,7 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
     const $editor = $('<div>').addClass('oer-align-editor');
 
     // Header: the AI entry point and how much it has proposed.
-    const $header = $('<header>').addClass('oer-ae-header')
+    const $header = $('<div>').addClass('oer-ae-header')
         .append($('<h4>').addClass('oer-ae-title').text(t('Anclaje curricular')))
         .append($('<p>').addClass('oer-ae-ai-count').prop('hidden', true));
     if (config.aiEnabled) {
@@ -125,6 +125,7 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
             config,
             dimension: COURSE,
             label: t('Añadir curso'),
+            placeholder: t('Añadir curso…'),
             context: () => ({ etapa: chipIdsByTerm($panel)['etapa'] || [] }),
             onPick: (result) => {
                 setState($panel, addCourse(editorState($panel), result));
@@ -150,7 +151,7 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
         .append($('<section>').addClass('oer-ae-detail')));
 
     // Footer: pending changes and the way to the review step.
-    $editor.append($('<footer>').addClass('oer-ae-footer oer-recatalog-footer')
+    $editor.append($('<div>').addClass('oer-ae-footer oer-recatalog-footer')
         .append($('<p>').addClass('oer-ae-changes'))
         .append($('<p>').addClass('oer-recatalog-diff oer-ae-footer-status').attr({ role: 'status', 'aria-live': 'polite' }))
         .append($('<div>').addClass('oer-ae-footer-actions')
@@ -160,7 +161,7 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
     // Review step (spec B8): the grouped diff and the only «Confirmar».
     const reviewHeadingId = domId($panel, ['review', 'heading']);
     $editor.append($('<section>').addClass('oer-ae-review').attr('aria-labelledby', reviewHeadingId).prop('hidden', true)
-        .append($('<header>').addClass('oer-ae-review-head')
+        .append($('<div>').addClass('oer-ae-review-head')
             .append(button('button oer-ae-back oer-ae-quiet', t('Seguir editando')))
             .append($('<div>')
                 .append($('<h4>').attr({ id: reviewHeadingId, tabindex: '-1' }).addClass('oer-ae-title').text(t('Revisar los cambios')))
@@ -513,6 +514,9 @@ function renderEditor($panel) {
     });
     const scroll = $editor.find('.oer-ae-tabpanel').scrollTop() || 0;
     const layout = placement(editorState($panel));
+    // The focused subject is decided before anything is drawn: the navigator
+    // marks it (aria-current) and the detail shows it.
+    view.subject = focusSubject(layout, view.subject);
     renderNav($panel, layout);
     renderDetail($panel, layout);
     renderChrome($panel);
@@ -542,6 +546,7 @@ function refreshCounts($panel) {
     const layout = placement(editorState($panel));
     const view = ui($panel);
     const focus = document.activeElement && document.activeElement.id;
+    view.subject = focusSubject(layout, view.subject);
     renderNav($panel, layout);
     renderChrome($panel);
     const subject = layout.courses.flatMap((course) => course.subjects).find((one) => one.id === view.subject);

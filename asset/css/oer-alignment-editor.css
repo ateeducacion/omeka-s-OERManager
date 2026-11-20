@@ -119,6 +119,23 @@
     font-family: var(--ae-sans);
 }
 
+/* The admin gives every button an inset shadow and a grey fill: inside the
+   editor only .button keeps a box; tabs, toggles and rows draw their own. */
+.oer-align-editor button {
+    box-shadow: none;
+    min-height: 0;
+}
+
+/* The axis has its own heading; the selector's label would repeat it. */
+.oer-ae-axis .oer-recatalog-dim > label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
 .oer-align-editor .button {
     min-height: 40px;
     padding: 0 16px;

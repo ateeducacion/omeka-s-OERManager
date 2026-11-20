@@ -653,6 +653,7 @@ return [
         'Anclaje curricular', // @translate
         'Estructura del anclaje', // @translate
         'Acotar por etapa', // @translate
+        'Añadir curso…', // @translate
         'propuestas de la IA', // @translate
         'Añadir', // @translate
         'Añade una materia a un curso para elegir sus saberes y criterios.', // @translate
