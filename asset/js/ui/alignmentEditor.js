@@ -4,7 +4,9 @@ import {
     addCourse, addSubject, setLeaf, removeValue, removeSubject, removeCourse,
     alignmentPairs, mergeProposal, changeCounts, aiCount, focusSubject, setDelta, diffCounts
 } from '../core/alignmentTree.js';
-import { treeViews, filterTrees, filterStatus, retiredById, selectableIds } from '../core/leafTreeModel.js';
+import { treeViews, filterTrees, filterStatus, retiredById, selectableIds, twistyNote } from '../core/leafTreeModel.js';
+import { STAGE, browseKey, browseRows, browseStatus } from '../core/curriculumBrowse.js';
+import { browseState, browseDisclosure, browseList, browseResult, toggleBrowse } from './curriculumBrowser.js';
 import { valuesFor } from '../core/anchorData.js';
 import { buildTermSearch } from './termSearch.js';
 import { buildDimensionSelector, chipIdsByTerm, disableApply, CHIPS_CHANGED } from './termPicker.js';
@@ -109,7 +111,7 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
     $panel.data(STATE, createState(recatalog.current));
     $panel.data(UI, {
         config, subject: null, tab: TEACHES, trees: {}, errors: {},
-        retired: new Map(), filters: {}, focus: null,
+        retired: new Map(), filters: {}, focus: null, browse: browseState(),
         // The axis is counted too (final review B8, I3): its ids when opened.
         axisInitial: valuesFor(recatalog, RELATION).map((one) => String(one.id))
     });
@@ -135,19 +137,11 @@ export function buildAlignmentEditor(config, $panel, recatalog) {
             dimension: COURSE,
             label: t('Añadir curso'),
             placeholder: t('Añadir curso…'),
-            context: () => ({ etapa: chipIdsByTerm($panel)['etapa'] || [] }),
-            onPick: (result) => {
-                setState($panel, addCourse(editorState($panel), result));
-                ui($panel).focus = domId($panel, ['course', result.id, 'search']);
-                renderEditor($panel);
-                announce($panel, t('Curso añadido:') + ' ' + result.title);
-            }
+            onPick: (result) => pickCourse($panel, result)
         }).addClass('oer-align-course-search'));
-    // Etapa narrows the course search and is never written (ADR-0022).
-    const $etapa = buildDimensionSelector('etapa', t('Etapa'), [], true);
-    $etapa.append($('<p>').addClass('oer-dim-hint').text(t('Solo acota la búsqueda. No se guarda en el REA.')));
-    $courseHead.append($('<details>').addClass('oer-ae-etapa')
-        .append($('<summary>').text(t('Acotar por etapa')), $etapa));
+    // «Explorar cursos» replaces the old «Acotar por etapa» helper (spec B8
+    // addendum): the stage is browsed, never written (ADR-0022).
+    $courseHead.append($('<div>').addClass('oer-ae-browse oer-ae-course-browse'));
     $nav.append($courseHead)
         .append($('<div>').addClass('oer-ae-courses'))
         .append($('<div>').addClass('oer-ae-unfitted-slot'))
@@ -244,12 +238,77 @@ function aiMark(why, $panel, key) {
         .append($('<summary>').append($mark, $('<span>').text(t('Ver porqué'))), $('<p>').text(why));
 }
 
+/** Adds a course found by search or by «Explorar cursos». */
+function pickCourse($panel, result) {
+    setState($panel, addCourse(editorState($panel), result));
+    ui($panel).focus = domId($panel, ['course', result.id, 'search']);
+    renderEditor($panel);
+    announce($panel, t('Curso añadido:') + ' ' + result.title);
+}
+
+/** Adds a subject of `courseId` found by search or by «Ver materias», and opens it. */
+function pickSubject($panel, result, courseId) {
+    const view = ui($panel);
+    let state = learnSubject(editorState($panel), result);
+    state = addSubject(state, result, result.parentId || courseId);
+    setState($panel, state);
+    view.subject = String(result.id);
+    view.focus = domId($panel, ['subject', result.id, 'pick']);
+    loadTrees($panel, [String(result.id)]);
+    announce($panel, t('Materia añadida:') + ' ' + result.title);
+}
+
+function chosenIds($panel, term) {
+    return editorState($panel).values[term].map((one) => String(one.id));
+}
+
+/** Stages → their courses, each with «Añadir» (spec B8 addendum). */
+function renderCourseBrowser($panel) {
+    const view = ui($panel);
+    const idOf = (parts) => domId($panel, parts);
+    const root = browseDisclosure(view, idOf, {
+        dimension: STAGE, text: t('Explorar cursos'), classes: 'oer-ae-browse-root'
+    });
+    if (root.open) {
+        const entry = view.browse.lists[browseKey(STAGE, '')];
+        const $stages = $('<ul>').addClass('oer-ae-browse-list');
+        // Stages are not added: each one opens its courses instead.
+        browseRows(entry && entry.results, []).forEach((row) => {
+            const stage = browseDisclosure(view, idOf, {
+                dimension: COURSE, parentId: row.id, text: row.name, classes: 'oer-ae-browse-node'
+            });
+            if (stage.open) {
+                stage.$region.append(browseList(view, COURSE, row.id, chosenIds($panel, COURSE), idOf));
+            }
+            $stages.append($('<li>').addClass('oer-ae-browse-stage').append(stage.$button, stage.$region));
+        });
+        root.$region.append($('<p>').addClass('oer-ae-muted oer-ae-browse-status')
+            .attr({ role: 'status', 'aria-live': 'polite' }).text(browseStatus(entry, t)), $stages);
+    }
+    $panel.find('.oer-ae-course-browse').empty().append(root.$button, root.$region);
+}
+
+/** «Ver materias» of one course: every subject, each with «Añadir». */
+function subjectBrowser($panel, course) {
+    const view = ui($panel);
+    const idOf = (parts) => domId($panel, parts);
+    const box = browseDisclosure(view, idOf, {
+        dimension: SUBJECT, parentId: course.id, text: t('Ver materias'),
+        label: t('Ver materias de') + ' ' + course.title, classes: 'oer-ae-browse-root'
+    });
+    if (box.open) {
+        box.$region.append(browseList(view, SUBJECT, course.id, chosenIds($panel, SUBJECT), idOf));
+    }
+    return $('<div>').addClass('oer-ae-browse oer-ae-subject-browse').append(box.$button, box.$region);
+}
+
 function counts(subject) {
     return 'S ' + subject[TEACHES].length + ' · C ' + subject[LEAF_TERMS[1]].length;
 }
 
 function renderNav($panel, layout) {
     const view = ui($panel);
+    renderCourseBrowser($panel);
     const $courses = $panel.find('.oer-ae-courses').empty();
     layout.courses.forEach((course) => {
         const $course = $('<section>').addClass('oer-ae-course').attr('data-id', course.id);
@@ -281,19 +340,11 @@ function renderNav($panel, layout) {
             label: t('Añadir materia de') + ' ' + course.title,
             // A subject search narrowed to THIS course (spec B4).
             context: () => ({ level: [course.id] }),
-            onPick: (result) => {
-                let state = learnSubject(editorState($panel), result);
-                state = addSubject(state, result, result.parentId || course.id);
-                setState($panel, state);
-                view.subject = String(result.id);
-                view.focus = domId($panel, ['subject', result.id, 'pick']);
-                loadTrees($panel, [String(result.id)]);
-                announce($panel, t('Materia añadida:') + ' ' + result.title);
-            }
+            onPick: (result) => pickSubject($panel, result, course.id)
         });
         $search.find('input').attr('id', searchId);
         $search.find('label').attr('for', searchId);
-        $course.append($search.addClass('oer-ae-subject-search'));
+        $course.append($search.addClass('oer-ae-subject-search'), subjectBrowser($panel, course));
         $courses.append($course);
     });
     if (!layout.courses.length) {
@@ -365,6 +416,11 @@ function renderUnfitted($panel, unfitted) {
         .append($items);
 }
 
+/** «1 elegido», «3 elegidos», '' for none. */
+function chosenText(count) {
+    return count ? count + ' ' + t(1 === count ? 'elegido' : 'elegidos') : '';
+}
+
 function buildNode($panel, term, subjectId, node, aiById) {
     const $li = $('<li>').addClass('oer-tree-node').attr('data-id', node.id);
     const childrenId = domId($panel, [term, subjectId, node.id, 'children']);
@@ -376,16 +432,20 @@ function buildNode($panel, term, subjectId, node, aiById) {
             .append($('<span>').addClass('oer-ae-code').text(node.notation))
             .append($('<span>').addClass('oer-ae-block-title').text(node.title.replace(/^\S+\s·\s/, '')))
             .append($('<span>').addClass('oer-tree-count oer-ae-block-count')
-                .text(node.selectedBelow ? node.selectedBelow + ' ' + t('elegidos') : '')));
+                .text(chosenText(node.selectedBelow))));
     } else {
         const checkId = domId($panel, [term, subjectId, node.id]);
         const ai = aiById.get(node.id);
         const $row = $('<div>').addClass('oer-ae-leaf').toggleClass('is-checked', node.checked).toggleClass('is-ai', !!(ai && node.checked));
+        const note = twistyNote(node, term, t);
         if (hasChildren) {
             $row.append($('<button>').attr({
                 type: 'button', 'aria-expanded': node.expanded ? 'true' : 'false', 'aria-controls': childrenId,
-                'aria-label': t('Desplegar') + ' ' + (node.notation || node.title)
+                'aria-label': t('Desplegar') + ' ' + (node.notation || node.title) + ' (' + note + ')'
             }).addClass('oer-tree-toggle oer-tree-twisty'));
+        } else {
+            // Keeps every checkbox in one column (spec B8 addendum, option B).
+            $row.append($('<span>').addClass('oer-ae-twisty-gap').attr('aria-hidden', 'true'));
         }
         const $check = $('<input>').attr({ type: 'checkbox', id: checkId, value: node.id })
             .addClass('oer-tree-check')
@@ -394,6 +454,10 @@ function buildNode($panel, term, subjectId, node, aiById) {
         const $label = $('<label>').attr('for', checkId)
             .append($('<span>').addClass('oer-ae-code').text(node.notation))
             .append($('<span>').addClass('oer-ae-leaf-text').text(node.definition || node.title));
+        if (note) {
+            $label.append($('<span>').addClass('oer-ae-twisty-note')
+                .attr({ 'data-children': node.children.length, 'data-term': term }).text(note));
+        }
         $row.append($check, $label);
         if (ai && node.checked) {
             $row.append(aiMark(ai.why, $panel, term + '-' + node.id));
@@ -570,10 +634,19 @@ function refreshCounts($panel) {
     }
     $panel.find('.oer-ae-detail .oer-tree-block-node').each(function () {
         const below = $(this).find('.oer-tree-children .oer-tree-check:checked').length;
-        $(this).children('.oer-tree-block').find('.oer-tree-count').text(below ? below + ' ' + t('elegidos') : '');
+        $(this).children('.oer-tree-block').find('.oer-tree-count').text(chosenText(below));
     });
     $panel.find('.oer-ae-detail .oer-tree-check').each(function () {
         $(this).closest('.oer-ae-leaf').toggleClass('is-checked', this.checked);
+    });
+    $panel.find('.oer-ae-detail .oer-ae-twisty-note').each(function () {
+        const $note = $(this);
+        const below = $note.closest('.oer-tree-node').children('.oer-tree-children').find('.oer-tree-check:checked').length;
+        const children = Number($note.attr('data-children')) || 0;
+        const text = twistyNote({ children: new Array(children).fill(null), selectedBelow: below }, $note.attr('data-term'), t);
+        $note.text(text);
+        $note.closest('.oer-ae-leaf').children('.oer-tree-twisty').attr('aria-label', t('Desplegar') + ' '
+            + $note.siblings('.oer-ae-code').text() + ' (' + text + ')');
     });
     if (focus) {
         const element = document.getElementById(focus);
@@ -606,6 +679,37 @@ export function initAlignmentEditor(config) {
         event.preventDefault();
         if (('ArrowRight' === event.key) !== ('true' === $(this).attr('aria-expanded'))) {
             $(this).trigger('click');
+        }
+    });
+
+    // «Explorar cursos» / «Ver materias» (spec B8 addendum).
+    $(document).on('click', '.oer-align-editor .oer-ae-browse-toggle', function () {
+        const $panel = panelOf(this);
+        toggleBrowse(ui($panel), config.searchTermsUrl, $(this).attr('data-dimension'),
+            String($(this).attr('data-parent') || ''), () => refreshCounts($panel));
+    });
+
+    $(document).on('keydown', '.oer-align-editor .oer-ae-browse-toggle', function (event) {
+        if ('ArrowRight' !== event.key && 'ArrowLeft' !== event.key) {
+            return;
+        }
+        event.preventDefault();
+        if (('ArrowRight' === event.key) !== ('true' === $(this).attr('aria-expanded'))) {
+            $(this).trigger('click');
+        }
+    });
+
+    $(document).on('click', '.oer-align-editor .oer-ae-browse-add', function () {
+        const $button = $(this);
+        const $panel = panelOf(this);
+        const result = browseResult(ui($panel), $button.attr('data-key'), $button.attr('data-id'));
+        if (!result) {
+            return;
+        }
+        if (COURSE === $button.attr('data-dimension')) {
+            pickCourse($panel, result);
+        } else {
+            pickSubject($panel, result, String(result.parentId || ''));
         }
     });
 

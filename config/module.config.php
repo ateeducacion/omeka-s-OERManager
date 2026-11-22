@@ -652,7 +652,18 @@ return [
         // TASK-065 B8: master-detail editor.
         'Anclaje curricular', // @translate
         'Estructura del anclaje', // @translate
-        'Acotar por etapa', // @translate
+        // TASK-065 B8 addendum: «Explorar cursos», «Ver materias», twisty note.
+        'Explorar cursos', // @translate
+        'Ver materias', // @translate
+        'Ver materias de', // @translate
+        'Añadido', // @translate
+        'No se pudo cargar la lista.', // @translate
+        'sub-saber', // @translate
+        'sub-saberes', // @translate
+        'sub-criterio', // @translate
+        'sub-criterios', // @translate
+        'elegido', // @translate
+        'Sin resultados', // @translate
         'La selección cambió: revisa los cambios de nuevo.', // @translate
         'Añadir curso…', // @translate
         'propuestas de la IA', // @translate

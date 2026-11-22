@@ -12,7 +12,7 @@ const t = parseTokens(css);
 
 const TEXT = [
     ['--ae-ink', '--ae-surface'], ['--ae-ink', '--ae-ground'], ['--ae-ink', '--ae-accent-soft'],
-    ['--ae-muted', '--ae-surface'], ['--ae-muted', '--ae-ground'],
+    ['--ae-muted', '--ae-surface'], ['--ae-muted', '--ae-ground'], ['--ae-muted', '--ae-accent-soft'],
     ['--ae-accent-ink', '--ae-surface'], ['--ae-accent-ink', '--ae-accent-soft'], ['--ae-on-accent', '--ae-accent'],
     ['--ae-ai', '--ae-ai-soft'], ['--ae-ai', '--ae-surface'],
     ['--ae-unfit', '--ae-unfit-soft'],

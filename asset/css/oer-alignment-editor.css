@@ -259,11 +259,79 @@
     border-right: 1px solid var(--ae-rule);
 }
 
-.oer-ae-etapa > summary {
+/* «Explorar cursos» and «Ver materias» (spec B8 addendum). */
+.oer-ae-browse {
     margin-top: 6px;
-    color: var(--ae-muted);
+}
+
+.oer-align-editor .oer-ae-browse-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    margin: 0;
+    padding: 2px 6px;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    box-shadow: none;
+    color: var(--ae-accent-ink);
+    font: inherit;
     font-size: 13px;
+    font-weight: 600;
+    text-align: left;
     cursor: pointer;
+}
+
+.oer-align-editor .oer-ae-browse-node {
+    color: var(--ae-ink);
+}
+
+.oer-align-editor .oer-ae-browse-toggle:hover {
+    background: var(--ae-accent-soft);
+}
+
+.oer-ae-browse-region {
+    margin: 2px 0 6px 12px;
+    padding-left: 10px;
+    border-left: 1px solid var(--ae-rule);
+}
+
+.oer-ae-browse-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-ae-browse-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 2px 4px;
+}
+
+.oer-ae-browse-name {
+    flex: 1 1 auto;
+}
+
+.oer-ae-browse-added {
+    color: var(--ae-muted);
+    font-size: 12px;
+}
+
+.oer-align-editor .oer-ae-browse-status {
+    margin: 4px 0;
+    font-size: 12px;
+}
+
+.oer-align-editor .oer-ae-browse-status:empty {
+    display: none;
 }
 
 .oer-ae-course {
@@ -510,7 +578,7 @@
 
 .oer-align-editor .oer-ae-block-toggle {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
     width: 100%;
     min-height: 32px;
@@ -524,13 +592,74 @@
     cursor: pointer;
 }
 
-.oer-ae-block-toggle::before {
-    content: "▸";
-    color: var(--ae-muted);
+/* One chevron for every disclosure of the editor (spec B8 addendum,
+   option B): drawn with borders, so it needs no glyph from the font; it
+   points right when closed and down when open; the state is also in
+   `aria-expanded`, never only in the shape. */
+.oer-align-editor .oer-ae-block-toggle::before,
+.oer-align-editor .oer-tree-twisty::before,
+.oer-align-editor .oer-ae-browse-toggle::before {
+    content: "";
+    flex: 0 0 auto;
+    align-self: center;
+    width: 6px;
+    height: 6px;
+    margin: 0 3px;
+    border-right: 2px solid var(--ae-muted);
+    border-bottom: 2px solid var(--ae-muted);
+    transform: rotate(-45deg);
+    transition: transform 120ms ease;
 }
 
-.oer-ae-block-toggle[aria-expanded="true"]::before {
-    content: "▾";
+.oer-align-editor .oer-ae-block-toggle[aria-expanded="true"]::before,
+.oer-align-editor .oer-tree-twisty[aria-expanded="true"]::before,
+.oer-align-editor .oer-ae-browse-toggle[aria-expanded="true"]::before {
+    transform: rotate(45deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .oer-align-editor .oer-ae-block-toggle::before,
+    .oer-align-editor .oer-tree-twisty::before,
+    .oer-align-editor .oer-ae-browse-toggle::before {
+        transition: none;
+    }
+}
+
+/* The twisty of a knowledge item that groups others, and the gap that keeps
+   the checkboxes of the items without children in the same column. */
+.oer-align-editor .oer-tree-twisty,
+.oer-ae-twisty-gap {
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
+}
+
+.oer-align-editor .oer-tree-twisty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    margin: -3px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.oer-align-editor .oer-tree-twisty:hover {
+    background: var(--ae-surface);
+    box-shadow: inset 0 0 0 1px var(--ae-control);
+}
+
+.oer-align-editor .oer-tree-twisty:hover::before {
+    border-color: var(--ae-ink);
+}
+
+.oer-ae-twisty-note {
+    color: var(--ae-muted);
+    font-size: 12px;
 }
 
 .oer-ae-block-title {

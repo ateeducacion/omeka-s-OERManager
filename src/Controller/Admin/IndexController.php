@@ -61,6 +61,12 @@ class IndexController extends AbstractActionController
     /** Course subjects per tree request (a REA rarely has more than a few). */
     private const MAX_TREE_SUBJECTS = 10;
 
+    /**
+     * «Explorar cursos» / «Ver materias» (TASK-065 B8 addendum): the children
+     * of ONE parent, listed whole. A course has ≤ a few dozen subjects.
+     */
+    private const BROWSE_LIMIT = 100;
+
     /** Linked knowledge/criteria ids checked for retirement per request. */
     private const MAX_TREE_LINKED = 500;
 
@@ -380,6 +386,10 @@ class IndexController extends AbstractActionController
             'about' => $this->params()->fromQuery('about'),
         ];
 
+        if ($this->params()->fromQuery('browse')) {
+            return new JsonModel($this->browseTerms($dimension, $context));
+        }
+
         if ('etapa' === $dimension) {
             $results = $this->curriculumSearch->searchEtapas($text);
         } elseif ('dcterms:relation' === $dimension) {
@@ -389,6 +399,25 @@ class IndexController extends AbstractActionController
         }
 
         return new JsonModel(['results' => $results]);
+    }
+
+    /**
+     * Every child of one parent, without text (TASK-065 B8 addendum). Bounded
+     * (NFR-004): only the stages are listed without a parent; any other
+     * dimension needs a valid parent id, or nothing is queried.
+     *
+     * @param array<string,mixed> $context
+     * @return array{results:list<array<string,mixed>>,error?:string}
+     */
+    private function browseTerms(string $dimension, array $context): array
+    {
+        if ('etapa' === $dimension) {
+            return ['results' => $this->curriculumSearch->searchEtapas('', self::BROWSE_LIMIT)];
+        }
+        if (null === CurModel::scopeFor($dimension, $context)) {
+            return ['results' => [], 'error' => 'parent_required'];
+        }
+        return ['results' => $this->curriculumSearch->searchDimension($dimension, '', $context, self::BROWSE_LIMIT)];
     }
 
     /**
