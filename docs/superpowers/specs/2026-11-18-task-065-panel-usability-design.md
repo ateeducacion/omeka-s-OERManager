@@ -327,6 +327,37 @@ to «Sin encajar», the operations, the AI marks and the accessibility rules do 
 - touch targets are at least 44px;
 - counts and changes are announced in a polite live region.
 
+**Addendum (2026-11-22): browsing courses and subjects, and the grouping twisty.** Requested and
+approved by the owner while reviewing the editor visually. The rest of B8 stands.
+
+- **«Explorar cursos» replaces «Acotar por etapa».** Under the course search, a disclosure lists the
+  stages. Each stage opens its courses, and each course has «Añadir», or «Añadido» when it is already
+  chosen. Adding works like the search does. The stage is still only a way to navigate and is never
+  written (ADR-0022). The course search is no longer narrowed by stage.
+- **«Ver materias» per course.** Next to «Añadir materia de <course>», a disclosure lists every subject
+  of that course with «Añadir» or «Añadido». Adding one opens it in the detail, as the search does. It
+  is for a curator who does not know the subject's name.
+- **Server.** `search-terms` with `browse=1` lists the children of one parent with no text, up to 100.
+  Without a valid parent (`etapa` for courses, `level` for subjects) it answers
+  `{results: [], error: "parent_required"}` and runs no query (NFR-004). Only the stages are listed
+  without a parent. The other `search-terms` calls do not change.
+- **What is open survives redraws.** The editor's view state keeps the open lists and the loaded ones,
+  so a checkbox or an addition does not close them. Each list is asked once; a failed one is asked
+  again when reopened.
+- **Grouping twisty (option B).** A knowledge item or criterion that groups others has a 24px
+  disclosure button. Items without children keep an empty 24px gap, so every checkbox sits in the same
+  column. Under the text, «n sub-saberes · m elegidos» (or «sub-criterios») shows what is chosen inside a
+  closed group, and the button's name says the same. The chevron is drawn with borders, not a font glyph.
+  It is shared with the block and browse disclosures and does not animate under
+  `prefers-reduced-motion`. The block count is now singular for one («1 elegido»).
+- **Contrast.** One new text pair, `--ae-muted` on `--ae-accent-soft` (the note on a checked row), is
+  pinned by `editorContrast.test.js`.
+- **Verification.** `IndexControllerTest::testSearchTermsBrowseListsTheChildrenOfAParentOnly`,
+  `test/js/curriculumBrowse.test.js` (5 tests) and
+  `test/browser/alignment-editor-browse-smoke.html` (headless Chrome, stubbed endpoints). The smoke was
+  checked against two CSS mutations, which made it fail. **Not verified:** the subject count of real
+  courses against the 100 limit, and the editor in a logged-in admin.
+
 ## Out of scope
 
 - The item page's workflow buttons (redesigned in TASK-067).
