@@ -227,3 +227,24 @@ export function filterStatus(result, t) {
     }
     return 1 === result.matches ? t('1 coincidencia') : result.matches + ' ' + t('coincidencias');
 }
+
+const SUB_LABELS = Object.freeze({
+    'lrmi:teaches': ['sub-saber', 'sub-saberes'],
+    'lrmi:assesses': ['sub-criterio', 'sub-criterios']
+});
+
+/**
+ * Under a knowledge item that groups others (TASK-065 B8 addendum, option B):
+ * «4 sub-saberes · 2 elegidos», so what is chosen inside a closed group shows.
+ * '' for a node without children.
+ */
+export function twistyNote(node, dimension, t) {
+    const count = ((node && node.children) || []).length;
+    if (!count) {
+        return '';
+    }
+    const [one, many] = SUB_LABELS[dimension] || SUB_LABELS['lrmi:teaches'];
+    const below = node.selectedBelow || 0;
+    const text = `${count} ${t(1 === count ? one : many)}`;
+    return below ? `${text} · ${below} ${t(1 === below ? 'elegido' : 'elegidos')}` : text;
+}

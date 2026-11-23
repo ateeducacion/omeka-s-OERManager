@@ -638,6 +638,74 @@ return [
         'Editor', // @translate
         'Titular de derechos', // @translate
         'Fuente', // @translate
+        // TASK-065 part B: the re-cataloguer as a tree.
+        'Cursos', // @translate
+        'Añadir curso', // @translate
+        'Añadir materia de', // @translate
+        'Curso añadido:', // @translate
+        'Materia añadida:', // @translate
+        'Quitar curso', // @translate
+        'Quitar materia', // @translate
+        'Quitar', // @translate
+        'Quitado:', // @translate
+        '¿Quitar', // @translate
+        'y sus', // @translate
+        'términos?', // @translate
+        'materia', // @translate
+        'materias', // @translate
+        'saber', // @translate
+        'saberes', // @translate
+        'criterio', // @translate
+        'criterios', // @translate
+        'Sin encajar', // @translate
+        'No cuelgan de un curso o una materia elegidos. Quítalos o añade lo que les falta.', // @translate
+        'Añadir su curso', // @translate
+        'Añade un curso para empezar.', // @translate
+        'IA', // @translate
+        'Sustituto:', // @translate
+        '1 resultado', // @translate
+        'resultados', // @translate
+        'inválido:', // @translate
+        // TASK-065 B8: master-detail editor.
+        'Anclaje curricular', // @translate
+        'Estructura del anclaje', // @translate
+        // TASK-065 B8 addendum: «Explorar cursos», «Ver materias», twisty note.
+        'Explorar cursos', // @translate
+        'Ver materias', // @translate
+        'Ver materias de', // @translate
+        'Añadido', // @translate
+        'No se pudo cargar la lista.', // @translate
+        'sub-saber', // @translate
+        'sub-saberes', // @translate
+        'sub-criterio', // @translate
+        'sub-criterios', // @translate
+        'elegido', // @translate
+        'Sin resultados', // @translate
+        'La selección cambió: revisa los cambios de nuevo.', // @translate
+        'Añadir curso…', // @translate
+        'propuestas de la IA', // @translate
+        'Añadir', // @translate
+        'Añade una materia a un curso para elegir sus saberes y criterios.', // @translate
+        'Añade un curso y una materia para elegir sus saberes y criterios.', // @translate
+        'Términos de la materia', // @translate
+        'Filtrar', // @translate
+        'Código o texto…', // @translate
+        'elegidos', // @translate
+        '1 cambio sin confirmar', // @translate
+        'cambios sin confirmar', // @translate
+        'Sin cambios', // @translate
+        'Revisar cambios', // @translate
+        'Revisar los cambios', // @translate
+        'Nada se escribe en el REA hasta que confirmes.', // @translate
+        'Seguir editando', // @translate
+        'Resumen', // @translate
+        'Se añaden', // @translate
+        'Se quitan', // @translate
+        'Propuestos por la IA', // @translate
+        'Se guarda quién y cuándo, y podrás deshacerlo desde el historial.', // @translate
+        'Confirmar re-catalogación', // @translate
+        'Detener la propuesta', // @translate
+        'Proponer con IA', // @translate
         // TASK-035: refusals the re-cataloguer shows from the server's `message`.
         ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
         Controller\Admin\IndexController::NOT_FOUND_MESSAGE,

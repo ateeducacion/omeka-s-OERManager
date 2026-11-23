@@ -1896,6 +1896,9 @@ body.oer-master-view.sidebar-open footer {
 .oer-area-alignment[data-mode="read"] .oer-recatalog-dims,
 .oer-area-alignment[data-mode="read"] .oer-recatalog-actions,
 .oer-area-alignment[data-mode="read"] .oer-recatalog-diff,
+.oer-area-alignment[data-mode="read"] .oer-align-editor,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-ai-bar,
+.oer-area-alignment[data-mode="read"] .oer-recatalog-footer,
 .oer-area-alignment[data-mode="edit"] .oer-anchor-read,
 .oer-area-alignment[data-mode="edit"] .oer-anchor-bar,
 .oer-detail-panel[data-mode="edit"] .oer-anchor-bar {
@@ -2063,3 +2066,10 @@ body.oer-master-view.sidebar-open footer {
 .oer-batch-governance .oer-batch-undo-badge { display: inline-block; margin: .25em .5em .25em 0; font-size: .9em; }
 .oer-batch-governance .oer-batch-undo-partial { color: var(--oer-warn, #955c0d); }
 .oer-batch-governance .oer-batch-undo-confirm { margin-top: .75em; padding: .5em .75em; background: var(--oer-surface, #f6f6f6); }
+
+/* TASK-065 B8: the sidebar widens while editing for the master-detail editor
+   (ADR-0024); any re-render brings it back. The editor's look lives in
+   oer-alignment-editor.css. */
+#oer-detail-sidebar.oer-editing {
+    width: clamp(36rem, 76vw, 82rem);
+}

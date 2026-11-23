@@ -398,6 +398,50 @@ class IndexControllerTest extends TestCase
         }
     }
 
+    /**
+     * TASK-065 B8 addendum: «Explorar cursos» and «Ver materias» list the
+     * children of ONE parent with no text. Bounded (NFR-004): a browse without
+     * a parent is refused, except for the stages, which are a handful.
+     */
+    public function testSearchTermsBrowseListsTheChildrenOfAParentOnly(): void
+    {
+        $search = $this->dependencies['curriculumSearch'];
+        $calls = [];
+        $search->method('searchDimension')->willReturnCallback(
+            function (string $dimension, string $text, array $context, int $limit) use (&$calls) {
+                $calls[] = [$dimension, $text, $context['etapa'], $context['level'], $limit];
+                return [['id' => 9]];
+            }
+        );
+        $search->method('searchEtapas')->willReturnCallback(function (string $text, int $limit) use (&$calls) {
+            $calls[] = ['etapa', $text, $limit];
+            return [['id' => 1]];
+        });
+
+        $this->params->query = ['dimension' => 'schema:about', 'q' => 'ignored', 'browse' => '1', 'level' => '40'];
+        $this->assertSame([['id' => 9]], $this->data('searchTerms')['results']);
+        $this->params->query = ['dimension' => 'lrmi:educationalLevel', 'browse' => '1', 'etapa' => ['3']];
+        $this->assertSame([['id' => 9]], $this->data('searchTerms')['results']);
+        $this->params->query = ['dimension' => 'etapa', 'browse' => '1'];
+        $this->assertSame([['id' => 1]], $this->data('searchTerms')['results']);
+
+        $this->assertSame([
+            ['schema:about', '', null, '40', 100],
+            ['lrmi:educationalLevel', '', ['3'], null, 100],
+            ['etapa', '', 100],
+        ], $calls);
+
+        // No parent: refused without a query.
+        $calls = [];
+        foreach ([[], ['level' => ''], ['level' => ['x', '0']]] as $parent) {
+            $this->params->query = ['dimension' => 'schema:about', 'browse' => '1'] + $parent;
+            $data = $this->data('searchTerms');
+            $this->assertSame([], $data['results']);
+            $this->assertSame('parent_required', $data['error']);
+        }
+        $this->assertSame([], $calls);
+    }
+
     public function testCurriculumTreeValidatesEachCourseSubjectAndMarksRetiredLinks(): void
     {
         $terms = $this->dependencies['curriculumTerms'];

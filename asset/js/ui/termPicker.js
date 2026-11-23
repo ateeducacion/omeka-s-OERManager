@@ -10,9 +10,9 @@
  */
 
 /**
- * Fired (jQuery) on a dimension whenever its chips change: the knowledge and
- * criteria trees (ui/leafTree.js, TASK-064 slice 4) follow the chips, which
- * stay the only selection the apply reads.
+ * Fired (jQuery) on a dimension whenever its chips change. Since TASK-065
+ * part B only the chip selectors left (Etapa, Eje temático) have chips; the
+ * curricular terms live in the tree editor's model (ui/alignmentEditor.js).
  */
 export const CHIPS_CHANGED = 'oer:chips-changed';
 
@@ -214,7 +214,9 @@ export function initTermPicker(config) {
         }, 200);
     });
 
-    $(document).on('click', '.chosen-results .active-result', function () {
+    // Scoped to the chip selectors (Etapa, Eje temático): the tree editor's
+    // search boxes (ui/termSearch.js) handle their own results.
+    $(document).on('click', '.oer-recatalog-dim .chosen-results .active-result', function () {
         const $result = $(this);
         const $dim = $result.closest('.oer-recatalog-dim');
         const $container = $result.closest('.chosen-container');

@@ -51,7 +51,7 @@ interface CurriculumTerms
      * the class and a page (at most 119 knowledge and 30 criteria per course
      * subject in 1.1.2).
      *
-     * @return array{subject:array{id:int,title:string},
+     * @return array{subject:array{id:int,title:string}, course:array{id:int,title:string},
      *     'lrmi:teaches':list<array<string,mixed>>, 'lrmi:assesses':list<array<string,mixed>>}|null
      */
     public function courseSubjectTree(int $courseSubjectId): ?array;

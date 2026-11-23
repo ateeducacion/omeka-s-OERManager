@@ -1,0 +1,146 @@
+<!doctype html>
+<!--
+  Browser smoke test of the alignment editor's «Explorar cursos», «Ver
+  materias» and grouping twisty (TASK-065, spec B8 addendum). Not an admin
+  session: the module's real ui/alignmentEditor.js runs on a stub panel, with
+  $.getJSON replaced by fixtures. It checks the DOM wiring the node tests
+  cannot reach: open lists survive redraws, «Añadir» adds and becomes
+  «Añadido», the twisty note follows the checkboxes, keyboard, styles.
+
+  Run from the repository root (jQuery comes from the 8080 dev container):
+    python3 -m http.server 8765 --bind 127.0.0.1 &
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+      --virtual-time-budget=5000 --dump-dom http://127.0.0.1:8765/test/browser/alignment-editor-browse-smoke.html
+  The <pre id="out"> holds the JSON result; "failures" must be [].
+-->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Alignment editor browse smoke</title>
+<link rel="stylesheet" href="/asset/css/oer-master-view.css">
+<link rel="stylesheet" href="/asset/css/oer-alignment-editor.css">
+<script src="http://localhost:8080/application/asset/vendor/jquery/jquery.min.js"></script>
+<script>window.Omeka = { jsTranslate: (s) => s };</script>
+</head>
+<body>
+<div id="host"></div>
+<pre id="out">pending</pre>
+<script type="module">
+import { buildAlignmentEditor, openAlignmentEditor, initAlignmentEditor } from '/asset/js/ui/alignmentEditor.js';
+
+const leaf = (id, n, children = []) => ({
+    id, parentId: 0, notation: n, title: n + ' · texto', definition: 'Definición de ' + n, selectable: true, children
+});
+const TREE = {
+    subject: { id: 500, title: 'Matemáticas · 1º ESO' },
+    'lrmi:teaches': [{
+        id: 10, parentId: 0, notation: 'SMAT01SBI', title: 'SMAT01SBI · Sentido numérico', definition: '', selectable: false,
+        children: [leaf(20, 'SMAT01SBI.1', [leaf(21, 'SMAT01SBI.1.1'), leaf(22, 'SMAT01SBI.1.2')]), leaf(23, 'SMAT01SBI.2')]
+    }],
+    'lrmi:assesses': []
+};
+const TERMS = {
+    'etapa|': [{ id: 1, title: 'Educación Primaria' }, { id: 2, title: 'Educación Secundaria Obligatoria' }],
+    'lrmi:educationalLevel|2': [
+        { id: 40, title: '1º ESO', parentId: 2, parentTitle: 'Educación Secundaria Obligatoria' },
+        { id: 41, title: '2º ESO', parentId: 2, parentTitle: 'Educación Secundaria Obligatoria' }
+    ],
+    'schema:about|40': [
+        { id: 500, title: 'Matemáticas · 1º ESO', parentId: 40, parentTitle: '1º ESO' },
+        { id: 501, title: 'Física y Química · 1º ESO', parentId: 40, parentTitle: '1º ESO' }
+    ]
+};
+const calls = [];
+$.getJSON = (url, params) => {
+    calls.push(JSON.parse(JSON.stringify(params)));
+    if ('/tree' === url) {
+        return $.Deferred().resolve({ trees: [TREE], invalid: [], retired: [] }).promise();
+    }
+    const parent = (params.etapa || params.level || [''])[0];
+    return $.Deferred().resolve({ results: TERMS[params.dimension + '|' + parent] || [] }).promise();
+};
+
+const failures = [];
+const check = (name, ok) => { if (!ok) failures.push(name); };
+const config = { curriculumTreeUrl: '/tree', searchTermsUrl: '/s', aiEnabled: false };
+
+initAlignmentEditor(config);
+const $panel = $('<div>').addClass('oer-recatalog').attr('data-item-id', 7).appendTo('#host');
+$panel.append(buildAlignmentEditor(config, $panel, { current: {} }));
+openAlignmentEditor(config, $panel);
+
+const root = () => $panel.find('.oer-ae-course-browse > .oer-ae-browse-toggle');
+check('el selector «Acotar por etapa» ya no está', 0 === $panel.find('.oer-ae-etapa').length);
+check('«Explorar cursos» empieza cerrado', 'false' === root().attr('aria-expanded'));
+
+root().trigger('focus').trigger('click');
+check('abrir pide las etapas sin texto', calls.some((c) => 'etapa' === c.dimension && 1 === c.browse && !c.q));
+check('abierto: aria-expanded', 'true' === root().attr('aria-expanded'));
+check('la región se muestra', false === $('#' + root().attr('aria-controls')).prop('hidden'));
+check('el foco sigue en el botón tras redibujar', document.activeElement === root()[0]);
+const stages = $panel.find('.oer-ae-browse-stage > .oer-ae-browse-toggle');
+check('dos etapas, como desplegables', 2 === stages.length);
+
+stages.eq(1).trigger('click');
+check('la etapa pide sus cursos', calls.some((c) => 'lrmi:educationalLevel' === c.dimension && '2' === c.etapa[0]));
+const courseAdds = () => $panel.find('.oer-ae-course-browse .oer-ae-browse-add');
+check('dos cursos con «Añadir»', 2 === courseAdds().length);
+check('«Añadir» nombra el curso', 'Añadir 1º ESO' === courseAdds().first().attr('aria-label'));
+
+courseAdds().first().trigger('click');
+check('el curso se añade al navegador', 1 === $panel.find('.oer-ae-course[data-id="40"]').length);
+check('su fila pasa a «Añadido»', 1 === $panel.find('.oer-ae-course-browse .oer-ae-browse-added').length
+    && 1 === courseAdds().length);
+check('raíz y etapa siguen abiertas tras añadir', 'true' === root().attr('aria-expanded')
+    && 'true' === $panel.find('.oer-ae-browse-stage > .oer-ae-browse-toggle').eq(1).attr('aria-expanded'));
+
+const subjectsToggle = () => $panel.find('.oer-ae-course[data-id="40"] .oer-ae-subject-browse > .oer-ae-browse-toggle');
+check('«Ver materias» nombra su curso', 'Ver materias de 1º ESO' === subjectsToggle().attr('aria-label'));
+subjectsToggle().trigger('click');
+check('pide las materias del curso', calls.some((c) => 'schema:about' === c.dimension && '40' === c.level[0] && 1 === c.browse));
+const subjectAdds = () => $panel.find('.oer-ae-subject-browse .oer-ae-browse-add');
+check('nombres cortos de materia', 'Matemáticas' === $panel.find('.oer-ae-subject-browse .oer-ae-browse-name').first().text());
+subjectAdds().first().trigger('click');
+check('la materia se añade y se enfoca', 'true' === $panel.find('.oer-ae-subject[data-id="500"]').attr('aria-current'));
+check('se pide su árbol', calls.some((c) => c.about && '500' === String(c.about[0])));
+check('«Ver materias» sigue abierto', 'true' === subjectsToggle().attr('aria-expanded'));
+check('Matemáticas pasa a «Añadido»', 1 === subjectAdds().length);
+
+// The grouping twisty (option B). The block starts closed: open it to lay
+// the rows out, or every measure below would be 0 and pass by accident.
+$panel.find('.oer-tree-node[data-id="10"] > .oer-ae-block-toggle').trigger('click');
+const row20 = () => $panel.find('.oer-tree-node[data-id="20"] > .oer-ae-leaf');
+const note = () => row20().find('.oer-ae-twisty-note').text();
+check('saber con hijos: twisty', 1 === row20().children('.oer-tree-twisty').length);
+check('nota del grupo', '2 sub-saberes' === note());
+check('saber sin hijos: hueco alineado', 1 === $panel.find('.oer-tree-node[data-id="23"] > .oer-ae-leaf > .oer-ae-twisty-gap').length);
+const twisty = row20().children('.oer-tree-twisty');
+const style = getComputedStyle(twisty[0]);
+const chevron = getComputedStyle(twisty[0], '::before');
+check('twisty de 24px', '24px' === style.width && '24px' === style.height);
+check('chevron dibujado con bordes', '2px' === chevron.borderRightWidth && '' === chevron.content.replace(/["']/g, ''));
+// The sibling without children (23), not the hidden grandchildren of 20.
+const gap = $panel.find('.oer-tree-node[data-id="23"] > .oer-ae-leaf > .oer-ae-twisty-gap')[0].getBoundingClientRect();
+check('las filas están maquetadas', twisty[0].getBoundingClientRect().width > 0 && gap.width > 0);
+check('casillas en la misma columna', Math.abs(gap.right - twisty[0].getBoundingClientRect().right) < 1);
+
+twisty.trigger('click');
+check('el twisty abre los hijos', false === $panel.find('#' + twisty.attr('aria-controls')).prop('hidden'));
+$panel.find('.oer-tree-check[value="21"]').prop('checked', true).trigger('change');
+check('la nota cuenta lo elegido dentro', '2 sub-saberes · 1 elegido' === note());
+check('el bloque dice «1 elegido», en singular', '1 elegido' === $panel.find('.oer-tree-node[data-id="10"] > .oer-ae-block-toggle .oer-tree-count').text());
+check('el aria-label del twisty también', /1 elegido\)$/.test(row20().children('.oer-tree-twisty').attr('aria-label')));
+check('las listas siguen abiertas tras marcar', 'true' === root().attr('aria-expanded') && 'true' === subjectsToggle().attr('aria-expanded'));
+
+// Keyboard: ArrowLeft closes; reopening does not ask again.
+const asked = calls.length;
+root().trigger($.Event('keydown', { key: 'ArrowLeft' }));
+check('ArrowLeft cierra', 'false' === root().attr('aria-expanded'));
+root().trigger($.Event('keydown', { key: 'ArrowRight' }));
+check('ArrowRight abre', 'true' === root().attr('aria-expanded'));
+check('reabrir no vuelve a pedir', asked === calls.length);
+
+document.getElementById('out').textContent = JSON.stringify({ failures, calls: calls.length }, null, 2);
+</script>
+</body>
+</html>
