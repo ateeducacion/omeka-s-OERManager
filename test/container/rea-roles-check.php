@@ -159,9 +159,19 @@ $publicBefore = publicReaCount($classId);
 printf("  REA in the catalogue: %d (public through the anonymous API: %d)\n", $reaBefore, $publicBefore);
 $previousReaSite = $settings->get(ReaSite::SETTING);
 $settings->set(ReaSite::SETTING, $reaSiteId);
+$reasonSettings = [
+    \OERManager\Service\GovernanceSettings::REJECT_REASON_VOCAB_ID,
+    \OERManager\Service\GovernanceSettings::DISCARD_REASON_VOCAB_ID,
+];
+$previousReasonVocabs = [];
+foreach ($reasonSettings as $key) {
+    $previousReasonVocabs[$key] = $settings->get($key);
+    // The main flow below exercises the free-text fallback (TASK-039).
+    $settings->set($key, null);
+}
 
 $suffix = bin2hex(random_bytes(3));
-$created = ['users' => [], 'items' => [], 'jobs' => [], 'keys' => []];
+$created = ['users' => [], 'items' => [], 'jobs' => [], 'keys' => [], 'vocabs' => []];
 $browsers = [];
 $roles = ['rea_proponente', 'rea_curador', 'site_editor', 'editor'];
 $users = [];
@@ -406,6 +416,81 @@ try {
     check('the navigation counter equals the queue in the curator\'s sites (isolation on)', (int) ($m3[1] ?? -1) === $inSite);
 
     // ------------------------------------------------------------ guard
+    // ------------------------------------------------------------ TASK-039
+    section('Reasons from the vocabularies (TASK-039)');
+    $as(null);
+    $rejectVocab = (int) $api->create('custom_vocabs', [
+        'o:label' => TAG . ' motivos de rechazo ' . $suffix,
+        'o:terms' => ['Licencia ausente o incompatible', 'Otro motivo'],
+    ])->getContent()->id();
+    $created['vocabs'][] = $rejectVocab;
+    $discardVocab = (int) $api->create('custom_vocabs', [
+        'o:label' => TAG . ' motivos de descarte ' . $suffix,
+        'o:terms' => ['Duplica un REA existente', 'Otro motivo'],
+    ])->getContent()->id();
+    $created['vocabs'][] = $discardVocab;
+    $settings->set($reasonSettings[0], $rejectVocab);
+    $settings->set($reasonSettings[1], $discardVocab);
+
+    $r5 = $make($fix($copy('R5 motivos del vocabulario', false, $reaSiteId, false)));
+    $p5Csrf = $p->csrf('/admin/item/' . $r5);
+    $r = $p->post('propose', ['id' => $r5, 'csrf' => $p5Csrf]);
+    check('proposer proposes R5', 'Propuesto' === ($r['status'] ?? null), json_encode($r));
+
+    [, $drawer] = $c->request('GET', '/admin/oer-manager/drawer-details?id=' . $r5);
+    check('the panel offers the reject reasons as a select',
+        str_contains($drawer, 'id="oer-workflow-reason-reject-text" name="reason"')
+        && str_contains($drawer, '<option value="Licencia ausente o incompatible">')
+        && str_contains($drawer, 'name="detail"')
+        && str_contains($drawer, 'Información adicional')
+        && str_contains($drawer, 'oer-workflow-reason-required'));
+    [, $page] = $c->request('GET', '/admin/item/' . $r5);
+    check('the item page offers the reject reasons as a select',
+        str_contains($page, 'id="oer-workflow-reject-' . $r5 . '" name="reason"')
+        && str_contains($page, 'Licencia ausente o incompatible')
+        && str_contains($page, 'Información adicional')
+        && str_contains($page, 'oer-workflow-reason-required'));
+
+    $r = $c->post('reject-proposal', ['id' => $r5, 'csrf' => $cCsrf, 'reason' => 'texto libre']);
+    check('a reason outside the list is refused', 'reason_invalid' === ($r['error'] ?? null), json_encode($r));
+    $r = $c->post('reject-proposal', ['id' => $r5, 'csrf' => $cCsrf,
+        'reason' => 'Licencia ausente o incompatible', 'detail' => 'falta la licencia del vídeo 2']);
+    check('curator rejects R5 with a term and a detail', 'Rechazado' === ($r['status'] ?? null), json_encode($r));
+    $notes = $read($r5)->value('curation:note', ['all' => true, 'default' => []]);
+    check('the note is the term (customvocab) plus the detail (literal), both private',
+        2 === count($notes)
+        && 'customvocab:' . $rejectVocab === $notes[0]->type() && 'Licencia ausente o incompatible' === (string) $notes[0]->value()
+        && 'literal' === $notes[1]->type() && 'falta la licencia del vídeo 2' === (string) $notes[1]->value()
+        && !$notes[0]->isPublic() && !$notes[1]->isPublic());
+    [, $mine] = $p->request('GET', '/admin/oer-manager/my-proposals');
+    check('«Mis propuestas» shows reason — detail',
+        str_contains($mine, 'Licencia ausente o incompatible — falta la licencia del vídeo 2'));
+
+    $r = $c->post('discard', ['id' => $r5, 'csrf' => $cCsrf, 'reason' => 'Licencia ausente o incompatible']);
+    check('discard refuses a reject reason', 'reason_invalid' === ($r['error'] ?? null), json_encode($r));
+    $r = $c->post('discard', ['id' => $r5, 'csrf' => $cCsrf, 'reason' => 'Duplica un REA existente']);
+    check('curator discards R5 with a discard term', 'Descartado' === ($r['status'] ?? null), json_encode($r));
+    $notes = $read($r5)->value('curation:note', ['all' => true, 'default' => []]);
+    check('discarding replaced the whole note', 1 === count($notes)
+        && 'customvocab:' . $discardVocab === $notes[0]->type());
+
+    // A vocabulary that no longer exists falls back to free text.
+    $settings->set($reasonSettings[0], 999999999);
+    $r = $c->post('reopen', ['id' => $r5, 'csrf' => $cCsrf]);
+    check('curator reopens R5', 'Propuesto' === ($r['status'] ?? null), json_encode($r));
+    $notes = $read($r5)->value('curation:note', ['all' => true, 'default' => []]);
+    check('reopening cleared the note', [] === $notes);
+    [, $drawer] = $c->request('GET', '/admin/oer-manager/drawer-details?id=' . $r5);
+    check('a missing vocabulary shows free text and the hint',
+        str_contains($drawer, '<input type="text" id="oer-workflow-reason-reject-text" name="reason"')
+        && str_contains($drawer, 'Lista de motivos no configurada'));
+    $r = $c->post('reject-proposal', ['id' => $r5, 'csrf' => $cCsrf, 'reason' => 'texto libre ' . $suffix,
+        'detail' => 'ignorado']);
+    check('free text is accepted without a vocabulary', 'Rechazado' === ($r['status'] ?? null), json_encode($r));
+    $notes = $read($r5)->value('curation:note', ['all' => true, 'default' => []]);
+    check('free text is one literal; the detail is dropped',
+        1 === count($notes) && 'literal' === $notes[0]->type());
+
     section('Hand-made status changes are rejected (security review)');
     // A disposable API key for the proposer (deleted with the user): the REST
     // API does not take the admin session for writes.
@@ -549,6 +634,16 @@ try {
     $admin = $em->find(\Omeka\Entity\User::class, $admin->getId());
     $auth->getStorage()->write($admin);
     $settings->set(ReaSite::SETTING, $previousReaSite);
+    foreach ($previousReasonVocabs ?? [] as $key => $value) {
+        $settings->set($key, $value);
+    }
+    foreach ($created['vocabs'] as $vocabId) {
+        try {
+            $api->delete('custom_vocabs', $vocabId);
+        } catch (\Throwable $e) {
+            // Reported by the residue check below.
+        }
+    }
     if ($created['items']) {
         $api->batchDelete('items', $created['items']);
     }
@@ -581,6 +676,14 @@ try {
     );
     check('no test user, permission or API key left', 0 === $leftUsers && 0 === $leftPermissions && 0 === $leftKeys);
     check('REA site setting restored', $previousReaSite === $settings->get(ReaSite::SETTING));
+    $leftVocabs = (int) $services->get('Omeka\Connection')
+        ->fetchOne('SELECT COUNT(*) FROM custom_vocab WHERE label LIKE ?', [TAG . '%']);
+    check('no test vocabulary left', 0 === $leftVocabs);
+    $restored = true;
+    foreach ($previousReasonVocabs ?? [] as $key => $value) {
+        $restored = $restored && $value === $settings->get($key);
+    }
+    check('reason vocabulary settings restored', $restored);
     $reaAfter = $api->search('items', ['resource_class_id' => $classId, 'limit' => 0])->getTotalResults();
     $publicAfter = publicReaCount($classId);
     check(sprintf('REA unchanged: %d → %d (public API %d → %d)', $reaBefore, $reaAfter, $publicBefore, $publicAfter),

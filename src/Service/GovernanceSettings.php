@@ -43,6 +43,15 @@ final class GovernanceSettings
     /** CustomVocab of publishers (RF-015). Seeded by nobody: the admin creates it. */
     public const PUBLISHER_VOCAB_ID = 'oermanager_publisher_vocab_id';
 
+    /**
+     * CustomVocab of the reasons to reject a proposal (TASK-039). Created by
+     * hand, never by the module; empty means the reason is free text.
+     */
+    public const REJECT_REASON_VOCAB_ID = 'oermanager_reject_reason_vocab_id';
+
+    /** CustomVocab of the reasons to discard a REA (TASK-039, ADR-0023). Created by hand. */
+    public const DISCARD_REASON_VOCAB_ID = 'oermanager_discard_reason_vocab_id';
+
     /** Titular de derechos por defecto al rellenar la ficha (RF-015). */
     public const DEFAULT_RIGHTS_HOLDER = 'oermanager_default_rights_holder';
 

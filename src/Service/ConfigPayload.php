@@ -40,6 +40,8 @@ class ConfigPayload
         GovernanceSettings::LICENCE_VOCAB_ID,
         GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
         GovernanceSettings::PUBLISHER_VOCAB_ID,
+        GovernanceSettings::REJECT_REASON_VOCAB_ID,
+        GovernanceSettings::DISCARD_REASON_VOCAB_ID,
         GovernanceSettings::REA_TEMPLATE_ID,
     ];
 

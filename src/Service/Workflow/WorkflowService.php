@@ -55,16 +55,16 @@ final class WorkflowService
         if (!WorkflowStatus::canPropose($this->statusOf($item), (bool) $item->isPublic())) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::PROPOSED, '', null, $contributor);
+        return $this->transition($item, WorkflowStatus::PROPOSED, null, null, $contributor);
     }
 
     /** @return array{updated:bool, status?:string, error?:string} */
-    public function reject(ItemRepresentation $item, string $reason, string $contributor): array
+    public function reject(ItemRepresentation $item, WorkflowReason $reason, string $contributor): array
     {
         if (!WorkflowStatus::canReject($this->statusOf($item))) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::REJECTED, trim($reason), null, $contributor);
+        return $this->transition($item, WorkflowStatus::REJECTED, $reason, null, $contributor);
     }
 
     /**
@@ -73,12 +73,12 @@ final class WorkflowService
      *
      * @return array{updated:bool, status?:string, error?:string}
      */
-    public function discard(ItemRepresentation $item, string $reason, string $contributor): array
+    public function discard(ItemRepresentation $item, WorkflowReason $reason, string $contributor): array
     {
         if (!WorkflowStatus::canDiscard($this->statusOf($item))) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::DISCARDED, trim($reason), false, $contributor);
+        return $this->transition($item, WorkflowStatus::DISCARDED, $reason, false, $contributor);
     }
 
     /** Descartado → Propuesto (sigue privado). @return array{updated:bool, status?:string, error?:string} */
@@ -87,7 +87,7 @@ final class WorkflowService
         if (!WorkflowStatus::canReopen($this->statusOf($item))) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::PROPOSED, '', null, $contributor);
+        return $this->transition($item, WorkflowStatus::PROPOSED, null, null, $contributor);
     }
 
     /**
@@ -101,7 +101,7 @@ final class WorkflowService
         if (!WorkflowStatus::canPublish($this->statusOf($item), (bool) $item->isPublic())) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::PUBLISHED, '', true, $contributor);
+        return $this->transition($item, WorkflowStatus::PUBLISHED, null, true, $contributor);
     }
 
     /**
@@ -115,7 +115,13 @@ final class WorkflowService
         if (!WorkflowStatus::canUnpublish($this->statusOf($item), (bool) $item->isPublic())) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::PROPOSED, trim($reason), false, $contributor);
+        return $this->transition(
+            $item,
+            WorkflowStatus::PROPOSED,
+            WorkflowReason::literal($reason),
+            false,
+            $contributor
+        );
     }
 
     /**
@@ -130,14 +136,14 @@ final class WorkflowService
      * `'collectionAction' => 'append'`. La visibilidad (`o:is_public`) no es
      * un valor RDF y viaja en el mismo payload.
      *
-     * @param string $note '' = limpiar `curation:note`
+     * @param WorkflowReason|null $note null = clear `curation:note`
      * @param bool|null $isPublic null = no tocar la visibilidad
      * @return array{updated:bool, status?:string, error?:string}
      */
     private function transition(
         ItemRepresentation $item,
         string $status,
-        string $note,
+        ?WorkflowReason $note,
         ?bool $isPublic,
         string $contributor
     ): array {
@@ -160,7 +166,7 @@ final class WorkflowService
         $notePropertyId = $this->writer->propertyId(WorkflowStatus::NOTE_TERM);
         if (null !== $notePropertyId) {
             $clear[] = $notePropertyId;
-            $data[WorkflowStatus::NOTE_TERM] = '' === $note ? [] : [$this->literal($notePropertyId, $note)];
+            $data[WorkflowStatus::NOTE_TERM] = null === $note ? [] : $note->noteValues($notePropertyId);
         }
         if (null !== $isPublic) {
             $data['o:is_public'] = $isPublic;

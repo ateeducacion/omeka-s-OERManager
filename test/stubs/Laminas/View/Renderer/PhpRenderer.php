@@ -14,8 +14,10 @@ class PhpRenderer
         return $value;
     }
     public array $stylesheets = [];
+    public array $partials = [];
     public function partial($name, $args = [])
     {
+        $this->partials[] = [$name, $args];
         return $name . (isset($args['badge']) ? '[' . $args['badge'] . ']' : '');
     }
     public function headLink()

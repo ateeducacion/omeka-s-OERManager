@@ -193,7 +193,7 @@ $item = $api->read('items', $itemId)->getContent();
 check('El item queda en Propuesto', WorkflowStatus::PROPOSED === $workflow->statusOf($item));
 
 // 2. Rechazar con motivo.
-$result = $workflow->reject($item, 'Falta la licencia', 'workflow-check');
+$result = $workflow->reject($item, \OERManager\Service\Workflow\WorkflowReason::literal('Falta la licencia'), 'workflow-check');
 check('reject() desde Propuesto da updated=true', true === ($result['updated'] ?? false), json_encode($result));
 $item = $api->read('items', $itemId)->getContent();
 check('El item queda en Rechazado', WorkflowStatus::REJECTED === $workflow->statusOf($item));
@@ -216,7 +216,7 @@ check('El item queda público', $item->isPublic());
 check('curation:status se elimina al publicar', null === $workflow->statusOf($item));
 
 // 5. Transiciones inválidas.
-$result = $workflow->reject($item, 'no debería aplicar', 'workflow-check');
+$result = $workflow->reject($item, \OERManager\Service\Workflow\WorkflowReason::literal('no debería aplicar'), 'workflow-check');
 check('reject() sobre un item ya publicado (sin estado) da updated=false', false === ($result['updated'] ?? true));
 $result = $workflow->publish($item, 'workflow-check');
 check('publish() sobre un item ya publicado (sin estado) da updated=false', false === ($result['updated'] ?? true));

@@ -53,7 +53,9 @@ return [
                     // TASK-064: valida o detecta el conjunto del currículo al guardar.
                     $container->get(Service\Curriculum\CurriculumTerms::class),
                     // TASK-067: validates the REA site on save.
-                    $container->get(Service\ReaSite::class)
+                    $container->get(Service\ReaSite::class),
+                    // TASK-039: reasons to reject and to discard.
+                    $container->get(Service\Workflow\ReasonVocabularies::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -176,6 +178,21 @@ return [
                         }
                         return $entries;
                     }
+                );
+            },
+            // TASK-039: the reasons to reject and to discard, each from its own
+            // term CustomVocab, read by the id in its setting. Soft dependency:
+            // without a usable vocabulary the reason is free text.
+            Service\Workflow\ReasonVocabularies::class => function ($container) {
+                $settings = $container->get('Omeka\Settings');
+                $reader = new Service\Governance\CustomVocabTerms($container->get('Omeka\ApiManager'));
+                $vocab = static fn (string $key) => new Service\Governance\VocabEntries(
+                    Service\GovernanceSettings::parseId($settings->get($key)),
+                    $reader
+                );
+                return new Service\Workflow\ReasonVocabularies(
+                    $vocab(Service\GovernanceSettings::REJECT_REASON_VOCAB_ID),
+                    $vocab(Service\GovernanceSettings::DISCARD_REASON_VOCAB_ID)
                 );
             },
             // Vocabulario de organismos editores (dcterms:publisher, RF-015). El

@@ -76,6 +76,16 @@ final class ConfigPayloadTest extends TestCase
         $this->assertFalse($data[LlmSettings::VISION_ENABLED]);
     }
 
+    public function testTheReasonVocabulariesAreSavedAsIds(): void
+    {
+        $settings = ConfigPayload::write([
+            GovernanceSettings::REJECT_REASON_VOCAB_ID => '12',
+            GovernanceSettings::DISCARD_REASON_VOCAB_ID => 'no soy un id',
+        ]);
+        $this->assertSame(12, $settings[GovernanceSettings::REJECT_REASON_VOCAB_ID]);
+        $this->assertNull($settings[GovernanceSettings::DISCARD_REASON_VOCAB_ID]);
+    }
+
     public function testReadCoversEveryFieldOfTheForm(): void
     {
         $data = ConfigPayload::read(self::reader([]));
@@ -86,6 +96,8 @@ final class ConfigPayloadTest extends TestCase
                 GovernanceSettings::LICENCE_VOCAB_ID,
                 GovernanceSettings::RESOURCE_TYPE_VOCAB_ID,
                 GovernanceSettings::PUBLISHER_VOCAB_ID,
+                GovernanceSettings::REJECT_REASON_VOCAB_ID,
+                GovernanceSettings::DISCARD_REASON_VOCAB_ID,
                 GovernanceSettings::REA_TEMPLATE_ID,
                 GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
                 LlmSettings::ENABLED,

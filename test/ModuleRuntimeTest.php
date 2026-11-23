@@ -182,7 +182,15 @@ class ModuleRuntimeTest extends TestCase
         $api = $this->createMock(Manager::class);
         $acl = $this->createMock(\Omeka\Permissions\Acl::class);
         $acl->method('userIsAllowed')->willReturn(true);
-        $module = $this->module(['Omeka\Acl' => $acl, WorkflowService::class => new WorkflowService($api, new \OERManager\Service\Curation\CurationWriter($api))]);
+        $module = $this->module([
+            'Omeka\Acl' => $acl,
+            WorkflowService::class => new WorkflowService($api, new \OERManager\Service\Curation\CurationWriter($api)),
+            // TASK-039: a vocabulary for reject, none for discard.
+            \OERManager\Service\Workflow\ReasonVocabularies::class => new \OERManager\Service\Workflow\ReasonVocabularies(
+                new \OERManager\Service\Governance\VocabEntries(41, static fn (): array => [['value' => 'Otro motivo']]),
+                new \OERManager\Service\Governance\VocabEntries(null, static fn (): array => [])
+            ),
+        ]);
         $view = new \Laminas\View\Renderer\PhpRenderer();
         $event = (new Event())->setTarget($view);
         ob_start();
@@ -197,6 +205,9 @@ class ModuleRuntimeTest extends TestCase
         ob_start();
         $module->addWorkflowActions($event);
         $this->assertSame('oer-manager/common/workflow-actions', ob_get_clean());
+        $args = end($view->partials)[1];
+        $this->assertSame(['Otro motivo'], $args['rejectReasons']);
+        $this->assertNull($args['discardReasons']);
         // Redesign of 2026-11-18: the button zone brings its layout and its
         // small script; no badge here (a private draft has no status).
         $this->assertSame(['OERManager/css/oer-workflow-actions.css'], $view->stylesheets);

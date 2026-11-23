@@ -153,6 +153,36 @@ class ConfigForm extends Form implements InputFilterProviderInterface
         ]);
 
         $this->add([
+            'name' => GovernanceSettings::REJECT_REASON_VOCAB_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'CustomVocab de motivos de rechazo', // @translate
+                'info' => 'ID del CustomVocab de términos con los motivos para rechazar una propuesta. '
+                    . 'El módulo NO lo crea. Si se deja vacío, el motivo se escribe a mano.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::REJECT_REASON_VOCAB_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
+            'name' => GovernanceSettings::DISCARD_REASON_VOCAB_ID,
+            'type' => 'Number',
+            'options' => [
+                'label' => 'CustomVocab de motivos de descarte', // @translate
+                'info' => 'ID del CustomVocab de términos con los motivos para descartar un REA. '
+                    . 'El módulo NO lo crea. Si se deja vacío, el motivo se escribe a mano.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::DISCARD_REASON_VOCAB_ID,
+                'min' => 1,
+                'step' => 1,
+            ],
+        ]);
+
+        $this->add([
             'name' => GovernanceSettings::REA_TEMPLATE_ID,
             'type' => 'Number',
             'options' => [
