@@ -249,6 +249,31 @@ final class CurationHistoryTest extends TestCase
         $this->assertSame(['CC BY 4.0'], $rows[0]['changes'][0]['added']);
     }
 
+    /**
+     * The licence is a URI-typed CustomVocab: GovernanceService stores it as
+     * `customvocab:N` with a `uri`, not as type `uri`. The presence of `uri`,
+     * not the type, makes it a URI value — otherwise it shows as empty text.
+     */
+    public function testAUriTypedCustomVocabValueShowsItsLabelOrUri(): void
+    {
+        $rows = CurationHistory::rows([$this->typedEvent([
+            'dcterms:license' => [
+                'before' => [['type' => 'customvocab:3', 'uri' => 'https://creativecommons.org/licenses/by/4.0/']],
+                'after' => [[
+                    'type' => 'customvocab:3',
+                    'uri' => 'https://creativecommons.org/licenses/by-sa/4.0/',
+                    'label' => 'CC BY-SA 4.0',
+                ]],
+            ],
+        ])], []);
+
+        $this->assertSame(['CC BY-SA 4.0'], $rows[0]['changes'][0]['added']);
+        $this->assertSame(
+            [['title' => 'https://creativecommons.org/licenses/by/4.0/', 'reason' => '']],
+            $rows[0]['changes'][0]['removed']
+        );
+    }
+
     /** Reordering authors is a change in v2 (ADR-0020), but nothing was added or removed. */
     public function testATypedEntryWithTheSameValuesShowsNoAddedOrRemoved(): void
     {
