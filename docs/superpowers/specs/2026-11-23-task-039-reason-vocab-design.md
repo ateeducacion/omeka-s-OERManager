@@ -96,6 +96,12 @@ the status by exact equality. The note is never compared, so that argument does 
     to 200 characters.
   - The detail is optional, trimmed and cut to 200 characters.
 - Only `reject` and `discard` use the vocabularies. `unpublish` keeps today's guard.
+- **Refinement during planning (2026-11-23).** One service, `Service\Workflow\ReasonVocabularies`, wraps
+  the two `VocabEntries` instead of registering two services. It keeps the controller to one new
+  dependency. Its reader is `Service\Governance\CustomVocabTerms`, which yields the terms of a term-typed
+  vocabulary only, so a URI or item-set vocabulary counts as not configured. The item page's reason form
+  already opens in a panel under the 48px bar, so the select and the detail field do not have to fit in
+  the bar.
 
 ### 3. Interface
 

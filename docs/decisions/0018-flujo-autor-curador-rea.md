@@ -49,6 +49,19 @@ que dejaba el alineamiento curricular al curador: `rea_proponente` re-cataloga s
 Borrador o Rechazado (privados) desde «Mis propuestas», y el curador en cualquier estado salvo
 Descartado. La regla vive en `Service\Workflow\RecatalogRule` (TASK-035).
 
+## Addendum (2026-11-23) — the reason is a CustomVocab term; the status stays a literal (TASK-039)
+
+Decided by the owner on 2026-11-23. `curation:note` now holds the reason to reject or discard as a term
+of its own CustomVocab (`customvocab:N`, identified by the id in `oermanager_reject_reason_vocab_id` or
+`oermanager_discard_reason_vocab_id`), followed by an optional free detail as a second, literal value.
+The reason to unpublish stays free text. Without a usable vocabulary the reason falls back to free text,
+so the flow is never blocked.
+
+§2 still holds for `curation:status`. The state machine compares the status by exact equality, so an
+editable vocabulary term could break the flow without warning. The note is never compared: it is
+written, cleared and shown. That argument therefore does not apply to the note, and «seed, do not own»
+(ADR-0013) does. Vocabulary terms are instance data and are not translated by the module (NFR-005).
+
 ## Fuentes
 
 - `application/src/Service/AclFactory.php` del core (contenedor real, 2026-08-28): `addRulesForAuthor()`, `addRulesForReviewer()`.
