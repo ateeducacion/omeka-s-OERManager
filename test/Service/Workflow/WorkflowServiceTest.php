@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OERManager\Test\Service\Workflow;
 
 use OERManager\Service\Curation\CurationWriter;
+use OERManager\Service\Workflow\WorkflowReason;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use OERManager\Test\Support\RepresentationFactory;
@@ -76,10 +77,10 @@ final class WorkflowServiceTest extends TestCase
     {
         $service = $this->service();
         $this->assertSame(['updated' => true, 'status' => 'Propuesto'], $service->propose($this->rea(null), 'Ana'));
-        $this->assertTrue($service->reject($this->rea('Propuesto'), ' Fix metadata ', 'Cu')['updated']);
+        $this->assertTrue($service->reject($this->rea('Propuesto'), WorkflowReason::literal(' Fix metadata '), 'Cu')['updated']);
         $this->assertTrue($service->publish($this->rea('Propuesto'), 'Cu')['updated']);
         $this->assertTrue($service->unpublish($this->rea('Publicado', true), 'Wrong licence', 'Cu')['updated']);
-        $this->assertTrue($service->discard($this->rea('Rechazado'), 'Duplicate', 'Cu')['updated']);
+        $this->assertTrue($service->discard($this->rea('Rechazado'), WorkflowReason::literal('Duplicate'), 'Cu')['updated']);
         $this->assertTrue($service->reopen($this->rea('Descartado'), 'Cu')['updated']);
 
         $expected = [
@@ -122,6 +123,30 @@ final class WorkflowServiceTest extends TestCase
         }
     }
 
+    public function testAVocabularyReasonIsWrittenAsItsTermWithTheOptionalDetail(): void
+    {
+        $service = $this->service();
+        $service->reject(
+            $this->rea('Propuesto'),
+            WorkflowReason::term('Licencia ausente o incompatible', 'customvocab:41', ' falta la licencia del vídeo 2 '),
+            'Cu'
+        );
+        $service->discard($this->rea('Rechazado'), WorkflowReason::term('Duplica un REA existente', 'customvocab:42'), 'Cu');
+        $service->propose($this->rea('Rechazado'), 'Ana');
+
+        $this->assertSame([
+            ['type' => 'customvocab:41', 'property_id' => 6, '@value' => 'Licencia ausente o incompatible', 'is_public' => false],
+            ['type' => 'literal', 'property_id' => 6, '@value' => 'falta la licencia del vídeo 2', 'is_public' => false],
+        ], $this->writes[0][WorkflowStatus::NOTE_TERM]);
+        $this->assertSame(
+            [['type' => 'customvocab:42', 'property_id' => 6, '@value' => 'Duplica un REA existente', 'is_public' => false]],
+            $this->writes[1][WorkflowStatus::NOTE_TERM]
+        );
+        // The whole note is cleared each time, so the reason and its detail go together.
+        $this->assertSame([5, 6], $this->writes[0]['clear_property_values']);
+        $this->assertSame([], $this->writes[2][WorkflowStatus::NOTE_TERM]);
+    }
+
     public function testPublicOutOfFlowReaCanBeRegularisedEitherWay(): void
     {
         $service = $this->service();
@@ -135,13 +160,13 @@ final class WorkflowServiceTest extends TestCase
     public function testInvalidTransitionsAndMissingPropertiesDoNotWrite(): void
     {
         $service = $this->service();
-        $this->assertSame('invalid_transition', $service->reject($this->rea(' '), 'x', 'Cu')['error']);
+        $this->assertSame('invalid_transition', $service->reject($this->rea(' '), WorkflowReason::literal('x'), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->publish($this->rea(null), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->publish($this->rea('Descartado', true), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->propose($this->rea('Propuesto'), 'Cu')['error']);
         // A public REA is never proposed: it would sit in the queue and on the site at once.
         $this->assertSame('invalid_transition', $service->propose($this->rea(null, true), 'Cu')['error']);
-        $this->assertSame('invalid_transition', $service->discard($this->rea('Publicado', true), 'x', 'Cu')['error']);
+        $this->assertSame('invalid_transition', $service->discard($this->rea('Publicado', true), WorkflowReason::literal('x'), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->reopen($this->rea('Propuesto'), 'Cu')['error']);
         $this->assertSame('invalid_transition', $service->unpublish($this->rea('Propuesto'), 'x', 'Cu')['error']);
         $this->assertSame([], $this->writes);

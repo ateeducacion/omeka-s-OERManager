@@ -35,6 +35,7 @@ use OERManager\Service\ReaSite;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
 use OERManager\Service\Workflow\RecatalogRule;
+use OERManager\Service\Workflow\WorkflowReason;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Representation\ItemRepresentation;
@@ -1400,7 +1401,7 @@ class IndexController extends AbstractActionController
             'reject',
             true,
             fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
-                ->reject($item, $reason, $who)
+                ->reject($item, WorkflowReason::literal($reason), $who)
         );
     }
 
@@ -1411,7 +1412,7 @@ class IndexController extends AbstractActionController
             'discard',
             true,
             fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
-                ->discard($item, $reason, $who)
+                ->discard($item, WorkflowReason::literal($reason), $who)
         );
     }
 
