@@ -20,6 +20,8 @@ use OERManager\Service\Workflow\WorkflowStatus;
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-master-view.css', 'OERManager'));
+// ADR-0024: the same panel as the master view, so the alignment editor's own look too.
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-alignment-editor.css', 'OERManager'));
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
 $drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details']);
