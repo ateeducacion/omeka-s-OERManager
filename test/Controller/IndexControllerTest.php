@@ -13,8 +13,10 @@ use OERManager\Service\Content\MediaVisionExtractor;
 use OERManager\Service\Curation\CurationWriter;
 use OERManager\Service\Curation\UndoRouter;
 use OERManager\Service\Curriculum\CurriculumTerms;
+use OERManager\Service\Governance\VocabEntries;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\Llm\LlmSettings;
+use OERManager\Service\Workflow\ReasonVocabularies;
 use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowService;
 use OERManager\Service\Workflow\WorkflowStatus;
@@ -51,6 +53,12 @@ class IndexControllerTest extends TestCase
     private int $updates = 0;
     private bool $canUpdate = true;
     private bool $isPublic = false;
+    /** @var list<array<string,string>> */
+    private array $rejectTerms = [];
+    /** @var list<array<string,string>> */
+    private array $discardTerms = [];
+    /** @var array<string,mixed> */
+    private array $lastUpdate = [];
     private ?object $owner = null;
 
     protected function setUp(): void
@@ -84,11 +92,12 @@ class IndexControllerTest extends TestCase
             return new Response($this->item);
         });
         $this->api->method('search')->willReturn(new Response([$this->item], 1));
-        $this->api->method('update')->willReturnCallback(function () {
+        $this->api->method('update')->willReturnCallback(function ($resource = null, $id = null, $data = []) {
             if ($this->denyWrite) {
                 throw new PermissionDeniedException('private');
             }
             $this->updates++;
+            $this->lastUpdate = $data;
             return new Response($this->item);
         });
         $prompt = new PromptBuilder();
@@ -106,6 +115,10 @@ class IndexControllerTest extends TestCase
             'proposalStore' => new ProposalStore($this->dir),
             'workflowService' => new WorkflowService($this->api, new CurationWriter($this->api)),
             'computedFilter' => new \OERManager\Service\ComputedFilter(),
+            'reasonVocabularies' => new ReasonVocabularies(
+                new VocabEntries(41, fn (int $id): array => $this->rejectTerms),
+                new VocabEntries(42, fn (int $id): array => $this->discardTerms)
+            ),
         ];
         $arguments = [];
         foreach ((new \ReflectionClass(IndexController::class))->getConstructor()->getParameters() as $param) {
@@ -284,6 +297,53 @@ class IndexControllerTest extends TestCase
             }
             $this->params->post['reason'] = 'Revise';
         }
+    }
+
+    /** TASK-039: reject and discard take their reason from their own vocabulary. */
+    public function testRejectAndDiscardTakeAReasonFromTheirVocabulary(): void
+    {
+        $this->rejectTerms = [['value' => 'Licencia ausente o incompatible']];
+        $this->discardTerms = [['value' => 'Duplica un REA existente']];
+        $this->request->ajax = true;
+
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post['reason'] = 'texto libre';
+        $this->assertSame('reason_invalid', $this->data('rejectProposal')['error']);
+        $this->params->post['reason'] = '';
+        $this->assertSame('reason_required', $this->data('rejectProposal')['error']);
+        $this->assertSame(0, $this->updates, 'nothing is written for an invalid reason');
+
+        $this->params->post['reason'] = ' Licencia ausente o incompatible ';
+        $this->params->post['detail'] = str_repeat('d', 250);
+        $this->assertTrue($this->data('rejectProposal')['updated']);
+        $note = $this->lastUpdate[WorkflowStatus::NOTE_TERM];
+        $this->assertSame(['customvocab:41', 'literal'], array_column($note, 'type'));
+        $this->assertSame(['Licencia ausente o incompatible', str_repeat('d', 200)], array_column($note, '@value'));
+
+        $this->workflowStatus = WorkflowStatus::REJECTED;
+        $this->params->post['detail'] = '';
+        $this->assertSame('reason_invalid', $this->data('discard')['error'], 'each action has its own list');
+        $this->params->post['reason'] = 'Duplica un REA existente';
+        $this->assertTrue($this->data('discard')['updated']);
+        $this->assertSame(['customvocab:42'], array_column($this->lastUpdate[WorkflowStatus::NOTE_TERM], 'type'));
+
+        // «Despublicar» stays free text.
+        $this->workflowStatus = WorkflowStatus::PUBLISHED;
+        $this->params->post['reason'] = 'Licencia dudosa';
+        $this->assertTrue($this->data('unpublish')['updated']);
+        $this->assertSame(['literal'], array_column($this->lastUpdate[WorkflowStatus::NOTE_TERM], 'type'));
+    }
+
+    public function testTheDrawerOffersTheTermsOfEachVocabulary(): void
+    {
+        $this->params->query = ['id' => 7];
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn([]);
+        $this->dependencies['acl']->method('userIsAllowed')->willReturn(true);
+        $this->rejectTerms = [['value' => 'Otro motivo']];
+        $view = $this->controller->drawerDetailsAction();
+        $this->assertSame(['Otro motivo'], $view->getVariable('rejectReasons'));
+        $this->assertNull($view->getVariable('discardReasons'), 'no terms: free text');
     }
 
     public function testBrowseSearchAndComputedFilters(): void

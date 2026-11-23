@@ -53,7 +53,9 @@ return [
                     // TASK-064: valida o detecta el conjunto del currículo al guardar.
                     $container->get(Service\Curriculum\CurriculumTerms::class),
                     // TASK-067: validates the REA site on save.
-                    $container->get(Service\ReaSite::class)
+                    $container->get(Service\ReaSite::class),
+                    // TASK-039: reasons to reject and to discard.
+                    $container->get(Service\Workflow\ReasonVocabularies::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {

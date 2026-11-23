@@ -34,6 +34,7 @@ use OERManager\Service\PanelAreas;
 use OERManager\Service\ReaSite;
 use OERManager\Service\RecatalogService;
 use OERManager\Service\ResourceTypeVocab;
+use OERManager\Service\Workflow\ReasonVocabularies;
 use OERManager\Service\Workflow\RecatalogRule;
 use OERManager\Service\Workflow\WorkflowReason;
 use OERManager\Service\Workflow\WorkflowService;
@@ -87,6 +88,7 @@ class IndexController extends AbstractActionController
     private BatchJobLookup $jobLookup;
     private CurriculumTerms $curriculumTerms;
     private ReaSite $reaSite;
+    private ReasonVocabularies $reasonVocabularies;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -110,7 +112,8 @@ class IndexController extends AbstractActionController
         UndoRouter $undoRouter,
         BatchJobLookup $jobLookup,
         CurriculumTerms $curriculumTerms,
-        ReaSite $reaSite
+        ReaSite $reaSite,
+        ReasonVocabularies $reasonVocabularies
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -134,6 +137,7 @@ class IndexController extends AbstractActionController
         $this->jobLookup = $jobLookup;
         $this->curriculumTerms = $curriculumTerms;
         $this->reaSite = $reaSite;
+        $this->reasonVocabularies = $reasonVocabularies;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -738,6 +742,8 @@ class IndexController extends AbstractActionController
                 'discardUrl' => '',
                 'unpublishUrl' => '',
                 'reopenUrl' => '',
+                'rejectReasons' => null,
+                'discardReasons' => null,
                 'governanceApplyUrl' => '',
                 'recatalog' => ['allowed' => false, 'reason' => '', 'current' => []],
             ]);
@@ -795,6 +801,9 @@ class IndexController extends AbstractActionController
             'discardUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'discard']),
             'unpublishUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'unpublish']),
             'reopenUrl' => $this->url()->fromRoute('admin/oer-manager', ['action' => 'reopen']),
+            // TASK-039: the terms each reason form offers; null = free text.
+            'rejectReasons' => $this->reasonVocabularies->terms(ReasonVocabularies::REJECT),
+            'discardReasons' => $this->reasonVocabularies->terms(ReasonVocabularies::DISCARD),
             // Task 11: the edit form posts here. Computed per render (like
             // rejectUrl/publishUrl above) because `governance.js` only ever
             // receives a DOM root, never the page-level `config` object — see
@@ -1386,22 +1395,23 @@ class IndexController extends AbstractActionController
         return $this->workflowTransition(
             'propose',
             false,
-            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService->propose($item, $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
+                ->propose($item, $who)
         );
     }
 
     /**
      * Un curador rechaza un REA propuesto, con motivo (RF-016). El motivo es
-     * obligatorio (revisión final RF-016, hallazgo 3) y se acota a 200
-     * caracteres; texto libre hasta la lista de TASK-039.
+     * obligatorio (revisión final RF-016, hallazgo 3). Sale del vocabulario de
+     * rechazo (TASK-039); texto libre si no hay ninguno.
      */
     public function rejectProposalAction()
     {
         return $this->workflowTransition(
             'reject',
             true,
-            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
-                ->reject($item, WorkflowReason::literal($reason), $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
+                ->reject($item, $reason, $who)
         );
     }
 
@@ -1411,8 +1421,8 @@ class IndexController extends AbstractActionController
         return $this->workflowTransition(
             'discard',
             true,
-            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
-                ->discard($item, WorkflowReason::literal($reason), $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
+                ->discard($item, $reason, $who)
         );
     }
 
@@ -1422,8 +1432,8 @@ class IndexController extends AbstractActionController
         return $this->workflowTransition(
             'unpublish',
             true,
-            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService
-                ->unpublish($item, $reason, $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
+                ->unpublish($item, $reason->text, $who)
         );
     }
 
@@ -1433,7 +1443,8 @@ class IndexController extends AbstractActionController
         return $this->workflowTransition(
             'reopen',
             false,
-            fn (ItemRepresentation $item, string $reason, string $who) => $this->workflowService->reopen($item, $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
+                ->reopen($item, $who)
         );
     }
 
@@ -1452,7 +1463,7 @@ class IndexController extends AbstractActionController
      */
     public function publishProposalAction()
     {
-        $guard = $this->workflowGuard('publish', false);
+        $guard = $this->workflowGuard();
         if (!is_array($guard) || !isset($guard['request'])) {
             return $guard;
         }
@@ -1524,11 +1535,18 @@ class IndexController extends AbstractActionController
      */
     private function workflowTransition(string $name, bool $reasonRequired, callable $apply)
     {
-        $guard = $this->workflowGuard($name, $reasonRequired);
+        $guard = $this->workflowGuard();
         if (!is_array($guard) || !isset($guard['request'])) {
             return $guard;
         }
-        ['id' => $id, 'ajax' => $ajax, 'reason' => $reason] = $guard['request'];
+        ['id' => $id, 'ajax' => $ajax, 'reason' => $reason, 'detail' => $detail] = $guard['request'];
+        $resolved = $this->workflowReason($name, $reasonRequired, $reason, $detail);
+        if (isset($resolved['error'])) {
+            $message = 'reason_invalid' === $resolved['error']
+                ? 'Elige un motivo de la lista.' // @translate
+                : 'Debes indicar un motivo.'; // @translate
+            return $this->workflowFailure($ajax, $id, $resolved['error'], $message);
+        }
         $item = $this->workflowItem($id);
         if (null === $item) {
             return $this->workflowNotFound($ajax);
@@ -1537,17 +1555,34 @@ class IndexController extends AbstractActionController
             $name,
             $ajax,
             $id,
-            fn () => $apply($item, $reason, $this->contributor())
+            fn () => $apply($item, $resolved['reason'], $this->contributor())
         );
     }
 
     /**
-     * POST, CSRF y motivo. Devuelve `['request' => [id, ajax, reason]]` o la
-     * respuesta de error (redirect o JsonModel), que el llamador devuelve tal cual.
+     * TASK-039: reject and discard resolve their reason against their own
+     * vocabulary (free text without one); the other transitions keep a free
+     * reason, required only where it was.
      *
-     * @return array{request: array{id:int, ajax:bool, reason:string}}|mixed
+     * @return array{reason: WorkflowReason}|array{error: string}
      */
-    private function workflowGuard(string $name, bool $reasonRequired)
+    private function workflowReason(string $name, bool $required, string $reason, string $detail): array
+    {
+        if (in_array($name, [ReasonVocabularies::REJECT, ReasonVocabularies::DISCARD], true)) {
+            return $this->reasonVocabularies->resolve($name, $reason, $detail);
+        }
+        $literal = WorkflowReason::literal($reason);
+        return $required && '' === $literal->text ? ['error' => 'reason_required'] : ['reason' => $literal];
+    }
+
+    /**
+     * POST and CSRF. Returns `['request' => [id, ajax, reason, detail]]`, raw,
+     * or the error response (redirect or JsonModel), which the caller returns
+     * as is. The reason is checked by workflowReason().
+     *
+     * @return array{request: array{id:int, ajax:bool, reason:string, detail:string}}|mixed
+     */
+    private function workflowGuard()
     {
         if (!$this->getRequest()->isPost()) {
             return $this->redirect()->toRoute('admin/oer-manager');
@@ -1558,11 +1593,12 @@ class IndexController extends AbstractActionController
             $message = 'Token de seguridad inválido. Vuelve a intentarlo.'; // @translate
             return $this->workflowFailure($ajax, $id, 'csrf', $message);
         }
-        $reason = mb_substr(trim((string) $this->params()->fromPost('reason', '')), 0, 200);
-        if ($reasonRequired && '' === $reason) {
-            return $this->workflowFailure($ajax, $id, 'reason_required', 'Debes indicar un motivo.'); // @translate
-        }
-        return ['request' => ['id' => $id, 'ajax' => $ajax, 'reason' => $reason]];
+        return ['request' => [
+            'id' => $id,
+            'ajax' => $ajax,
+            'reason' => (string) $this->params()->fromPost('reason', ''),
+            'detail' => (string) $this->params()->fromPost('detail', ''),
+        ]];
     }
 
     private function workflowItem(int $id): ?ItemRepresentation
