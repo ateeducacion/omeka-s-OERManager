@@ -216,13 +216,16 @@ function renderHistory(history) {
 function wireHistory(content, historyUrl) {
     const box = content.querySelector('.oer-history-box');
     const body = box && box.querySelector('.oer-history-body');
-    if (!box || !body || !historyUrl) {
+    // `wireTabs` dispatches PANEL_TAB_SHOWN on the tabpanel itself, and the
+    // event does not reach its children: listen on the panel, not on the box.
+    const panel = box && box.closest('[role="tabpanel"]');
+    if (!box || !body || !panel || !historyUrl) {
         return;
     }
 
     const itemId = box.dataset.itemId;
     let loaded = false;
-    box.addEventListener(PANEL_TAB_SHOWN, () => {
+    panel.addEventListener(PANEL_TAB_SHOWN, () => {
         if (loaded) {
             return;
         }

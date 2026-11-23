@@ -165,8 +165,11 @@ final class CurationHistory
                 continue;
             }
             ksort($value);
-            $text = 'uri' === ($value['type'] ?? '')
-                ? ValueText::of($value['label'] ?? null, $value['uri'] ?? null)
+            // `uri` is the discriminator, not `type`: a URI-typed CustomVocab
+            // (the licence) is stored as `customvocab:N` with a `uri`, the same
+            // rule GovernanceService::currentValues() writes it with.
+            $text = isset($value['uri'])
+                ? ValueText::of($value['label'] ?? null, $value['uri'])
                 : trim((string) ($value['value'] ?? ''));
             $out[(string) json_encode($value)] = $text;
         }
