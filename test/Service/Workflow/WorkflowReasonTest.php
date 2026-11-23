@@ -37,6 +37,19 @@ final class WorkflowReasonTest extends TestCase
         $this->assertSame(str_repeat('d', 200), $long->detail);
     }
 
+    /**
+     * Final review of TASK-039: a term is already validated against its
+     * vocabulary, so it is never cut; a cut term would be stored as a
+     * `customvocab:N` value that matches no term of the list.
+     */
+    public function testATermLongerThanTheLimitIsKeptWhole(): void
+    {
+        $term = str_repeat('t', 250);
+        $reason = WorkflowReason::term(' ' . $term . ' ', 'customvocab:41');
+        $this->assertSame($term, $reason->text);
+        $this->assertSame($term, $reason->noteValues(6)[0]['@value']);
+    }
+
     public function testAnEmptyReasonWritesNothing(): void
     {
         $this->assertSame([], WorkflowReason::literal('   ')->noteValues(6));

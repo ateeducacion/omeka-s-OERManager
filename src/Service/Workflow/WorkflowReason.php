@@ -8,8 +8,8 @@ namespace OERManager\Service\Workflow;
  * The reason given when a REA is rejected, discarded or unpublished
  * (TASK-039). It is written to `curation:note` as up to two PRIVATE values:
  * the reason (a CustomVocab term typed `customvocab:N`, or a literal when no
- * vocabulary resolves) and an optional detail literal. Each is cut to 200
- * characters.
+ * vocabulary resolves) and an optional detail literal. Free text and the
+ * detail are cut to 200 characters; a vocabulary term is kept whole.
  */
 final class WorkflowReason
 {
@@ -28,10 +28,14 @@ final class WorkflowReason
         return new self(self::cut($text), null, '');
     }
 
-    /** A term of the vocabulary whose data type is `$dataType`, with an optional detail. */
+    /**
+     * A term of the vocabulary whose data type is `$dataType`, with an
+     * optional detail. The term is only trimmed, never cut: it was validated
+     * against the vocabulary, and a cut term would match none of its terms.
+     */
     public static function term(string $text, string $dataType, string $detail = ''): self
     {
-        return new self(self::cut($text), $dataType, self::cut($detail));
+        return new self(trim($text), $dataType, self::cut($detail));
     }
 
     public static function cut(string $text): string
