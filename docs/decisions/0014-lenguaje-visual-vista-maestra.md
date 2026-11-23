@@ -107,6 +107,13 @@ It is admitted under these limits, so rules 2 and 3 keep holding:
 
 The pending WCAG AA measurement of this ADR now also covers the pill tints, and is part of TASK-046.
 
+## Addendum (2026-11-20, TASK-065 part B): exception for the curricular alignment editor
+
+At the owner's request, ADR-0024 makes an exception to rule 1 for one component: the re-cataloguer's
+editor (edit mode and review step) may use its own typefaces (bundled, never from a CDN), palette and
+layout, scoped to its own stylesheet. Rules 2–4 still hold inside it. Every other curation surface keeps
+this ADR as written.
+
 ---
 
 *Registro append-only: los ADR no se borran ni se reescriben. Para cambiar una decisión, crear un ADR nuevo y marcar este como «Reemplazado por ADR-NNNN». Numeración correlativa de cuatro dígitos; no se reutiliza.*

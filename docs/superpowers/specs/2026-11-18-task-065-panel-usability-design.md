@@ -143,6 +143,16 @@ The server already provides what the tree needs: `search-terms` narrows subjects
 (`level`), and `curriculum-tree` returns knowledge and criteria grouped by subject (`trees[].subject`).
 Part B is a client-side restructuring.
 
+**Status (2026-11-20): part B implemented** on branch `feature/task-065b-alignment-tree`
+([plan](../plans/2026-11-20-task-065b-alignment-tree.md)). Decisions taken while planning and implementing:
+
+- `curriculum-tree` now returns each subject's `course` {id, title}. This additive field is the only
+  server change; the editor needs it to place an REA's existing subjects.
+- Etapa and the thematic axis keep their chip selectors.
+- Clearing a tree's text filter opens the tree where something is checked, instead of restoring the exact
+  open state the filter found.
+- `leafTree.js` is retired; its model (`leafTreeModel.js`) is reused per subject.
+
 ### B1. Shape of the editor
 
 While editing, the sidebar widens.
@@ -210,6 +220,143 @@ with the thematic axis as its own row.
 Native disclosure buttons with `aria-expanded`/`aria-controls`, native labelled checkboxes, counts and
 summaries announced in a polite live region, keyboard as in today's trees (Tab, Space,
 ArrowRight/ArrowLeft on a branch).
+
+### B8. Master-detail editor with its own look (revised 2026-11-20)
+
+**Revision.** The owner tried the tree of B1 and approved its structure, but asked for a better design
+outside Omeka's style. A prototype (<https://claude.ai/artifact/Ap5xxptk6H8jyFrRjy4LYX>) was approved on
+2026-11-20 together with an exception to ADR-0014 rule 1, limited to this editor (ADR-0024). B8 replaces
+the layout of B1 and the footer of B6. B2–B5 and B7 stand: the model (`core/alignmentTree.js`), what goes
+to «Sin encajar», the operations, the AI marks and the accessibility rules do not change.
+
+**Layout, at the editor's full width** (the sidebar widens while editing):
+
+```
+┌ Anclaje curricular · <REA title>        [n propuestas de la IA sin revisar] [Proponer con IA] ┐
+├ NAVIGATOR (≈300px) ─────────────┬ DETAIL ───────────────────────────────────────────────────────┤
+│ Cursos  [Añadir curso…]          │ 1.º ESO                                                       │
+│   ▸ Acotar por etapa             │ Matemáticas                                  [Quitar materia] │
+│ 1.º ESO              2 materias  │ [Saberes básicos 4/24] [Criterios 3/18]                       │
+│  [Matemáticas      S 4 · C 3]◀   │ Filtrar [código o texto…]                                     │
+│  [Lengua C. y Lit. S 1 · C 1]    │ SMAT01SB-A Sentido numérico                    2 elegidos     │
+│  + Añadir materia de 1.º ESO     │  ☑ SMAT01SB-A.1  Conteo: …                                    │
+│ ⚠ Sin encajar · 2                │  ☐ SMAT01SB-A.2  Cantidad: …                                  │
+│   Lengua · 3.º ESO [Añadir 3.º ESO] [Quitar] │  ☑ SMAT01SB-E.1  Organización…   (IA) Ver porqué  │
+│   (with its saberes/criterios)   │                                                               │
+│ Eje temático  [chips]            │                                                               │
+├──────────────────────────────────┴───────────────────────────────────────────────────────────────┤
+│ 2 cambios sin confirmar  +2 −0                              [Cancelar] [Revisar cambios]         │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Navigator** (master):
+  - the course search, with Etapa as a collapsed «Acotar por etapa» helper that is never written;
+  - each chosen course with its subjects, as rows that select the detail (`aria-current`) and show
+    their counts «S n · C n»;
+  - «+ Añadir materia de <course>», with its search narrowed to that course;
+  - «Sin encajar», always in sight and listing the knowledge and criteria of an unfitted subject too;
+  - «Eje temático», the flat chip selector of today.
+- **Detail:** one subject in focus.
+  - Its course, name and «Quitar materia».
+  - Tabs «Saberes básicos n/total» and «Criterios de evaluación n/total».
+  - A text filter.
+  - The blocks, each with its code, title and «n elegidos», and the knowledge or criteria as labelled
+    checkboxes with their code.
+  - An AI-proposed term carries the «IA» mark and a «Ver porqué» disclosure with the reason.
+  - Nothing selected: an invitation to add a course or a subject.
+- **Footer:** «n cambios sin confirmar +a −r» from the model, «Cancelar», and «Revisar cambios».
+- **Review step** (in the same panel, not a modal), which replaces «Previsualizar» and «Confirmar» side
+  by side.
+  - «Revisar cambios» calls the preview and shows the diff grouped by course and subject (B6), with
+    «Sin encajar» and «Eje temático» as their own groups.
+  - A summary shows how many terms are added, removed and AI-proposed, and a note that the change is
+    audited and can be undone.
+  - «Confirmar re-catalogación» is enabled only on a fresh preview without invalid values.
+  - «Seguir editando» goes back with everything kept.
+- **Narrow sidebar** (editor narrower than about 720px): the navigator becomes a horizontal strip of
+  subject buttons with their counts, with a «Sin encajar · n» link above the detail. The footer buttons
+  share the width.
+
+**Look (ADR-0024):**
+- Public Sans for the interface, and IBM Plex Mono only for curriculum codes and counts. Both are
+  bundled under `asset/fonts/` and never loaded from a CDN.
+- Tokens are declared once at the editor's root:
+  - ground `#F4F6F8`, surface `#FFFFFF`, ink `#18212F`, muted `#5B6474`, rule `#DCE1E8`;
+  - selection `#0B6B5E` on `#E3F2EF`;
+  - AI `#4A3196` on `#EEE9FB`;
+  - unfitted `#7A3A00` on `#FDF0E1`;
+  - added `#08493F` on `#E3F2EF`, removed `#8A2222` on `#FBE9E9`.
+- Every pair is measured against WCAG 2.2 AA before acceptance, and the measured ratios are recorded
+  here.
+- The look is scoped to `asset/css/oer-alignment-editor.css`. The drawer outside the editor keeps
+  ADR-0014.
+
+**Status (2026-11-20): implemented** ([plan](../plans/2026-11-20-task-065b-master-detail-look.md)).
+- Fonts: Public Sans 5.3.0 (variable) and IBM Plex Mono 500 5.3.0, latin subset, about 41 KB, served by
+  the module.
+- The admin styles bare `header` and `footer` elements and gives every `button` a shadow, so the editor
+  builds those parts as `div` and resets buttons inside its root. `editorMarkup.test.js` pins it.
+- Contrast measured by `test/js/editorContrast.test.js`. Text needs 4.5:1; the last three rows are
+  control boundaries and need 3:1.
+
+| Pair | Ratio |
+| --- | --- |
+| `--ae-ink` on `--ae-surface` | 16.19:1 |
+| `--ae-ink` on `--ae-ground` | 14.94:1 |
+| `--ae-ink` on `--ae-accent-soft` | 14.04:1 |
+| `--ae-muted` on `--ae-surface` | 5.97:1 |
+| `--ae-muted` on `--ae-ground` | 5.51:1 |
+| `--ae-accent-ink` on `--ae-surface` | 6.40:1 |
+| `--ae-accent-ink` on `--ae-accent-soft` | 5.55:1 |
+| `--ae-on-accent` on `--ae-accent` | 6.40:1 |
+| `--ae-ai` on `--ae-ai-soft` | 8.15:1 |
+| `--ae-ai` on `--ae-surface` | 9.67:1 |
+| `--ae-unfit` on `--ae-unfit-soft` | 7.70:1 |
+| `--ae-added` on `--ae-added-soft` | 8.95:1 |
+| `--ae-removed` on `--ae-removed-soft` | 7.69:1 |
+| `--ae-danger` on `--ae-surface` | 7.21:1 |
+| `--ae-control` on `--ae-surface` | 3.68:1 |
+| `--ae-control` on `--ae-ground` | 3.40:1 |
+| `--ae-accent` on `--ae-surface` | 6.40:1 |
+
+**Accessibility (B7, plus):**
+- the navigator rows are buttons with `aria-current`;
+- the tabs follow the ARIA tabs pattern;
+- the review step moves the focus to its heading, and «Seguir editando» returns it to «Revisar
+  cambios»;
+- touch targets are at least 44px;
+- counts and changes are announced in a polite live region.
+
+**Addendum (2026-11-22): browsing courses and subjects, and the grouping twisty.** Requested and
+approved by the owner while reviewing the editor visually. The rest of B8 stands.
+
+- **«Explorar cursos» replaces «Acotar por etapa».** Under the course search, a disclosure lists the
+  stages. Each stage opens its courses, and each course has «Añadir», or «Añadido» when it is already
+  chosen. Adding works like the search does. The stage is still only a way to navigate and is never
+  written (ADR-0022). The course search is no longer narrowed by stage.
+- **«Ver materias» per course.** Next to «Añadir materia de <course>», a disclosure lists every subject
+  of that course with «Añadir» or «Añadido». Adding one opens it in the detail, as the search does. It
+  is for a curator who does not know the subject's name.
+- **Server.** `search-terms` with `browse=1` lists the children of one parent with no text, up to 100.
+  Without a valid parent (`etapa` for courses, `level` for subjects) it answers
+  `{results: [], error: "parent_required"}` and runs no query (NFR-004). Only the stages are listed
+  without a parent. The other `search-terms` calls do not change.
+- **What is open survives redraws.** The editor's view state keeps the open lists and the loaded ones,
+  so a checkbox or an addition does not close them. Each list is asked once; a failed one is asked
+  again when reopened.
+- **Grouping twisty (option B).** A knowledge item or criterion that groups others has a 24px
+  disclosure button. Items without children keep an empty 24px gap, so every checkbox sits in the same
+  column. Under the text, «n sub-saberes · m elegidos» (or «sub-criterios») shows what is chosen inside a
+  closed group, and the button's name says the same. The chevron is drawn with borders, not a font glyph.
+  It is shared with the block and browse disclosures and does not animate under
+  `prefers-reduced-motion`. The block count is now singular for one («1 elegido»).
+- **Contrast.** One new text pair, `--ae-muted` on `--ae-accent-soft` (the note on a checked row), is
+  pinned by `editorContrast.test.js`.
+- **Verification.** `IndexControllerTest::testSearchTermsBrowseListsTheChildrenOfAParentOnly`,
+  `test/js/curriculumBrowse.test.js` (5 tests) and
+  `test/browser/alignment-editor-browse-smoke.html` (headless Chrome, stubbed endpoints). The smoke was
+  checked against two CSS mutations, which made it fail. **Not verified:** the subject count of real
+  courses against the 100 limit, and the editor in a logged-in admin.
 
 ## Out of scope
 
