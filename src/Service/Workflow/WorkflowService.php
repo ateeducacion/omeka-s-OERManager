@@ -115,7 +115,13 @@ final class WorkflowService
         if (!WorkflowStatus::canUnpublish($this->statusOf($item), (bool) $item->isPublic())) {
             return self::invalid();
         }
-        return $this->transition($item, WorkflowStatus::PROPOSED, WorkflowReason::literal($reason), false, $contributor);
+        return $this->transition(
+            $item,
+            WorkflowStatus::PROPOSED,
+            WorkflowReason::literal($reason),
+            false,
+            $contributor
+        );
     }
 
     /**
