@@ -111,7 +111,12 @@ and the detail panel (`view/oer-manager/admin/index/drawer-details.phtml`, drive
 
 - **With a vocabulary:**
   - a required `<select name="reason">`, whose first option «Elige un motivo…» has an empty value;
-  - under it, «Concreta (opcional)»: `<input type="text" name="detail" maxlength="200">`.
+  - under it, «Información adicional»: `<input type="text" name="detail" maxlength="200">`.
+- **Refinement after the owner's visual review (2026-11-23).** The detail's label is «Información adicional»
+  (it was «Concreta (opcional)»). The reason's label carries a red `*`, hidden from screen readers because
+  the control is `required`. In both forms the confirm and cancel buttons are left-aligned, with the action
+  first. The drawer's reason form had been centred by a style conflict (`align-items`), fixed in
+  `oer-master-view.css`.
 - **Without a vocabulary:** today's text field, with the hint «Lista de motivos no configurada: escribe
   el motivo.».
 - `workflowDrawer.js` already focuses `[name="reason"]` when a form opens, and that keeps working with a

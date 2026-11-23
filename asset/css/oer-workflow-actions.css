@@ -83,9 +83,14 @@
     font-size: 0.875em;
 }
 
+/* The asterisk of a required reason: the admin's own red (as the out-of-flow badge). */
+.oer-workflow-reason-required {
+    color: #a91919;
+}
+
 .oer-workflow-reason-buttons {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
     gap: 6px;
 }
 

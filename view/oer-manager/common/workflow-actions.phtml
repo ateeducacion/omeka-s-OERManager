@@ -89,8 +89,8 @@ $hidden = static function () use ($escape, $csrf, $itemId): string {
                 <?php echo $escape($action['help']); ?>
             </p>
             <div class="oer-workflow-reason-buttons">
-                <button type="button" class="button" data-oer-workflow-cancel><?php echo $translate('Cancelar'); ?></button>
                 <button type="submit" class="button<?php echo $action['tone']; ?>"><?php echo $escape($action['confirm']); ?></button>
+                <button type="button" class="button" data-oer-workflow-cancel><?php echo $translate('Cancelar'); ?></button>
             </div>
         </form>
     </details>

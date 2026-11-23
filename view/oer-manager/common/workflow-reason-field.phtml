@@ -3,7 +3,9 @@
  * The reason field of a workflow form (TASK-039), shared by the item page
  * and the detail panel. With a vocabulary: a required select of its terms
  * and an optional detail. Without one: today's free text, and, for the
- * actions that take a vocabulary, a hint that none is configured.
+ * actions that take a vocabulary, a hint that none is configured. The reason
+ * is always required, so its label carries a red asterisk (hidden from screen
+ * readers: the control itself is `required`).
  *
  * @var \Laminas\View\Renderer\PhpRenderer $this
  * @var string $fieldId id of the reason control (the label's `for`)
@@ -16,7 +18,8 @@ $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
 $described = empty($describedBy) ? '' : ' aria-describedby="' . $escape($describedBy) . '"';
 ?>
-<label for="<?php echo $escape($fieldId); ?>"><?php echo $escape($label); ?></label>
+<label for="<?php echo $escape($fieldId); ?>"><?php echo $escape($label); ?>
+    <span class="oer-workflow-reason-required" aria-hidden="true">*</span></label>
 <?php if (null !== $terms): ?>
 <select id="<?php echo $escape($fieldId); ?>" name="reason" required<?php echo $described; ?>>
     <option value=""><?php echo $escape($translate('Elige un motivo…')); ?></option>
@@ -24,7 +27,7 @@ $described = empty($describedBy) ? '' : ' aria-describedby="' . $escape($describ
     <option value="<?php echo $escape($term); ?>"><?php echo $escape($term); ?></option>
     <?php endforeach; ?>
 </select>
-<label for="<?php echo $escape($fieldId); ?>-detail"><?php echo $escape($translate('Concreta (opcional)')); ?></label>
+<label for="<?php echo $escape($fieldId); ?>-detail"><?php echo $escape($translate('Información adicional')); ?></label>
 <input type="text" id="<?php echo $escape($fieldId); ?>-detail" name="detail" maxlength="200">
 <?php else: ?>
 <input type="text" id="<?php echo $escape($fieldId); ?>" name="reason" required maxlength="200"<?php echo $described; ?>>

@@ -1771,9 +1771,17 @@ body.oer-master-view.sidebar-open footer {
     color: var(--oer-muted);
 }
 
+/* The reason form is a column of full-width fields, left-aligned. The rule
+   above asks for `stretch`, but `.oer-drawer-workflow-form` (later, same
+   weight) set `center`, which centred every label, field and button. */
+.oer-panel-workflow .oer-drawer-workflow-form.oer-workflow-reason {
+    align-items: stretch;
+}
+
 .oer-workflow-reason-actions {
     display: flex;
     flex-wrap: wrap;
+    justify-content: flex-start;
     gap: 0.5em;
 }
 
@@ -1807,14 +1815,11 @@ body.oer-master-view.sidebar-open footer {
     min-width: 10em;
 }
 
-/* TASK-039: the reason select and its optional detail each take a row. */
-.oer-panel-workflow .oer-workflow-reason select,
-.oer-panel-workflow .oer-workflow-reason input[name="detail"] {
-    flex: 1 1 100%;
+.oer-panel-workflow .oer-workflow-reason-required {
+    color: var(--oer-bad);
 }
 
 .oer-panel-workflow .oer-workflow-reason-hint {
-    flex: 1 1 100%;
     margin: 0;
     font-size: 0.85em;
 }

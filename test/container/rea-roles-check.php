@@ -441,11 +441,15 @@ try {
     check('the panel offers the reject reasons as a select',
         str_contains($drawer, 'id="oer-workflow-reason-reject-text" name="reason"')
         && str_contains($drawer, '<option value="Licencia ausente o incompatible">')
-        && str_contains($drawer, 'name="detail"'));
+        && str_contains($drawer, 'name="detail"')
+        && str_contains($drawer, 'Información adicional')
+        && str_contains($drawer, 'oer-workflow-reason-required'));
     [, $page] = $c->request('GET', '/admin/item/' . $r5);
     check('the item page offers the reject reasons as a select',
         str_contains($page, 'id="oer-workflow-reject-' . $r5 . '" name="reason"')
-        && str_contains($page, 'Licencia ausente o incompatible'));
+        && str_contains($page, 'Licencia ausente o incompatible')
+        && str_contains($page, 'Información adicional')
+        && str_contains($page, 'oer-workflow-reason-required'));
 
     $r = $c->post('reject-proposal', ['id' => $r5, 'csrf' => $cCsrf, 'reason' => 'texto libre']);
     check('a reason outside the list is refused', 'reason_invalid' === ($r['error'] ?? null), json_encode($r));
