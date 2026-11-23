@@ -34,7 +34,7 @@
                         close(other, false);
                     }
                 });
-                var field = details.querySelector('input[name="reason"]');
+                var field = details.querySelector('[name="reason"]');
                 if (field) {
                     field.focus();
                 }

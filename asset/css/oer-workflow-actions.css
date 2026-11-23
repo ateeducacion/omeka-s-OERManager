@@ -72,6 +72,17 @@
     font-size: 0.875em;
 }
 
+/* TASK-039: the reason as a select, with an optional detail field below. */
+.oer-workflow-reason-panel select {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.oer-workflow-reason-hint {
+    margin: 0;
+    font-size: 0.875em;
+}
+
 .oer-workflow-reason-buttons {
     display: flex;
     justify-content: flex-end;

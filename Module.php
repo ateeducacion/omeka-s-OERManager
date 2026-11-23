@@ -374,7 +374,11 @@ class Module extends AbstractModule implements InitProviderInterface
 
         $view->headLink()->appendStylesheet($view->assetUrl('css/oer-workflow-actions.css', 'OERManager'));
         $view->headScript()->appendFile($view->assetUrl('js/workflow-actions.js', 'OERManager'));
+        // TASK-039: the reasons each form offers (null = free text).
+        $reasons = $services->get(Service\Workflow\ReasonVocabularies::class);
         echo $view->partial('oer-manager/common/workflow-actions', $buttons + [
+            'rejectReasons' => $reasons->terms(Service\Workflow\ReasonVocabularies::REJECT),
+            'discardReasons' => $reasons->terms(Service\Workflow\ReasonVocabularies::DISCARD),
             'itemId' => (int) $item->id(),
             'csrf' => $csrf->getHash(),
             'proposeUrl' => $view->url('admin/oer-manager', ['action' => 'propose']),

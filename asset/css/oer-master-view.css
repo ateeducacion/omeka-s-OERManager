@@ -1807,6 +1807,18 @@ body.oer-master-view.sidebar-open footer {
     min-width: 10em;
 }
 
+/* TASK-039: the reason select and its optional detail each take a row. */
+.oer-panel-workflow .oer-workflow-reason select,
+.oer-panel-workflow .oer-workflow-reason input[name="detail"] {
+    flex: 1 1 100%;
+}
+
+.oer-panel-workflow .oer-workflow-reason-hint {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 0.85em;
+}
+
 .oer-panel-workflow .oer-workflow-error {
     margin: 0.6em 0 0;
     color: var(--oer-bad);

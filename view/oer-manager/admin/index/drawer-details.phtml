@@ -41,6 +41,8 @@
  * @var string $discardUrl
  * @var string $unpublishUrl
  * @var string $reopenUrl
+ * @var list<string>|null $rejectReasons TASK-039; null = free text
+ * @var list<string>|null $discardReasons TASK-039; null = free text
  * @var string $governanceApplyUrl POST target for the edit form (Task 11)
  * @var array{allowed:bool, reason:string, current:array} $recatalog TASK-035
  */
@@ -286,9 +288,11 @@ $recatalogAttr = $escape((string) json_encode(
     // submit, its CSRF hash and its required reason.
     $badge = WorkflowStatus::pageBadge($workflowStatus, (bool) $identity['isPublic']);
     $reasonActions = [
-        'reject' => [$canReject, $rejectUrl, $translate('Rechazar…'), $translate('Motivo del rechazo'), $translate('Rechazar propuesta')],
-        'discard' => [$canDiscard, $discardUrl, $translate('Descartar…'), $translate('Motivo del descarte'), $translate('Descartar')],
-        'unpublish' => [$canUnpublish, $unpublishUrl, $translate('Despublicar…'), $translate('Motivo para despublicar'), $translate('Despublicar')],
+        // TASK-039: the sixth element is the vocabulary's terms (null = free
+        // text), or false for an action that never takes one (unpublish).
+        'reject' => [$canReject, $rejectUrl, $translate('Rechazar…'), $translate('Motivo del rechazo'), $translate('Rechazar propuesta'), $rejectReasons ?? null],
+        'discard' => [$canDiscard, $discardUrl, $translate('Descartar…'), $translate('Motivo del descarte'), $translate('Descartar'), $discardReasons ?? null],
+        'unpublish' => [$canUnpublish, $unpublishUrl, $translate('Despublicar…'), $translate('Motivo para despublicar'), $translate('Despublicar'), false],
     ];
     $hasActions = $canReject || $canPublish || $canDiscard || $canUnpublish || $canReopen;
     ?>
@@ -329,16 +333,19 @@ $recatalogAttr = $escape((string) json_encode(
             <?php endif; ?>
             <?php endforeach; ?>
         </div>
-        <?php foreach ($reasonActions as $key => [$show, $url, , $reasonLabel, $submit]): ?>
+        <?php foreach ($reasonActions as $key => [$show, $url, , $reasonLabel, $submit, $terms]): ?>
         <?php if ($show): ?>
         <form method="post" action="<?php echo $escape($url); ?>" hidden
               id="oer-workflow-reason-<?php echo $escape($key); ?>"
               class="oer-workflow-form oer-drawer-workflow-form oer-workflow-reason">
             <input type="hidden" name="csrf" value="<?php echo $escape($workflowCsrf); ?>">
             <input type="hidden" name="id" value="<?php echo (int) $identity['id']; ?>">
-            <label for="oer-workflow-reason-<?php echo $escape($key); ?>-text"><?php echo $escape($reasonLabel); ?></label>
-            <input type="text" name="reason" required maxlength="200"
-                   id="oer-workflow-reason-<?php echo $escape($key); ?>-text">
+            <?php echo $this->partial('oer-manager/common/workflow-reason-field', [
+                'fieldId' => 'oer-workflow-reason-' . $key . '-text',
+                'label' => $reasonLabel,
+                'terms' => false === $terms ? null : $terms,
+                'controlled' => false !== $terms,
+            ]); ?>
             <span class="oer-workflow-reason-actions">
                 <button type="submit" class="button"><?php echo $escape($submit); ?></button>
                 <button type="button" class="button oer-workflow-reason-cancel"><?php echo $escape($translate('Cancelar')); ?></button>
