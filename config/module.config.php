@@ -113,6 +113,13 @@ return [
                     $container->get('Omeka\Settings')
                 );
             },
+            Service\IdConstraintResolver::class => function ($container) {
+                return new Service\IdConstraintResolver(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get(Service\ReaTemplateFields::class)
+                );
+            },
             // ADR-0020 / slice 3b (TASK-028): la regla license_not_in_vocab necesita
             // saber si la licencia pertenece al vocabulario configurado. Reusa el
             // MISMO VocabEntries que ya lee el setting y degrada a null si no
