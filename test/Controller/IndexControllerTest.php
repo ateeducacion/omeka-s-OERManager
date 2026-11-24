@@ -737,6 +737,7 @@ class IndexControllerTest extends TestCase
         $this->dependencies['formElementManager']->method('get')->willReturn($form);
         $this->request->post = false;
         $this->assertSame($form, $this->controller->configAction()->getVariable('form'));
+        $this->assertSame('valid', $this->controller->configAction()->getVariable('resyncCsrf'));
         $this->request->post = true;
         $this->params->post = [];
         $this->assertSame(['admin/oer-manager', ['action' => 'config']], $this->controller->configAction());
@@ -777,6 +778,38 @@ class IndexControllerTest extends TestCase
         $this->assertSame(1, $view->getVariable('total'));
         // TASK-035 §3: the page opens the same panel, whose re-cataloguer posts with this token.
         $this->assertNotSame('', (string) $view->getVariable('recatalogCsrf'));
+    }
+
+    /** TASK-076: a global administrator's action; POST with a valid token only. */
+    public function testResyncSubjectsNeedsPostAndCsrf(): void
+    {
+        $config = ['admin/oer-manager', ['action' => 'config']];
+        $dispatched = [];
+        $this->dependencies['jobDispatcher']->method('dispatch')->willReturnCallback(
+            static function ($class) use (&$dispatched) {
+                $dispatched[] = $class;
+                return new \Omeka\Entity\Job();
+            }
+        );
+
+        $this->request->post = false;
+        $this->assertSame($config, $this->controller->resyncSubjectsAction());
+        $this->request->post = true;
+        $this->params->post['csrf'] = 'invalid';
+        $this->assertSame($config, $this->controller->resyncSubjectsAction());
+        $this->assertSame([], $dispatched);
+
+        $this->params->post['csrf'] = 'valid';
+        $this->assertSame($config, $this->controller->resyncSubjectsAction());
+        $this->assertSame([\OERManager\Job\ResyncDerivedSubjects::class], $dispatched);
+    }
+
+    public function testResyncSubjectsReportsADispatchFailure(): void
+    {
+        $this->dependencies['jobDispatcher']->method('dispatch')->willThrowException(new \RuntimeException('down'));
+        $this->params->post['csrf'] = 'valid';
+        $this->assertSame(['admin/oer-manager', ['action' => 'config']], $this->controller->resyncSubjectsAction());
+        $this->assertContains('No se pudo lanzar el recálculo de la materia derivada.', $this->messages->messages);
     }
 
     /** TASK-067: the REA site is validated on save, and the page says when the rule is off. */
