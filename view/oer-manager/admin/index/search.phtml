@@ -10,6 +10,7 @@
  *
  * @var array $query
  * @var array $resourceTypeValues términos del CustomVocab, o [] si degrada (D1)
+ * @var bool $requiredFieldsAvailable whether the REA template has required properties (TASK-070)
  */
 $translate = $this->plugin('translate');
 $escape = $this->plugin('escapeHtml');
@@ -171,6 +172,10 @@ $curricular = [
         'title' => $translate('Sin título'),
         'resource_type' => $translate('Sin tipo de recurso'),
     ];
+    // TASK-070: only with a readable REA template (IdConstraintResolver).
+    if (!empty($requiredFieldsAvailable)) {
+        $missingLabels['required'] = $translate('Sin campo obligatorio');
+    }
     ?>
     <div class="field">
         <div class="field-meta">
@@ -179,6 +184,7 @@ $curricular = [
         <div class="inputs">
             <?php
             $statusOptions = [
+                'queue' => $translate('En cola'),
                 'draft' => $translate('Borrador'),
                 'proposed' => $translate('Propuesto'),
                 'rejected' => $translate('Rechazado'),
@@ -192,6 +198,23 @@ $curricular = [
                 <option value=""><?php echo $translate('Estado: todos'); ?></option>
                 <?php foreach ($statusOptions as $value => $label): ?>
                 <option value="<?php echo $escape($value); ?>" <?php echo $value === $currentStatus ? 'selected' : ''; ?>><?php echo $escape($label); ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+    </div>
+
+    <?php $currentAge = is_scalar($query['age'] ?? '') ? (string) ($query['age'] ?? '') : ''; ?>
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-age"><?php echo $translate('Antigüedad'); ?></label>
+        </div>
+        <div class="inputs">
+            <select id="oer-search-age" name="age">
+                <option value=""><?php echo $translate('Cualquier fecha de alta'); ?></option>
+                <?php foreach (\OERManager\Service\MasterViewQuery::AGE_DAYS as $days): ?>
+                <option value="<?php echo $days; ?>" <?php echo (string) $days === $currentAge ? 'selected' : ''; ?>>
+                    <?php echo $escape(sprintf($translate('Creado hace más de %d días'), $days)); ?>
+                </option>
                 <?php endforeach; ?>
             </select>
         </div>

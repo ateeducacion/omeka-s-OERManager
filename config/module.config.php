@@ -579,13 +579,13 @@ return [
                 'privilege' => 'index',
                 'pages' => [
                     // «Cola (N)» (ADR-0023 §3): Module::labelQueue() writes N
-                    // before rendering. Points at the master view filtered by
-                    // status until the real queue (TASK-070).
+                    // before rendering. TASK-070: the master view's «En cola»
+                    // filter, oldest catalogue entry first.
                     [
                         'id' => 'oer-queue',
                         'label' => 'Cola', // @translate
                         'route' => 'admin/oer-manager',
-                        'query' => ['status' => 'proposed'],
+                        'query' => ['status' => 'queue', 'sort_by' => 'created', 'sort_order' => 'asc'],
                         'resource' => Controller\Admin\IndexController::class,
                         'privilege' => 'index',
                     ],

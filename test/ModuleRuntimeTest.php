@@ -119,6 +119,31 @@ class ModuleRuntimeTest extends TestCase
         $this->assertSame(['Con incidencias'], $filters['Integridad']);
     }
 
+    /** TASK-070: the queue, required-field and age filters have readable chips. */
+    public function testQueueRequiredAndAgeChips(): void
+    {
+        $event = new Event();
+        $event->setParam('filters', []);
+        $event->setParam('query', ['status' => 'queue', 'missing' => ['required'], 'age' => '30']);
+        $this->module(['Omeka\ApiManager' => $this->createMock(Manager::class)])->addSearchFilters($event);
+        $filters = $event->getParam('filters');
+
+        $this->assertSame(['En cola'], $filters['Estado']);
+        $this->assertSame(['Sin campo obligatorio'], $filters['Gobernanza']);
+        $this->assertSame(['Creado hace más de 30 días'], $filters['Antigüedad']);
+    }
+
+    /** TASK-070: an array where a single value is expected (`age[]=7`) makes no chip and no warning. */
+    public function testArrayValuedFiltersMakeNoChip(): void
+    {
+        $event = new Event();
+        $event->setParam('filters', []);
+        $event->setParam('query', ['age' => ['7'], 'status' => ['queue']]);
+        $this->module(['Omeka\ApiManager' => $this->createMock(Manager::class)])->addSearchFilters($event);
+
+        $this->assertSame([], $event->getParam('filters'));
+    }
+
     public function testConfigurationFieldsAreOptionalExceptCsrf(): void
     {
         $form = new ConfigForm();

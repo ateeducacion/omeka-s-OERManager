@@ -207,6 +207,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'licence' => 'Licencia', // @translate
         'proposed' => 'Propuesta', // @translate
         'status' => 'Estado', // @translate
+        'age' => 'Antigüedad', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -222,12 +223,18 @@ class Module extends AbstractModule implements InitProviderInterface
         ],
         'proposed' => ['1' => 'Sí'], // @translate
         'status' => [
+            'queue' => 'En cola', // @translate
             'draft' => 'Borrador', // @translate
             'proposed' => 'Propuesto', // @translate
             'rejected' => 'Rechazado', // @translate
             'discarded' => 'Descartado', // @translate
             'published' => 'Publicado', // @translate
             'out_of_flow' => 'Publicado fuera del flujo', // @translate
+        ],
+        'age' => [
+            '7' => 'Creado hace más de 7 días', // @translate
+            '30' => 'Creado hace más de 30 días', // @translate
+            '90' => 'Creado hace más de 90 días', // @translate
         ],
     ];
 
@@ -244,6 +251,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'description' => 'Sin descripción', // @translate
         'title' => 'Sin título', // @translate
         'resource_type' => 'Sin tipo de recurso', // @translate
+        'required' => 'Sin campo obligatorio', // @translate
     ];
 
     /**
@@ -272,6 +280,11 @@ class Module extends AbstractModule implements InitProviderInterface
         $api = $this->getServiceLocator()->get('Omeka\ApiManager');
 
         foreach (self::SEARCH_FILTER_LABELS as $key => $label) {
+            // A single-valued filter sent as an array (`age[]=7`) is ignored
+            // by the search, so it gets no chip either.
+            if (!is_scalar($query[$key] ?? '')) {
+                continue;
+            }
             $value = (string) ($query[$key] ?? '');
             if ('' === $value) {
                 continue;
