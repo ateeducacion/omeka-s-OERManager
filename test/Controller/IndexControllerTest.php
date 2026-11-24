@@ -62,6 +62,7 @@ class IndexControllerTest extends TestCase
     private ?object $owner = null;
     /** @var list<array<string,mixed>> */
     private array $searches = [];
+    private bool $applyWrites = false;
 
     protected function setUp(): void
     {
@@ -103,6 +104,13 @@ class IndexControllerTest extends TestCase
             }
             $this->updates++;
             $this->lastUpdate = $data;
+            // Opt-in: the written state is what a re-read returns (TASK-070 `leftQueue`).
+            if ($this->applyWrites && array_key_exists(WorkflowStatus::STATUS_TERM, $data)) {
+                $this->workflowStatus = (string) ($data[WorkflowStatus::STATUS_TERM][0]['@value'] ?? '');
+            }
+            if ($this->applyWrites && array_key_exists('o:is_public', $data)) {
+                $this->isPublic = (bool) $data['o:is_public'];
+            }
             return new Response($this->item);
         });
         $prompt = new PromptBuilder();
@@ -1159,5 +1167,28 @@ class IndexControllerTest extends TestCase
         $this->dependencies['idConstraintResolver']->method('hasRequiredFields')->willReturn(true);
 
         $this->assertTrue($this->controller->searchAction()->getVariable('requiredFieldsAvailable'));
+    }
+
+    /**
+     * TASK-070 review: «Cola (N)» drops only when the REA was in the queue and
+     * is no longer in it; the action name alone does not say so.
+     */
+    public function testWorkflowJsonSaysWhetherTheReaLeftTheQueue(): void
+    {
+        $this->request->ajax = true;
+        $this->applyWrites = true;
+        $cases = [
+            'private Propuesto rejected' => ['rejectProposal', WorkflowStatus::PROPOSED, false, true],
+            'public Propuesto rejected stays out of the flow' => ['rejectProposal', WorkflowStatus::PROPOSED, true, false],
+            'private Rechazado discarded was never queued' => ['discard', WorkflowStatus::REJECTED, false, false],
+            'public outside the flow discarded' => ['discard', '', true, true],
+        ];
+        foreach ($cases as $case => [$action, $status, $isPublic, $left]) {
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $data = $this->data($action);
+            $this->assertTrue($data['updated'], $case);
+            $this->assertSame($left, $data['leftQueue'] ?? null, $case);
+        }
     }
 }

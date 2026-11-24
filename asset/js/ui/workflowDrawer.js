@@ -12,7 +12,10 @@ import { collectAlignmentPairs } from './recatalog.js';
 import { nextOpen } from '../core/workflowReason.js';
 import { actionOf } from '../core/queueNav.js';
 
-/** A workflow action succeeded in the panel (TASK-070). */
+/**
+ * A workflow action succeeded in the panel (TASK-070). Detail:
+ * `{ itemId, action, status, leftQueue }`; `leftQueue` comes from the server.
+ */
 export const WORKFLOW_CHANGED = 'oer:workflow-changed';
 
 function errorBox(form) {
@@ -160,7 +163,12 @@ export function initWorkflowDrawer() {
                 // TASK-070: before reopenDrawer(), so queueFlow.js is listening
                 // when the panel re-renders.
                 document.dispatchEvent(new CustomEvent(WORKFLOW_CHANGED, {
-                    detail: { itemId, action: actionOf(form.action), status: result.status || null }
+                    detail: {
+                        itemId,
+                        action: actionOf(form.action),
+                        status: result.status || null,
+                        leftQueue: true === result.leftQueue
+                    }
                 }));
                 if (itemId) {
                     reopenDrawer(itemId);

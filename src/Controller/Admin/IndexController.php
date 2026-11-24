@@ -1566,7 +1566,8 @@ class IndexController extends AbstractActionController
             'publish',
             $ajax,
             $id,
-            fn () => $this->workflowService->publish($item, $this->contributor())
+            fn () => $this->workflowService->publish($item, $this->contributor()),
+            $item
         );
     }
 
@@ -1603,7 +1604,8 @@ class IndexController extends AbstractActionController
             $name,
             $ajax,
             $id,
-            fn () => $apply($item, $resolved['reason'], $this->contributor())
+            fn () => $apply($item, $resolved['reason'], $this->contributor()),
+            $item
         );
     }
 
@@ -1673,9 +1675,11 @@ class IndexController extends AbstractActionController
     }
 
     /** @param callable(): array $write */
-    private function workflowApply(string $name, bool $ajax, int $id, callable $write)
+    private function workflowApply(string $name, bool $ajax, int $id, callable $write, ItemRepresentation $item)
     {
         $messages = self::WORKFLOW_MESSAGES[$name];
+        // Read before the write: the representation follows its entity.
+        $wasQueued = $this->inQueue($item);
         try {
             $result = $write();
         } catch (PermissionDeniedException $e) {
@@ -1683,6 +1687,13 @@ class IndexController extends AbstractActionController
         }
         $ok = (bool) ($result['updated'] ?? false);
         if ($ajax) {
+            if ($ok) {
+                // TASK-070: «Cola (N)» drops only when the REA really left the
+                // queue; a public REA rejected stays in it, a private draft
+                // discarded was never in it.
+                $after = $this->workflowItem($id);
+                $result['leftQueue'] = $wasQueued && null !== $after && !$this->inQueue($after);
+            }
             return new JsonModel($result + ['message' => $ok ? $messages['ok'] : $messages['invalid']]);
         }
         if ($ok) {
@@ -1691,6 +1702,12 @@ class IndexController extends AbstractActionController
             $this->messenger()->addError($messages['invalid']);
         }
         return $this->redirectToItem($id);
+    }
+
+    /** The same rule as «Cola (N)» (`QueueCounter`, `IdConstraints::queueBranches()`). */
+    private function inQueue(ItemRepresentation $item): bool
+    {
+        return WorkflowStatus::inQueue($this->workflowService->statusOf($item), (bool) $item->isPublic());
     }
 
     private function workflowFailure(bool $ajax, int $id, string $error, string $message)

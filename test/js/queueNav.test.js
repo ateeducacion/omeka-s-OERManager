@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionOf, leavesQueue, nextItemId, lowerCount } from '../../asset/js/core/queueNav.js';
+import { actionOf, leavesQueue, nextItemId, nextOpenItemId, lowerCount } from '../../asset/js/core/queueNav.js';
 
 test('la acción es el último tramo de la URL del formulario', () => {
     assert.equal(actionOf('https://x.test/admin/oer-manager/publish-proposal'), 'publish-proposal');
@@ -28,4 +28,18 @@ test('«Cola (N)» baja en uno y nunca de cero', () => {
     assert.equal(lowerCount('Queue (1)'), 'Queue (0)');
     assert.equal(lowerCount('Cola (0)'), 'Cola (0)');
     assert.equal(lowerCount('Cola'), 'Cola');
+});
+
+test('«Siguiente» salta las filas ya tratadas (revisión TASK-070)', () => {
+    const rows = [
+        { id: '4', done: true },
+        { id: '9', done: true },
+        { id: '2', done: false },
+        { id: '5', done: true }
+    ];
+    assert.equal(nextOpenItemId(rows, '4'), '2', 'una fila ya tratada no es la siguiente');
+    assert.equal(nextOpenItemId(rows, 4), '2');
+    assert.equal(nextOpenItemId(rows, '2'), null, 'solo quedan filas tratadas detrás');
+    assert.equal(nextOpenItemId(rows, '77'), null);
+    assert.equal(nextOpenItemId([], '4'), null);
 });

@@ -1,6 +1,6 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { WORKFLOW_CHANGED } from './workflowDrawer.js';
-import { leavesQueue, nextItemId, lowerCount } from '../core/queueNav.js';
+import { leavesQueue, nextOpenItemId, lowerCount } from '../core/queueNav.js';
 
 /**
  * TASK-070: after «Confirmar y publicar», «Rechazar» or «Descartar» the row is
@@ -13,9 +13,12 @@ const TABLE = '#oer-master-view-table';
 // filter (config/module.config.php, page `oer-queue`).
 const QUEUE_LINK = '#menu a[href*="status=queue"]';
 
-function rowIds() {
+function rows() {
     return Array.from(document.querySelectorAll(`${TABLE} .oer-open-drawer[data-item-id]`))
-        .map((opener) => opener.dataset.itemId);
+        .map((opener) => ({
+            id: opener.dataset.itemId,
+            done: Boolean(opener.closest('tr')?.classList.contains('oer-row-done'))
+        }));
 }
 
 function markRow(itemId, status) {
@@ -43,7 +46,7 @@ function lowerQueueLabel() {
 }
 
 function nextButton(itemId) {
-    const next = nextItemId(rowIds(), itemId);
+    const next = nextOpenItemId(rows(), itemId);
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'button oer-queue-next';
@@ -63,25 +66,36 @@ function nextButton(itemId) {
     return button;
 }
 
+// How long the panel has to re-render after an action before «Siguiente» is
+// no longer offered (the re-render can fail, or find no row to reopen).
+const PENDING_MS = 10000;
+
 export function initQueueFlow() {
     let pending = null;
 
     document.addEventListener(WORKFLOW_CHANGED, (event) => {
-        const { itemId, action, status } = event.detail;
+        const { itemId, action, status, leftQueue } = event.detail;
         if (!itemId || !leavesQueue(action)) {
             return;
         }
         markRow(itemId, status);
-        lowerQueueLabel();
-        pending = String(itemId);
+        // The server says whether the REA left the queue: a public REA that
+        // is rejected stays in it, a private draft discarded was never in it.
+        if (leftQueue) {
+            lowerQueueLabel();
+        }
+        pending = { itemId: String(itemId), at: Date.now() };
     });
 
     document.addEventListener(DRAWER_RENDERED, (event) => {
         const { itemId, content } = event.detail;
-        if (null === pending || String(itemId) !== pending) {
+        // One shot: whatever renders next consumes it, so a stale action never
+        // adds «Siguiente» to a panel opened later.
+        const wanted = pending;
+        pending = null;
+        if (null === wanted || String(itemId) !== wanted.itemId || Date.now() - wanted.at > PENDING_MS) {
             return;
         }
-        pending = null;
         const workflow = content.querySelector('.oer-panel-workflow');
         const button = nextButton(itemId);
         if (workflow) {
