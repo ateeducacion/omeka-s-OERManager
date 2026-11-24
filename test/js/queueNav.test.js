@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { actionOf, leavesQueue, nextItemId, nextOpenItemId, lowerCount } from '../../asset/js/core/queueNav.js';
+import { actionOf, leavesQueue, nextItemId, nextOpenItemId, lowerCount, countDelta, adjustCount } from '../../asset/js/core/queueNav.js';
 
 test('la acción es el último tramo de la URL del formulario', () => {
     assert.equal(actionOf('https://x.test/admin/oer-manager/publish-proposal'), 'publish-proposal');
@@ -42,4 +42,15 @@ test('«Siguiente» salta las filas ya tratadas (revisión TASK-070)', () => {
     assert.equal(nextOpenItemId(rows, '2'), null, 'solo quedan filas tratadas detrás');
     assert.equal(nextOpenItemId(rows, '77'), null);
     assert.equal(nextOpenItemId([], '4'), null);
+});
+
+test('«Cola (N)» sube o baja según lo que dice el servidor (revisión de código TASK-070)', () => {
+    assert.equal(countDelta({ leftQueue: true, enteredQueue: false }), -1);
+    assert.equal(countDelta({ leftQueue: false, enteredQueue: true }), 1);
+    assert.equal(countDelta({ leftQueue: false, enteredQueue: false }), 0);
+    assert.equal(countDelta({}), 0);
+    assert.equal(adjustCount('Cola (9)', 1), 'Cola (10)');
+    assert.equal(adjustCount('Cola (9)', -1), 'Cola (8)');
+    assert.equal(adjustCount('Cola (0)', -1), 'Cola (0)');
+    assert.equal(adjustCount('Cola', 1), 'Cola');
 });

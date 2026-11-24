@@ -47,7 +47,24 @@ export function nextOpenItemId(rows, currentId) {
     return next ? next.id : null;
 }
 
-/** «Cola (12)» → «Cola (11)»; a label without a trailing count is kept. */
+/**
+ * How «Cola (N)» moves after a workflow action, from what the server says
+ * (TASK-070): -1 when the REA left the queue, +1 when «Reabrir» or
+ * «Despublicar» brought it back, 0 otherwise.
+ */
+export function countDelta({ leftQueue = false, enteredQueue = false } = {}) {
+    if (leftQueue) {
+        return -1;
+    }
+    return enteredQueue ? 1 : 0;
+}
+
+/** «Cola (12)» → «Cola (13)» with +1; never below zero; a label without a trailing count is kept. */
+export function adjustCount(label, delta) {
+    return String(label).replace(/\((\d+)\)\s*$/, (match, count) => `(${Math.max(0, Number(count) + delta)})`);
+}
+
+/** «Cola (12)» → «Cola (11)». */
 export function lowerCount(label) {
-    return String(label).replace(/\((\d+)\)\s*$/, (match, count) => `(${Math.max(0, Number(count) - 1)})`);
+    return adjustCount(label, -1);
 }

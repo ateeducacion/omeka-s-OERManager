@@ -14,7 +14,8 @@ import { actionOf } from '../core/queueNav.js';
 
 /**
  * A workflow action succeeded in the panel (TASK-070). Detail:
- * `{ itemId, action, status, leftQueue }`; `leftQueue` comes from the server.
+ * `{ itemId, action, status, leftQueue, enteredQueue }`; the last two come from
+ * the server.
  */
 export const WORKFLOW_CHANGED = 'oer:workflow-changed';
 
@@ -167,7 +168,8 @@ export function initWorkflowDrawer() {
                         itemId,
                         action: actionOf(form.action),
                         status: result.status || null,
-                        leftQueue: true === result.leftQueue
+                        leftQueue: true === result.leftQueue,
+                        enteredQueue: true === result.enteredQueue
                     }
                 }));
                 if (itemId) {

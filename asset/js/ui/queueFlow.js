@@ -1,12 +1,15 @@
 import { DRAWER_RENDERED } from './drawer.js';
 import { WORKFLOW_CHANGED } from './workflowDrawer.js';
-import { leavesQueue, nextOpenItemId, lowerCount } from '../core/queueNav.js';
+import { leavesQueue, nextOpenItemId, countDelta, adjustCount } from '../core/queueNav.js';
 
 /**
- * TASK-070: after «Confirmar y publicar», «Rechazar» or «Descartar» the row is
- * marked with its new state, «Cola (N)» drops by one, and the re-rendered
- * panel offers the next REA of the page («Siguiente»), or «Recargar la
- * lista» on the last row. Works under any filter, not only «En cola».
+ * TASK-070: after any workflow action in the panel the row shows its new
+ * state and «Cola (N)» moves as the server says (down when the REA left the
+ * queue, up when «Reabrir» or «Despublicar» brought it back). After
+ * «Confirmar y publicar», «Rechazar» or «Descartar» the row is also marked
+ * done and the re-rendered panel offers the next open REA of the page
+ * («Siguiente»), or «Recargar la lista» on the last one. Works under any
+ * filter, not only «En cola».
  */
 const TABLE = '#oer-master-view-table';
 // The «Cola (N)» entry of the admin navigation. Its href carries the queue
@@ -21,12 +24,15 @@ function rows() {
         }));
 }
 
-function markRow(itemId, status) {
+function markRow(itemId, status, done) {
     const row = document.querySelector(`${TABLE} tr[data-resource-id="${itemId}"]`);
     if (!row) {
         return;
     }
-    row.classList.add('oer-row-done');
+    // `changed`: the row's own badge is stale. `done`: handled, so greyed and
+    // skipped by «Siguiente»; «Reabrir» and «Despublicar» take it back.
+    row.classList.add('oer-row-changed');
+    row.classList.toggle('oer-row-done', done);
     let note = row.querySelector('.oer-row-done-status');
     if (!note) {
         note = document.createElement('span');
@@ -39,9 +45,12 @@ function markRow(itemId, status) {
     note.textContent = status ? Omeka.jsTranslate(status) : '';
 }
 
-function lowerQueueLabel() {
+function moveQueueLabel(delta) {
+    if (0 === delta) {
+        return;
+    }
     document.querySelectorAll(QUEUE_LINK).forEach((link) => {
-        link.textContent = lowerCount(link.textContent);
+        link.textContent = adjustCount(link.textContent, delta);
     });
 }
 
@@ -74,17 +83,17 @@ export function initQueueFlow() {
     let pending = null;
 
     document.addEventListener(WORKFLOW_CHANGED, (event) => {
-        const { itemId, action, status, leftQueue } = event.detail;
-        if (!itemId || !leavesQueue(action)) {
+        const { itemId, action, status } = event.detail;
+        if (!itemId) {
             return;
         }
-        markRow(itemId, status);
-        // The server says whether the REA left the queue: a public REA that
-        // is rejected stays in it, a private draft discarded was never in it.
-        if (leftQueue) {
-            lowerQueueLabel();
-        }
-        pending = { itemId: String(itemId), at: Date.now() };
+        const done = leavesQueue(action);
+        markRow(itemId, status, done);
+        // The server says whether the REA left or entered the queue: a public
+        // REA that is rejected stays in it, a private draft discarded was
+        // never in it, a discarded REA reopened is back in it.
+        moveQueueLabel(countDelta(event.detail));
+        pending = done ? { itemId: String(itemId), at: Date.now() } : null;
     });
 
     document.addEventListener(DRAWER_RENDERED, (event) => {

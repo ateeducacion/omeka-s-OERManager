@@ -734,6 +734,7 @@ return [
         'Publicado', // @translate
         'Rechazado', // @translate
         'Descartado', // @translate
+        'Propuesto', // @translate
     ],
     'translator' => [
         'translation_file_patterns' => [

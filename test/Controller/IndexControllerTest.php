@@ -1200,4 +1200,27 @@ class IndexControllerTest extends TestCase
         $this->assertSame(['missing' => ['licence']], $this->controller->indexAction()->getVariable('query'));
         $this->assertSame(['missing' => ['licence']], $this->controller->searchAction()->getVariable('query'));
     }
+
+    /**
+     * TASK-070 code review: «Reabrir» and «Despublicar» bring a REA back into
+     * the queue, so «Cola (N)» must be able to go up as well as down.
+     */
+    public function testWorkflowJsonSaysWhetherTheReaEnteredTheQueue(): void
+    {
+        $this->request->ajax = true;
+        $this->applyWrites = true;
+        $cases = [
+            'private Descartado reopened' => ['reopen', WorkflowStatus::DISCARDED, false, true, false],
+            'public Publicado unpublished' => ['unpublish', WorkflowStatus::PUBLISHED, true, true, false],
+            'private Propuesto rejected' => ['rejectProposal', WorkflowStatus::PROPOSED, false, false, true],
+        ];
+        foreach ($cases as $case => [$action, $status, $isPublic, $entered, $left]) {
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $data = $this->data($action);
+            $this->assertTrue($data['updated'], $case);
+            $this->assertSame($entered, $data['enteredQueue'] ?? null, $case);
+            $this->assertSame($left, $data['leftQueue'] ?? null, $case);
+        }
+    }
 }

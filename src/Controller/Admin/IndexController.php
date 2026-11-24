@@ -1688,11 +1688,14 @@ class IndexController extends AbstractActionController
         $ok = (bool) ($result['updated'] ?? false);
         if ($ajax) {
             if ($ok) {
-                // TASK-070: «Cola (N)» drops only when the REA really left the
-                // queue; a public REA rejected stays in it, a private draft
-                // discarded was never in it.
+                // TASK-070: «Cola (N)» follows what really happened. It drops
+                // only when the REA left the queue (a public REA rejected stays
+                // in it, a private draft discarded was never in it) and rises
+                // when «Reabrir» or «Despublicar» brings it back.
                 $after = $this->workflowItem($id);
-                $result['leftQueue'] = $wasQueued && null !== $after && !$this->inQueue($after);
+                $isQueued = null !== $after && $this->inQueue($after);
+                $result['leftQueue'] = $wasQueued && null !== $after && !$isQueued;
+                $result['enteredQueue'] = !$wasQueued && $isQueued;
             }
             return new JsonModel($result + ['message' => $ok ? $messages['ok'] : $messages['invalid']]);
         }
