@@ -106,6 +106,13 @@ return [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
             },
+            // TASK-070: «Sin campo obligatorio» in the master view.
+            Service\ReaTemplateFields::class => function ($container) {
+                return new Service\ReaTemplateFields(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
+            },
             // ADR-0020 / slice 3b (TASK-028): la regla license_not_in_vocab necesita
             // saber si la licencia pertenece al vocabulario configurado. Reusa el
             // MISMO VocabEntries que ya lee el setting y degrada a null si no
