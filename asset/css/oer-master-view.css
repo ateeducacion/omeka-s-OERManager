@@ -2073,3 +2073,17 @@ body.oer-master-view.sidebar-open footer {
 #oer-detail-sidebar.oer-editing {
     width: clamp(36rem, 76vw, 82rem);
 }
+
+/* TASK-070: a row the curator has just published, rejected or discarded. */
+#oer-master-view-table tr.oer-row-done > td {
+    opacity: 0.55;
+}
+
+#oer-master-view-table .oer-row-done-status {
+    margin-inline-start: 0.5em;
+    font-style: italic;
+}
+
+.oer-queue-next {
+    margin-block-start: 1rem;
+}

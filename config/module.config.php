@@ -726,6 +726,12 @@ return [
         ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
         Controller\Admin\IndexController::NOT_FOUND_MESSAGE,
         Controller\Admin\IndexController::GOVERNANCE_UNDO_MESSAGE,
+        // TASK-070: «Siguiente» after a workflow action, and the row's new state.
+        'Siguiente', // @translate
+        'Recargar la lista', // @translate
+        'Publicado', // @translate
+        'Rechazado', // @translate
+        'Descartado', // @translate
     ],
     'translator' => [
         'translation_file_patterns' => [

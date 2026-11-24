@@ -9,6 +9,7 @@ import { initGovernance } from './ui/governance.js';
 import { initAiPropose } from './ui/aiPropose.js';
 import { initSearchForm } from './ui/searchForm.js';
 import { initWorkflowDrawer } from './ui/workflowDrawer.js';
+import { initQueueFlow } from './ui/queueFlow.js';
 import { initGovernanceBatch } from './ui/governanceBatch.js';
 
 const config = readConfig();
@@ -26,5 +27,6 @@ if (config) {
     initAiPropose(config);
     initSearchForm();
     initWorkflowDrawer();
+    initQueueFlow();
     initGovernanceBatch(config);
 }
