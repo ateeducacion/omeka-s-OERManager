@@ -26,6 +26,7 @@ use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\GovernanceService;
+use OERManager\Service\IdConstraintResolver;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
@@ -95,6 +96,7 @@ class IndexController extends AbstractActionController
     private CurriculumTerms $curriculumTerms;
     private ReaSite $reaSite;
     private ReasonVocabularies $reasonVocabularies;
+    private IdConstraintResolver $idConstraintResolver;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -119,7 +121,8 @@ class IndexController extends AbstractActionController
         BatchJobLookup $jobLookup,
         CurriculumTerms $curriculumTerms,
         ReaSite $reaSite,
-        ReasonVocabularies $reasonVocabularies
+        ReasonVocabularies $reasonVocabularies,
+        IdConstraintResolver $idConstraintResolver
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -144,6 +147,7 @@ class IndexController extends AbstractActionController
         $this->curriculumTerms = $curriculumTerms;
         $this->reaSite = $reaSite;
         $this->reasonVocabularies = $reasonVocabularies;
+        $this->idConstraintResolver = $idConstraintResolver;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -162,8 +166,15 @@ class IndexController extends AbstractActionController
         // sort_order en la request si no vienen, así que ha de ir ANTES de leer
         // la query. Es el patrón del core (cfr. Admin\ItemController::browseAction).
         $this->browse()->setDefaults('oer_items');
-        $query = $this->params()->fromQuery();
+        $query = MasterViewQuery::normalizeQuery($this->params()->fromQuery());
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
+
+        // TASK-070: «En cola» and «Sin campo obligatorio» are unions the core
+        // cannot search in one query; the resolver turns them into ids.
+        $constrainedIds = $this->idConstraintResolver->resolve($query);
+        if (null !== $constrainedIds) {
+            $searchParams['id'] = $constrainedIds;
+        }
 
         // Una sola rama computada (TASK-028 rebanada 2). Antes había un if/else
         // escrito a medida del filtro «parcial»; con un segundo filtro computado
@@ -171,7 +182,13 @@ class IndexController extends AbstractActionController
         // se habría duplicado entero, que es cómo se propagan los defectos D4.
         $computedKeys = ComputedPredicates::activeKeys($query);
 
-        if ([] !== $computedKeys) {
+        if ([] === $constrainedIds) {
+            // The core ignores an empty `id` filter and would list every REA.
+            $items = [];
+            $this->paginator(0);
+            $totalResults = 0;
+            $isTruncated = false;
+        } elseif ([] !== $computedKeys) {
             // Las representaciones se piden de una vez, acotadas al tope, en vez
             // de resolver ids y releer cada uno: los predicados necesitan el item
             // entero, así que un read por id serían hasta HARD_CAP consultas.
@@ -302,7 +319,7 @@ class IndexController extends AbstractActionController
      */
     public function searchAction()
     {
-        $query = $this->params()->fromQuery();
+        $query = MasterViewQuery::normalizeQuery($this->params()->fromQuery());
 
         // Los filtros curriculares llegan como id: se resuelve su título para que
         // el chip precargado diga qué se está filtrando y no un número.
@@ -325,6 +342,8 @@ class IndexController extends AbstractActionController
         $view->setVariable('resourceFilterTitles', $titles);
         $view->setVariable('itemSets', $this->masterViewQuery->learningResourceItemSets());
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
+        // TASK-070: «Sin campo obligatorio» is offered only with a readable REA template.
+        $view->setVariable('requiredFieldsAvailable', $this->idConstraintResolver->hasRequiredFields());
         return $view;
     }
 
@@ -1547,7 +1566,8 @@ class IndexController extends AbstractActionController
             'publish',
             $ajax,
             $id,
-            fn () => $this->workflowService->publish($item, $this->contributor())
+            fn () => $this->workflowService->publish($item, $this->contributor()),
+            $item
         );
     }
 
@@ -1584,7 +1604,8 @@ class IndexController extends AbstractActionController
             $name,
             $ajax,
             $id,
-            fn () => $apply($item, $resolved['reason'], $this->contributor())
+            fn () => $apply($item, $resolved['reason'], $this->contributor()),
+            $item
         );
     }
 
@@ -1654,9 +1675,11 @@ class IndexController extends AbstractActionController
     }
 
     /** @param callable(): array $write */
-    private function workflowApply(string $name, bool $ajax, int $id, callable $write)
+    private function workflowApply(string $name, bool $ajax, int $id, callable $write, ItemRepresentation $item)
     {
         $messages = self::WORKFLOW_MESSAGES[$name];
+        // Read before the write: the representation follows its entity.
+        $wasQueued = $this->inQueue($item);
         try {
             $result = $write();
         } catch (PermissionDeniedException $e) {
@@ -1664,6 +1687,16 @@ class IndexController extends AbstractActionController
         }
         $ok = (bool) ($result['updated'] ?? false);
         if ($ajax) {
+            if ($ok) {
+                // TASK-070: «Cola (N)» follows what really happened. It drops
+                // only when the REA left the queue (a public REA rejected stays
+                // in it, a private draft discarded was never in it) and rises
+                // when «Reabrir» or «Despublicar» brings it back.
+                $after = $this->workflowItem($id);
+                $isQueued = null !== $after && $this->inQueue($after);
+                $result['leftQueue'] = $wasQueued && null !== $after && !$isQueued;
+                $result['enteredQueue'] = !$wasQueued && $isQueued;
+            }
             return new JsonModel($result + ['message' => $ok ? $messages['ok'] : $messages['invalid']]);
         }
         if ($ok) {
@@ -1672,6 +1705,12 @@ class IndexController extends AbstractActionController
             $this->messenger()->addError($messages['invalid']);
         }
         return $this->redirectToItem($id);
+    }
+
+    /** The same rule as «Cola (N)» (`QueueCounter`, `IdConstraints::queueBranches()`). */
+    private function inQueue(ItemRepresentation $item): bool
+    {
+        return WorkflowStatus::inQueue($this->workflowService->statusOf($item), (bool) $item->isPublic());
     }
 
     private function workflowFailure(bool $ajax, int $id, string $error, string $message)

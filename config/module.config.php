@@ -55,7 +55,9 @@ return [
                     // TASK-067: validates the REA site on save.
                     $container->get(Service\ReaSite::class),
                     // TASK-039: reasons to reject and to discard.
-                    $container->get(Service\Workflow\ReasonVocabularies::class)
+                    $container->get(Service\Workflow\ReasonVocabularies::class),
+                    // TASK-070: «En cola» and «Sin campo obligatorio» as id sets.
+                    $container->get(Service\IdConstraintResolver::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -105,6 +107,20 @@ return [
         'factories' => [
             Service\MasterViewQuery::class => function ($container) {
                 return new Service\MasterViewQuery($container->get('Omeka\ApiManager'));
+            },
+            // TASK-070: «Sin campo obligatorio» in the master view.
+            Service\ReaTemplateFields::class => function ($container) {
+                return new Service\ReaTemplateFields(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get('Omeka\Settings')
+                );
+            },
+            Service\IdConstraintResolver::class => function ($container) {
+                return new Service\IdConstraintResolver(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\MasterViewQuery::class),
+                    $container->get(Service\ReaTemplateFields::class)
+                );
             },
             // ADR-0020 / slice 3b (TASK-028): la regla license_not_in_vocab necesita
             // saber si la licencia pertenece al vocabulario configurado. Reusa el
@@ -296,7 +312,9 @@ return [
                 return new Service\Governance\BatchSelection(
                     $container->get('Omeka\ApiManager'),
                     $container->get(Service\MasterViewQuery::class),
-                    $container->get(Service\IntegrityChecker::class)
+                    $container->get(Service\IntegrityChecker::class),
+                    // TASK-070: a batch from «En cola» acts on the queue only.
+                    $container->get(Service\IdConstraintResolver::class)
                 );
             },
             // Dueño, clase y estado del Job de lote, leídos de la entidad: la
@@ -563,13 +581,13 @@ return [
                 'privilege' => 'index',
                 'pages' => [
                     // «Cola (N)» (ADR-0023 §3): Module::labelQueue() writes N
-                    // before rendering. Points at the master view filtered by
-                    // status until the real queue (TASK-070).
+                    // before rendering. TASK-070: the master view's «En cola»
+                    // filter, oldest catalogue entry first.
                     [
                         'id' => 'oer-queue',
                         'label' => 'Cola', // @translate
                         'route' => 'admin/oer-manager',
-                        'query' => ['status' => 'proposed'],
+                        'query' => ['status' => 'queue', 'sort_by' => 'created', 'sort_order' => 'asc'],
                         'resource' => Controller\Admin\IndexController::class,
                         'privilege' => 'index',
                     ],
@@ -710,6 +728,13 @@ return [
         ...array_values(Service\Workflow\RecatalogRule::MESSAGES),
         Controller\Admin\IndexController::NOT_FOUND_MESSAGE,
         Controller\Admin\IndexController::GOVERNANCE_UNDO_MESSAGE,
+        // TASK-070: «Siguiente» after a workflow action, and the row's new state.
+        'Siguiente', // @translate
+        'Recargar la lista', // @translate
+        'Publicado', // @translate
+        'Rechazado', // @translate
+        'Descartado', // @translate
+        'Propuesto', // @translate
     ],
     'translator' => [
         'translation_file_patterns' => [
@@ -788,6 +813,15 @@ return [
     'browse_defaults' => [
         'admin' => [
             'oer_items' => ['sort_by' => 'modified', 'sort_order' => 'desc'],
+        ],
+    ],
+    // TASK-070: «Cola (N)» sorts by catalogue entry date, which no column
+    // offers; without this the sort selector would show another option.
+    'sort_defaults' => [
+        'admin' => [
+            'oer_items' => [
+                'created' => 'Fecha de alta', // @translate
+            ],
         ],
     ],
 ];

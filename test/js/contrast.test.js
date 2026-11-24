@@ -105,3 +105,17 @@ for (const token of heatTokens) {
     assert.ok(h === null || (h > 70 && h < 330), `${token} tiene matiz ${h}`);
   });
 }
+
+// Code review TASK-070: a row already handled stays usable (the title still
+// opens the panel), so it is told apart by tokens that keep AA, never by
+// opacity, which took #333 to about 3.3:1.
+test('una fila ya tratada se distingue sin perder contraste AA', () => {
+  const rule = css.match(/tr\.oer-row-done > td \{([^}]*)\}/);
+  assert.ok(rule, 'falta la regla de la fila tratada');
+  assert.doesNotMatch(rule[1], /opacity/);
+  const color = rule[1].match(/(?:^|;|\s)color:\s*var\((--[\w-]+)\)/);
+  const background = rule[1].match(/background-color:\s*var\((--[\w-]+)\)/);
+  assert.ok(color && background, 'color y fondo deben ser tokens');
+  const ratio = contrastRatio(tokens[color[1]], tokens[background[1]]);
+  assert.ok(ratio >= AA, `${color[1]} sobre ${background[1]}: ${ratio.toFixed(2)}`);
+});

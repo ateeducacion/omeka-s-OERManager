@@ -10,6 +10,14 @@
 import { reopenDrawer } from './drawer.js';
 import { collectAlignmentPairs } from './recatalog.js';
 import { nextOpen } from '../core/workflowReason.js';
+import { actionOf } from '../core/queueNav.js';
+
+/**
+ * A workflow action succeeded in the panel (TASK-070). Detail:
+ * `{ itemId, action, status, leftQueue, enteredQueue }`; the last two come from
+ * the server.
+ */
+export const WORKFLOW_CHANGED = 'oer:workflow-changed';
 
 function errorBox(form) {
     return form.closest('.oer-panel-workflow')?.querySelector('.oer-workflow-error') || null;
@@ -153,6 +161,17 @@ export function initWorkflowDrawer() {
                     showError(form, messageFor(result));
                     return;
                 }
+                // TASK-070: before reopenDrawer(), so queueFlow.js is listening
+                // when the panel re-renders.
+                document.dispatchEvent(new CustomEvent(WORKFLOW_CHANGED, {
+                    detail: {
+                        itemId,
+                        action: actionOf(form.action),
+                        status: result.status || null,
+                        leftQueue: true === result.leftQueue,
+                        enteredQueue: true === result.enteredQueue
+                    }
+                }));
                 if (itemId) {
                     reopenDrawer(itemId);
                 }

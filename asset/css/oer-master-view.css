@@ -2073,3 +2073,30 @@ body.oer-master-view.sidebar-open footer {
 #oer-detail-sidebar.oer-editing {
     width: clamp(36rem, 76vw, 82rem);
 }
+
+/* TASK-070: a row the curator has just published, rejected or discarded. */
+/* Tint and the muted token, not opacity: the row stays usable, so its text
+   keeps WCAG AA contrast (test/js/contrast.test.js). */
+#oer-master-view-table tr.oer-row-done > td {
+    background-color: var(--oer-surface);
+    color: var(--oer-muted);
+}
+
+#oer-master-view-table tr.oer-row-done .oer-open-drawer {
+    color: var(--oer-muted);
+}
+
+#oer-master-view-table .oer-row-done-status {
+    margin-inline-start: 0.5em;
+    font-style: italic;
+    white-space: nowrap;
+}
+
+/* The row's badge still shows the state before the action. */
+#oer-master-view-table tr.oer-row-changed .oer-workflow-badge {
+    display: none;
+}
+
+.oer-queue-next {
+    margin-block-start: 1rem;
+}

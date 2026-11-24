@@ -60,6 +60,9 @@ class IndexControllerTest extends TestCase
     /** @var array<string,mixed> */
     private array $lastUpdate = [];
     private ?object $owner = null;
+    /** @var list<array<string,mixed>> */
+    private array $searches = [];
+    private bool $applyWrites = false;
 
     protected function setUp(): void
     {
@@ -91,13 +94,23 @@ class IndexControllerTest extends TestCase
             }
             return new Response($this->item);
         });
-        $this->api->method('search')->willReturn(new Response([$this->item], 1));
+        $this->api->method('search')->willReturnCallback(function ($resource, $query = []) {
+            $this->searches[] = $query;
+            return new Response([$this->item], 1);
+        });
         $this->api->method('update')->willReturnCallback(function ($resource = null, $id = null, $data = []) {
             if ($this->denyWrite) {
                 throw new PermissionDeniedException('private');
             }
             $this->updates++;
             $this->lastUpdate = $data;
+            // Opt-in: the written state is what a re-read returns (TASK-070 `leftQueue`).
+            if ($this->applyWrites && array_key_exists(WorkflowStatus::STATUS_TERM, $data)) {
+                $this->workflowStatus = (string) ($data[WorkflowStatus::STATUS_TERM][0]['@value'] ?? '');
+            }
+            if ($this->applyWrites && array_key_exists('o:is_public', $data)) {
+                $this->isPublic = (bool) $data['o:is_public'];
+            }
             return new Response($this->item);
         });
         $prompt = new PromptBuilder();
@@ -1124,5 +1137,90 @@ class IndexControllerTest extends TestCase
         $this->owner = null;
         $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
         $this->assertNull($this->data('drawerHistory')['history']);
+    }
+
+    /** TASK-070: ids from the resolver bound the page search. */
+    public function testConstrainedIdsBoundThePageSearch(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('resolve')->willReturn([7, 9]);
+
+        $view = $this->controller->indexAction();
+
+        $this->assertSame([$this->item], $view->getVariable('items'));
+        $this->assertSame([7, 9], end($this->searches)['id']);
+    }
+
+    /** TASK-070: the core ignores `id => []` and would list every REA. */
+    public function testAnEmptyIdSetShowsNoResultsWithoutSearching(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('resolve')->willReturn([]);
+
+        $view = $this->controller->indexAction();
+
+        $this->assertSame([], $view->getVariable('items'));
+        $this->assertSame(0, $view->getVariable('totalResults'));
+        $this->assertSame([], $this->searches);
+    }
+
+    public function testTheSearchFormKnowsWhetherRequiredFieldsExist(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('hasRequiredFields')->willReturn(true);
+
+        $this->assertTrue($this->controller->searchAction()->getVariable('requiredFieldsAvailable'));
+    }
+
+    /**
+     * TASK-070 review: «Cola (N)» drops only when the REA was in the queue and
+     * is no longer in it; the action name alone does not say so.
+     */
+    public function testWorkflowJsonSaysWhetherTheReaLeftTheQueue(): void
+    {
+        $this->request->ajax = true;
+        $this->applyWrites = true;
+        $cases = [
+            'private Propuesto rejected' => ['rejectProposal', WorkflowStatus::PROPOSED, false, true],
+            'public Propuesto rejected stays out of the flow' => ['rejectProposal', WorkflowStatus::PROPOSED, true, false],
+            'private Rechazado discarded was never queued' => ['discard', WorkflowStatus::REJECTED, false, false],
+            'public outside the flow discarded' => ['discard', '', true, true],
+        ];
+        foreach ($cases as $case => [$action, $status, $isPublic, $left]) {
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $data = $this->data($action);
+            $this->assertTrue($data['updated'], $case);
+            $this->assertSame($left, $data['leftQueue'] ?? null, $case);
+        }
+    }
+
+    /** TASK-070 code review: `title[]=x` used to reach `$escape()` in the views and fail with HTTP 500. */
+    public function testArrayValuedFiltersNeverReachTheSearchOrTheViews(): void
+    {
+        $this->params->query = ['title' => ['x'], 'status' => ['queue'], 'missing' => ['licence']];
+
+        $this->assertSame(['missing' => ['licence']], $this->controller->indexAction()->getVariable('query'));
+        $this->assertSame(['missing' => ['licence']], $this->controller->searchAction()->getVariable('query'));
+    }
+
+    /**
+     * TASK-070 code review: «Reabrir» and «Despublicar» bring a REA back into
+     * the queue, so «Cola (N)» must be able to go up as well as down.
+     */
+    public function testWorkflowJsonSaysWhetherTheReaEnteredTheQueue(): void
+    {
+        $this->request->ajax = true;
+        $this->applyWrites = true;
+        $cases = [
+            'private Descartado reopened' => ['reopen', WorkflowStatus::DISCARDED, false, true, false],
+            'public Publicado unpublished' => ['unpublish', WorkflowStatus::PUBLISHED, true, true, false],
+            'private Propuesto rejected' => ['rejectProposal', WorkflowStatus::PROPOSED, false, false, true],
+        ];
+        foreach ($cases as $case => [$action, $status, $isPublic, $entered, $left]) {
+            $this->workflowStatus = $status;
+            $this->isPublic = $isPublic;
+            $data = $this->data($action);
+            $this->assertTrue($data['updated'], $case);
+            $this->assertSame($entered, $data['enteredQueue'] ?? null, $case);
+            $this->assertSame($left, $data['leftQueue'] ?? null, $case);
+        }
     }
 }

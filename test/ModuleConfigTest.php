@@ -268,4 +268,25 @@ final class ModuleConfigTest extends TestCase
         $this->assertArrayHasKey('name', $ini['info']);
         $this->assertArrayHasKey('version', $ini['info']);
     }
+
+    /** TASK-070: «Cola (N)» opens the master view filtered by the queue, oldest first. */
+    public function testQueueEntryOpensTheQueueOldestFirst(): void
+    {
+        $pages = $this->config['navigation']['AdminModule'][0]['pages'];
+        $queue = array_values(array_filter(
+            $pages,
+            static fn (array $page): bool => 'oer-queue' === ($page['id'] ?? null)
+        ));
+
+        $this->assertSame(
+            ['status' => 'queue', 'sort_by' => 'created', 'sort_order' => 'asc'],
+            $queue[0]['query']
+        );
+    }
+
+    /** TASK-070: the queue sorts by catalogue entry date, so the sort selector must offer it. */
+    public function testMasterViewCanSortByEntryDate(): void
+    {
+        $this->assertArrayHasKey('created', $this->config['sort_defaults']['admin']['oer_items'] ?? []);
+    }
 }

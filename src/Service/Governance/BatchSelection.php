@@ -6,6 +6,7 @@ namespace OERManager\Service\Governance;
 
 use OERManager\Service\ComputedFilter;
 use OERManager\Service\ComputedPredicates;
+use OERManager\Service\IdConstraintResolver;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\MasterViewQuery;
 use Omeka\Api\Manager as ApiManager;
@@ -24,7 +25,8 @@ class BatchSelection
     public function __construct(
         private ApiManager $api,
         private MasterViewQuery $masterViewQuery,
-        private IntegrityChecker $integrityChecker
+        private IntegrityChecker $integrityChecker,
+        private IdConstraintResolver $idConstraintResolver
     ) {
     }
 
@@ -56,8 +58,20 @@ class BatchSelection
      */
     public function resolveMatching(array $query): array
     {
+        $query = MasterViewQuery::normalizeQuery($query);
         unset($query['page'], $query['per_page'], $query['sort_by'], $query['sort_order']);
         $params = $this->baseParams($query);
+
+        // TASK-070: «En cola» and «Sin campo obligatorio» are id sets, as in
+        // the master view. The core ignores `id => []` and would select every
+        // REA, so an empty set is an empty selection without a search.
+        $constrainedIds = $this->idConstraintResolver->resolve($query);
+        if ([] === $constrainedIds) {
+            throw new BatchSelectionException('empty');
+        }
+        if (null !== $constrainedIds) {
+            $params['id'] = $constrainedIds;
+        }
 
         $keys = ComputedPredicates::activeKeys($query);
         if ([] === $keys) {

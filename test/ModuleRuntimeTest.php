@@ -119,6 +119,71 @@ class ModuleRuntimeTest extends TestCase
         $this->assertSame(['Con incidencias'], $filters['Integridad']);
     }
 
+    /** @param bool $requiredFields whether the REA template has required properties */
+    private function chips(array $query, bool $requiredFields = true): array
+    {
+        $resolver = $this->createMock(\OERManager\Service\IdConstraintResolver::class);
+        $resolver->method('hasRequiredFields')->willReturn($requiredFields);
+        $translator = new class {
+            public function translate($text)
+            {
+                return $text;
+            }
+        };
+        $event = new Event();
+        $event->setParam('filters', []);
+        $event->setParam('query', $query);
+        $this->module([
+            'Omeka\ApiManager' => $this->createMock(Manager::class),
+            'MvcTranslator' => $translator,
+            \OERManager\Service\IdConstraintResolver::class => $resolver,
+        ])->addSearchFilters($event);
+        return $event->getParam('filters');
+    }
+
+    /** TASK-070: the queue, required-field and age filters have readable chips. */
+    public function testQueueRequiredAndAgeChips(): void
+    {
+        $filters = $this->chips(['status' => 'queue', 'missing' => ['required'], 'age' => '30']);
+
+        $this->assertSame(['En cola'], $filters['Estado']);
+        $this->assertSame(['Sin campo obligatorio'], $filters['Gobernanza']);
+        $this->assertSame(['Creado hace más de 30 días'], $filters['Antigüedad']);
+    }
+
+    /** TASK-070 review: without a readable REA template the filter does nothing, so it gets no chip. */
+    public function testRequiredChipNeedsATemplate(): void
+    {
+        $filters = $this->chips(['missing' => ['licence', 'required']], false);
+
+        $this->assertSame(['Sin licencia'], $filters['Gobernanza']);
+    }
+
+    /** TASK-070 review: the age chip comes from MasterViewQuery::AGE_DAYS; other values filter nothing. */
+    public function testAgeChipFollowsAgeDays(): void
+    {
+        foreach (\OERManager\Service\MasterViewQuery::AGE_DAYS as $days) {
+            $this->assertSame(
+                [sprintf('Creado hace más de %d días', $days)],
+                $this->chips(['age' => (string) $days])['Antigüedad']
+            );
+        }
+        foreach (['45', 'abc', '7x'] as $invalid) {
+            $this->assertArrayNotHasKey('Antigüedad', $this->chips(['age' => $invalid]), $invalid);
+        }
+    }
+
+    /** TASK-070: an array where a single value is expected (`age[]=7`) makes no chip and no warning. */
+    public function testArrayValuedFiltersMakeNoChip(): void
+    {
+        $event = new Event();
+        $event->setParam('filters', []);
+        $event->setParam('query', ['age' => ['7'], 'status' => ['queue']]);
+        $this->module(['Omeka\ApiManager' => $this->createMock(Manager::class)])->addSearchFilters($event);
+
+        $this->assertSame([], $event->getParam('filters'));
+    }
+
     public function testConfigurationFieldsAreOptionalExceptCsrf(): void
     {
         $form = new ConfigForm();
