@@ -17,6 +17,7 @@ final class IdConstraintResolverTest extends TestCase
 {
     /** @var list<array<string,mixed>> */
     private array $searches = [];
+    private int $templateReads = 0;
 
     /** @param list<array<int,int>> $answers content of each id-only search, in order */
     private function resolver(array $answers, array $required = [], ?int $classId = 9): IdConstraintResolver
@@ -30,7 +31,10 @@ final class IdConstraintResolverTest extends TestCase
         $masterViewQuery = $this->createMock(MasterViewQuery::class);
         $masterViewQuery->method('buildSearchParams')->willReturn(['resource_class_id' => $classId]);
         $fields = $this->createMock(ReaTemplateFields::class);
-        $fields->method('requiredTerms')->willReturn($required);
+        $fields->method('requiredTerms')->willReturnCallback(function () use ($required) {
+            ++$this->templateReads;
+            return $required;
+        });
         return new IdConstraintResolver($api, $masterViewQuery, $fields);
     }
 
@@ -78,5 +82,18 @@ final class IdConstraintResolverTest extends TestCase
     {
         $this->assertFalse($this->resolver([])->hasRequiredFields());
         $this->assertTrue($this->resolver([], ['dcterms:title'])->hasRequiredFields());
+    }
+
+    /** TASK-070 review: the REA template is read only when the request asks for required fields. */
+    public function testTheTemplateIsReadOnlyForRequiredFields(): void
+    {
+        $resolver = $this->resolver([[1 => 1], []], ['dcterms:title']);
+
+        $resolver->resolve(['status' => 'proposed']);
+        $resolver->resolve(['status' => 'queue', 'missing' => ['licence']]);
+        $this->assertSame(0, $this->templateReads);
+
+        $resolver->resolve(['missing' => ['required']]);
+        $this->assertSame(1, $this->templateReads);
     }
 }

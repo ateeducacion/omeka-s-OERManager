@@ -29,7 +29,12 @@ class IdConstraintResolver
      */
     public function resolve(array $query): ?array
     {
-        $groups = IdConstraints::groups($query, $this->templateFields->requiredTerms());
+        // The template is read only when asked for: every master view load
+        // passes through here, most of them without `missing[]=required`.
+        $requiredTerms = in_array(IdConstraints::MISSING_REQUIRED, (array) ($query['missing'] ?? []), true)
+            ? $this->templateFields->requiredTerms()
+            : [];
+        $groups = IdConstraints::groups($query, $requiredTerms);
         if ([] === $groups) {
             return null;
         }
