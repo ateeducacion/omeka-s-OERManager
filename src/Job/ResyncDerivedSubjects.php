@@ -10,10 +10,14 @@ use OERManager\Service\MasterViewQuery;
 use Omeka\Job\AbstractJob;
 
 /**
- * TASK-076: recomputes the derived stage subject of every REA and updates only
- * those that differ, so a second run changes nothing and `o:modified` of the
- * rest does not move. The update is an empty partial update: the
- * `api.hydrate.post` listener does the writing. Run after deploying TASK-076
+ * TASK-076: recomputes the derived stage subject of every REA and writes only
+ * those that differ, so a second run changes nothing. It writes the derived
+ * values on the managed entity and flushes, not through the API (final
+ * review): an API update would also validate the REA against its template,
+ * so a REA lacking a required field could never be repaired, and a refused
+ * update would still flush the derived values it had removed. The write is
+ * derived-only (no curation dimension, ADR-0002/0015), by a global
+ * administrator; `o:modified` does not move. Run after deploying TASK-076
  * and after each curriculum release (a MateriaCurso may change its
  * cur:materia). Launched by a global administrator from the configuration page.
  *
@@ -33,16 +37,15 @@ class ResyncDerivedSubjects extends AbstractJob
             $logger->warn('OERManager resync derived subjects: no lrmi:LearningResource class, nothing to do.');
             return;
         }
+        $writer = $services->get(DerivedSubjectWriter::class);
         $result = self::run(
             static fn (): array => array_map('intval', array_values($api->search('items', [
                 'resource_class_id' => $classId,
                 'return_scalar' => 'id',
             ])->getContent())),
             static fn (int $id): ?object => $entityManager->find(\Omeka\Entity\Item::class, $id),
-            $services->get(DerivedSubjectWriter::class),
-            static function (int $id) use ($api): void {
-                $api->update('items', $id, [], [], ['isPartial' => true]);
-            },
+            $writer,
+            static fn (int $id): bool => self::write($entityManager, $writer, $id),
             fn (): bool => $this->shouldStop(),
             static function (int $id, \Throwable $e) use ($logger): void {
                 $logger->err(sprintf('OERManager resync derived subjects: item %d: %s', $id, $e->getMessage()));
@@ -57,9 +60,25 @@ class ResyncDerivedSubjects extends AbstractJob
     }
 
     /**
+     * Writes the derived values of one REA on its managed entity; flushes only
+     * when the writer changed something. True when it wrote.
+     *
+     * @param object $entityManager the Doctrine EntityManager (find, flush)
+     */
+    public static function write(object $entityManager, DerivedSubjectWriter $writer, int $id): bool
+    {
+        $item = $entityManager->find(\Omeka\Entity\Item::class, $id);
+        if (null === $item || !$writer->apply($item)) {
+            return false;
+        }
+        $entityManager->flush();
+        return true;
+    }
+
+    /**
      * @param callable():list<int> $ids
      * @param callable(int):?object $entity
-     * @param callable(int):void $update
+     * @param callable(int):bool $update true when it wrote
      * @param callable():bool $shouldStop
      * @param (callable(int, \Throwable):void)|null $onError
      * @return array{examined:int, changed:int, failed:int}
@@ -86,8 +105,9 @@ class ResyncDerivedSubjects extends AbstractJob
                 continue;
             }
             try {
-                $update($id);
-                $result['changed']++;
+                if ($update($id)) {
+                    $result['changed']++;
+                }
             } catch (\Throwable $e) {
                 $result['failed']++;
                 if (null !== $onError) {

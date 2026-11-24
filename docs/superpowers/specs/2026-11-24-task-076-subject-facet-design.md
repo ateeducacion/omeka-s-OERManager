@@ -123,11 +123,14 @@ always the derived one.
    the vocabulary is missing it does nothing.
 3. **`Module::deriveSubject()`**, a listener on `api.hydrate.post` for `ItemAdapter` that calls the
    writer.
-4. **`Job\ResyncDerivedSubjects`.** Pages through REA ids (`return_scalar => 'id'`, batches of
-   100). For each REA whose stored ids differ from the derived ones it calls
-   `api->update('items', $id, [], [], ['isPartial' => true])`, which reaches the hook. It does not
-   clear the entity manager, for the reason `GovernanceBatchJob` gives (clearing detaches the job's
-   owner; about 12 KB per item, some 35 MB for 3 000 REA). It logs `examined` and `changed`.
+4. **`Job\ResyncDerivedSubjects`.** Reads every REA id (`return_scalar => 'id'`). For each REA whose
+   stored ids differ from the derived ones it applies the writer to the managed entity and flushes,
+   **not through the API** (final review, 2026-11-24): an API update also validates the REA against
+   its template, so a REA lacking a required field could never be repaired, and a refused update
+   would still flush the derived values it had removed. The write is derived-only, by a global
+   administrator; `o:modified` does not move. It does not clear the entity manager, for the reason
+   `GovernanceBatchJob` gives (clearing detaches the job's owner; about 12 KB per item, some 35 MB
+   for 3 000 REA). It logs `examined`, `changed` (REA actually written) and `failed`.
 5. **Launch.** A POST-only action `resync-subjects` in `IndexController`, under the `config`
    privilege (global administrator, as the configuration page), with its own CSRF token. It
    dispatches the job and redirects to the configuration page with a message linking to the job.

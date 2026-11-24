@@ -122,7 +122,35 @@ try {
     $check([$maths] === $derived($viaApi), 'partial update: the derived value follows');
     $check($marker === $titleOf($viaApi), 'partial update keeps the title');
 
-    // 7. Job: run twice; the second run changes nothing; o:modified of an up-to-date REA does not move.
+    // 7. A REA that fails its template (the REA template requires a field it
+    //    lacks) with a stale derived value: the API refuses even an empty
+    //    partial update, the job's direct write repairs it (final review).
+    $templateId = (int) $services->get('Omeka\Settings')->get('oermanager_rea_template_id');
+    $stale = curCreateRea($services, $marker, ['schema:about' => [$fixture['SMAT01']]], $email, $created);
+    curClear($services, $email);
+    $entityManager = $services->get('Omeka\EntityManager');
+    $item = $entityManager->find(\Omeka\Entity\Item::class, $stale);
+    $item->setResourceTemplate($entityManager->find(\Omeka\Entity\ResourceTemplate::class, $templateId));
+    foreach (iterator_to_array($item->getValues()) as $value) {
+        $property = $value->getProperty();
+        if (DerivedSubjectWriter::TERM === $property->getVocabulary()->getPrefix() . ':' . $property->getLocalName()) {
+            $item->getValues()->removeElement($value);
+        }
+    }
+    $entityManager->flush();
+    $check($templateId > 0 && [] === $derived($stale), 'stale REA with the REA template and no derived value');
+    $refused = false;
+    try {
+        $api->update('items', $stale, [], [], ['isPartial' => true]);
+    } catch (\Omeka\Api\Exception\ValidationException $e) {
+        $refused = true;
+    }
+    $check($refused, 'the API refuses an update of a REA lacking a required field');
+    curClear($services, $email);
+    $wrote = ResyncDerivedSubjects::write($services->get('Omeka\EntityManager'), $writer, $stale);
+    $check($wrote && [$maths] === $derived($stale), 'the job write repairs it anyway');
+
+    // 8. Job: run twice; the second run changes nothing; o:modified of an up-to-date REA does not move.
     curClear($services, $email);
     $before = $api->read('items', $viaApi)->getContent()->modified();
     $runJob = static function () use ($services, $api, $writer, $classId): array {
@@ -134,9 +162,7 @@ try {
             ])->getContent())),
             static fn (int $id): ?object => $services->get('Omeka\EntityManager')->find(\Omeka\Entity\Item::class, $id),
             $writer,
-            static function (int $id) use ($api): void {
-                $api->update('items', $id, [], [], ['isPartial' => true]);
-            },
+            static fn (int $id): bool => ResyncDerivedSubjects::write($services->get('Omeka\EntityManager'), $writer, $id),
             static fn (): bool => false,
             static function (int $id, \Throwable $e): void {
                 printf("  job error on #%d: %s\n", $id, $e->getMessage());
