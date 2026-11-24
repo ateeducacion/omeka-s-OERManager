@@ -110,8 +110,16 @@ class DerivedSubjectWriter
             if (self::SOURCE_TERM !== StatusGuard::term($value->getProperty())) {
                 continue;
             }
+            // The derived value is public, so the whole chain must be public:
+            // this schema:about value, its MateriaCurso, the cur:materia edge
+            // and the Materia item (security review).
             $target = $value->getValueResource();
-            if (null === $target || !method_exists($target, 'getResourceClass')) {
+            if (
+                !$value->isPublic()
+                || null === $target
+                || !method_exists($target, 'getResourceClass')
+                || !$target->isPublic()
+            ) {
                 $about[] = ['class' => null, 'subjects' => []];
                 continue;
             }
@@ -120,8 +128,6 @@ class DerivedSubjectWriter
                 if (CurModel::EDGE_MATERIA !== StatusGuard::term($edge->getProperty())) {
                     continue;
                 }
-                // The derived value is public: only follow what is already
-                // public, the edge and the subject item (security review).
                 $subject = $edge->getValueResource();
                 if (
                     !$edge->isPublic()

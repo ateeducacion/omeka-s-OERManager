@@ -293,4 +293,21 @@ final class DerivedSubjectWriterTest extends TestCase
         $this->assertSame([], $this->writer()->derivedIds($rea));
         $this->assertFalse($this->writer()->apply($rea));
     }
+
+    /**
+     * Security review of TASK-076 (second pass): the whole chain must be
+     * public. A private schema:about value of the REA, or a private
+     * MateriaCurso item, would otherwise leak through the public derived value.
+     */
+    public function testAPrivateAboutValueOrMateriaCursoIsNotDerived(): void
+    {
+        $maths = $this->resource(30, 'cur:Materia', 'Matemáticas (ESO)');
+        $privateMateriaCurso = $this->resource(102, 'cur:MateriaCurso', 'MC', [$this->value('cur:materia', $maths)], false);
+        $rea = $this->rea([
+            $this->value('schema:about', $this->materiaCurso(101, $maths), false),
+            $this->value('schema:about', $privateMateriaCurso),
+        ]);
+        $this->assertSame([], $this->writer()->derivedIds($rea));
+        $this->assertFalse($this->writer()->apply($rea));
+    }
 }
