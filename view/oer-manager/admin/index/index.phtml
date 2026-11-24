@@ -91,7 +91,9 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     // barra rápida borraría en silencio lo que el curador acotó en la otra
     // pantalla. Se quitan desde su chip.
     foreach (['stage', 'subject', 'project', 'axis', 'resource_type', 'licence', 'item_set_id', 'age'] as $advanced):
-        if ('' === (string) ($query[$advanced] ?? '')) {
+        // A single-valued filter sent as an array (`age[]=7`) is ignored by
+        // the search, as by the chips: carrying it would send back `Array`.
+        if (!is_scalar($query[$advanced] ?? '') || '' === (string) ($query[$advanced] ?? '')) {
             continue;
         }
         ?>
