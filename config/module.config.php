@@ -312,7 +312,9 @@ return [
                 return new Service\Governance\BatchSelection(
                     $container->get('Omeka\ApiManager'),
                     $container->get(Service\MasterViewQuery::class),
-                    $container->get(Service\IntegrityChecker::class)
+                    $container->get(Service\IntegrityChecker::class),
+                    // TASK-070: a batch from «En cola» acts on the queue only.
+                    $container->get(Service\IdConstraintResolver::class)
                 );
             },
             // Dueño, clase y estado del Job de lote, leídos de la entidad: la

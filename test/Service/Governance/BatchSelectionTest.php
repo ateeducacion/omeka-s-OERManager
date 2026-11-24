@@ -7,6 +7,7 @@ namespace OERManager\Test\Service\Governance;
 use OERManager\Service\ComputedFilter;
 use OERManager\Service\Governance\BatchSelection;
 use OERManager\Service\Governance\BatchSelectionException;
+use OERManager\Service\IdConstraintResolver;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\IntegrityResult;
 use OERManager\Service\MasterViewQuery;
@@ -21,6 +22,7 @@ final class BatchSelectionTest extends TestCase
     private $api;
     private $query;
     private $checker;
+    private $resolver;
     private array $searches = [];
     /** @var callable */
     private $respond;
@@ -30,6 +32,8 @@ final class BatchSelectionTest extends TestCase
         $this->api = $this->createMock(Manager::class);
         $this->query = $this->createMock(MasterViewQuery::class);
         $this->checker = $this->createMock(IntegrityChecker::class);
+        // A mock returns null by default: no queue or required-field constraint.
+        $this->resolver = $this->createMock(IdConstraintResolver::class);
         $this->query->method('buildSearchParams')->willReturnCallback(
             static fn (array $q) => ['resource_class_id' => 9] + $q
         );
@@ -42,7 +46,7 @@ final class BatchSelectionTest extends TestCase
 
     private function selection(): BatchSelection
     {
-        return new BatchSelection($this->api, $this->query, $this->checker);
+        return new BatchSelection($this->api, $this->query, $this->checker, $this->resolver);
     }
 
     private function reason(callable $call): string
@@ -123,5 +127,34 @@ final class BatchSelectionTest extends TestCase
         $this->assertSame([['joiner' => 'and', 'property' => 'dcterms:license', 'type' => 'ex']], $params['property']);
         $this->assertSame(1, $params['per_page']);
         $this->assertCount(1, $this->searches, 'an empty id list never queries');
+    }
+
+    /** TASK-070 review: a batch launched from «En cola» acts on the queue, not on every REA. */
+    public function testTheQueueNarrowsTheMatchingSelection(): void
+    {
+        $this->resolver->method('resolve')->with(['status' => 'queue'])->willReturn([2, 4]);
+
+        $this->assertSame([2, 4], $this->selection()->resolveMatching(['status' => 'queue', 'page' => 2]));
+        $this->assertSame([2, 4], $this->searches[0][0]['id']);
+    }
+
+    /** TASK-070 review: the core ignores `id => []`, so an empty queue is an empty selection, never a search. */
+    public function testAnEmptyConstraintIsAnEmptySelectionWithoutSearching(): void
+    {
+        $this->resolver->method('resolve')->willReturn([]);
+
+        $this->assertSame('empty', $this->reason(fn () => $this->selection()->resolveMatching(['status' => 'queue'])));
+        $this->assertSame([], $this->searches);
+    }
+
+    /** TASK-070 review: the computed branch reads the same id-bounded search. */
+    public function testTheQueueAlsoBoundsTheComputedBranch(): void
+    {
+        $this->resolver->method('resolve')->willReturn([2]);
+        $this->respond = fn (array $params, array $options) => $this->response([], 0);
+
+        $this->reason(fn () => $this->selection()->resolveMatching(['status' => 'queue', 'integrity' => 'warning']));
+
+        $this->assertSame([2], $this->searches[0][0]['id']);
     }
 }
