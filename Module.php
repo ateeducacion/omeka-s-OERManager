@@ -163,6 +163,14 @@ class Module extends AbstractModule implements InitProviderInterface
             'api.hydrate.post',
             [$this, 'guardWorkflowValues']
         );
+        // TASK-076: the stage subject derived from schema:about, on the
+        // hydrated entity so every save path (batch append/remove/clear
+        // included) derives from the final values, in the same flush.
+        $sharedEventManager->attach(
+            'Omeka\Api\Adapter\ItemAdapter',
+            'api.hydrate.post',
+            [$this, 'deriveSubject']
+        );
         // Columnas y orden por defecto de la vista maestra, configurables por
         // cada curador desde su perfil (TASK-028). Se usa la clave propia
         // `oer_items`: compartir la de `items` haría que configurar esta tabla
@@ -497,6 +505,23 @@ class Module extends AbstractModule implements InitProviderInterface
                 . 'sus acciones (proponer, rechazar, publicar…), no a mano.'; // @translate
             $event->getParam('errorStore')->addError(Service\Workflow\WorkflowStatus::STATUS_TERM, $message);
         }
+    }
+
+    /**
+     * TASK-076: rewrites `lrmi:educationalAlignment` of a REA with the stage
+     * subjects of its `schema:about` (DerivedSubjectWriter). Never an error.
+     */
+    public function deriveSubject(Event $event): void
+    {
+        $entity = $event->getParam('entity');
+        if (
+            !is_object($entity)
+            || !method_exists($entity, 'getValues')
+            || !method_exists($entity, 'getResourceClass')
+        ) {
+            return;
+        }
+        $this->getServiceLocator()->get(Service\Curriculum\DerivedSubjectWriter::class)->apply($entity);
     }
 
     /**
