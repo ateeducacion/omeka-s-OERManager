@@ -100,28 +100,31 @@ against Omeka S 4.2 (`AbstractEntityAdapter::hydrateEntity()`, `Entity\Resource`
 The derivation reads `$entity->getValues()`: for each `schema:about` value whose
 `getValueResource()` is an item of class `cur:MateriaCurso`, the `cur:materia` values of that item
 whose target is of class `cur:Materia`. It then compares the result with the entity's current
-`lrmi:educationalAlignment` values. It removes those not in the derived set (and any value that is
-not an item link), and adds a `Value` (`resource:item`, public, no language, no annotation) for each
-missing target. When the sets already match it changes nothing.
+`lrmi:educationalAlignment` values, in order. When they already match it changes nothing.
+Otherwise it removes every stored value of that property and adds one `Value` (`resource:item`,
+public, no language, no annotation) per derived target, in title order, so the stored order is
+always the derived one.
 
 ### Components
 
 1. **`Service\Curriculum\SubjectDerivation` (pure).** `derive(list<array{class:?string,
    subjects:list<array{id:int, class:?string, title:string}>}> $about): list<array{id:int,
-   title:string}>` gives the ordered, distinct `cur:Materia` targets. `diff(list<int> $stored,
-   list<int> $derived): array{add:list<int>, remove:list<int>}`. Host-tested.
+   title:string}>` gives the ordered, distinct `cur:Materia` targets. `matches(list<?int> $stored,
+   list<int> $derived): bool` is true when the stored ids are exactly the derived ones in the same
+   order (a non-item stored value is `null`, so it never matches). Host-tested.
 2. **`Service\Curriculum\DerivedSubjectWriter` (Doctrine adapter).** `apply(Item $entity): bool`:
    returns false for a non-REA; otherwise it projects the entity's `schema:about` targets for
    `SubjectDerivation`, applies the diff to the entity's value collection and returns whether
-   anything changed. `derivedIds(Item $entity): list<int>` and `storedIds(Item $entity): list<int>`
+   anything changed. `derivedIds(Item $entity): list<int>` and `storedIds(Item $entity): list<?int>`
    serve the job. It looks the `lrmi:educationalAlignment` `Property` up once (entity manager); if
    the vocabulary is missing it does nothing.
 3. **`Module::deriveSubject()`**, a listener on `api.hydrate.post` for `ItemAdapter` that calls the
    writer.
 4. **`Job\ResyncDerivedSubjects`.** Pages through REA ids (`return_scalar => 'id'`, batches of
    100). For each REA whose stored ids differ from the derived ones it calls
-   `api->update('items', $id, [], [], ['isPartial' => true])`, which reaches the hook. It clears the
-   entity manager between batches and logs `examined` and `changed`.
+   `api->update('items', $id, [], [], ['isPartial' => true])`, which reaches the hook. It does not
+   clear the entity manager, for the reason `GovernanceBatchJob` gives (clearing detaches the job's
+   owner; about 12 KB per item, some 35 MB for 3 000 REA). It logs `examined` and `changed`.
 5. **Launch.** A POST-only action `resync-subjects` in `IndexController`, under the `config`
    privilege (global administrator, as the configuration page), with its own CSRF token. It
    dispatches the job and redirects to the configuration page with a message linking to the job.
@@ -150,8 +153,10 @@ TASK-072), in batches.
 
 - **PHP, TDD on the host:** `SubjectDerivation`: two years of a subject give one value; two
   subjects give two values in title order; literal, URI and non-`MateriaCurso` targets are ignored;
-  a `MateriaCurso` without `cur:materia`; a `cur:materia` to a non-`Materia`; empty input. `diff`:
-  add, remove, no-op, and a stored id missing from the derived set. The `resync-subjects` action:
+  a `MateriaCurso` without `cur:materia`; a `cur:materia` to a non-`Materia`; empty input. `matches`:
+  equal, a missing or extra id, the same ids in another order, a non-item stored value. The writer,
+  with entity doubles: a REA gains, loses and keeps its derived values; a non-REA is untouched; a
+  hand-written value is replaced. The `resync-subjects` action:
   POST only, CSRF checked, dispatches the job. The configuration view shows the button.
 - **Container harness** (`test/container/subject-derivation-check.php`, disposable or development
   catalogue only, AGENTS.md). It creates a REA with two `MateriaCurso` of one subject through the
