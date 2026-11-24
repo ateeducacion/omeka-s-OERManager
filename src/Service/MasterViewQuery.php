@@ -35,6 +35,9 @@ class MasterViewQuery
      */
     public const MAX_ITEM_SETS = 200;
 
+    /** «Creado hace más de» N days (TASK-070), on `o:created`. Other values are ignored. */
+    public const AGE_DAYS = [7, 30, 90];
+
     /** Filtros que apuntan a un item-término del currículo, y su property (ADR-0004). */
     public const RESOURCE_FILTERS = [
         'stage' => 'lrmi:educationalLevel',
@@ -71,9 +74,12 @@ class MasterViewQuery
     private bool $classIdResolved = false;
     private ?int $learningResourceClassId = null;
 
-    public function __construct(ApiManager $api)
+    private \Closure $today;
+
+    public function __construct(ApiManager $api, ?\Closure $today = null)
     {
         $this->api = $api;
+        $this->today = $today ?? static fn (): \DateTimeImmutable => new \DateTimeImmutable('today');
     }
 
     /**
@@ -111,6 +117,14 @@ class MasterViewQuery
 
         if ('' !== ($query['visibility'] ?? '')) {
             $params['is_public'] = 'public' === $query['visibility'];
+        }
+
+        // TASK-070: age on the catalogue entry date; the core compares `created < day`.
+        $age = $query['age'] ?? null;
+        if (is_string($age) && ctype_digit($age) && in_array((int) $age, self::AGE_DAYS, true)) {
+            $params['created_before'] = ($this->today)()
+                ->modify(sprintf('-%d days', (int) $age))
+                ->format('Y-m-d');
         }
 
         // Filtros que apuntan a un item-término del currículo (resource:item,

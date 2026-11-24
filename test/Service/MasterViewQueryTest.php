@@ -154,4 +154,28 @@ final class MasterViewQueryTest extends TestCase
             }
         };
     }
+
+    /** TASK-070: «Creado hace más de» 7 / 30 / 90 days, on the catalogue entry date. */
+    public function testAgeFilterSetsCreatedBefore(): void
+    {
+        $today = static fn (): \DateTimeImmutable => new \DateTimeImmutable('2026-11-24');
+        $query = new MasterViewQuery($this->apiResolvingClass(), $today);
+
+        $this->assertSame('2026-11-17', $query->buildSearchParams(['age' => '7'])['created_before']);
+        $this->assertSame('2026-10-25', $query->buildSearchParams(['age' => '30'])['created_before']);
+        $this->assertSame('2026-08-26', $query->buildSearchParams(['age' => '90'])['created_before']);
+        foreach (['5', 'abc', '', ['7']] as $invalid) {
+            $this->assertArrayNotHasKey('created_before', $query->buildSearchParams(['age' => $invalid]));
+        }
+    }
+
+    /** TASK-070: `status=queue` and `missing[]=required` are resolved by IdConstraintResolver, not here. */
+    public function testQueueAndRequiredAreNotNativeParameters(): void
+    {
+        $params = (new MasterViewQuery($this->apiResolvingClass()))
+            ->buildSearchParams(['status' => 'queue', 'missing' => ['required']]);
+
+        $this->assertArrayNotHasKey('property', $params);
+        $this->assertArrayNotHasKey('is_public', $params);
+    }
 }
