@@ -26,6 +26,7 @@ use OERManager\Service\Curriculum\CurriculumTerms;
 use OERManager\Service\Governance\GovernanceFields;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\GovernanceService;
+use OERManager\Service\IdConstraintResolver;
 use OERManager\Service\IntegrityChecker;
 use OERManager\Service\ItemPanelData;
 use OERManager\Service\Llm\LlmSettings;
@@ -95,6 +96,7 @@ class IndexController extends AbstractActionController
     private CurriculumTerms $curriculumTerms;
     private ReaSite $reaSite;
     private ReasonVocabularies $reasonVocabularies;
+    private IdConstraintResolver $idConstraintResolver;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -119,7 +121,8 @@ class IndexController extends AbstractActionController
         BatchJobLookup $jobLookup,
         CurriculumTerms $curriculumTerms,
         ReaSite $reaSite,
-        ReasonVocabularies $reasonVocabularies
+        ReasonVocabularies $reasonVocabularies,
+        IdConstraintResolver $idConstraintResolver
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -144,6 +147,7 @@ class IndexController extends AbstractActionController
         $this->curriculumTerms = $curriculumTerms;
         $this->reaSite = $reaSite;
         $this->reasonVocabularies = $reasonVocabularies;
+        $this->idConstraintResolver = $idConstraintResolver;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -165,13 +169,26 @@ class IndexController extends AbstractActionController
         $query = $this->params()->fromQuery();
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
 
+        // TASK-070: «En cola» and «Sin campo obligatorio» are unions the core
+        // cannot search in one query; the resolver turns them into ids.
+        $constrainedIds = $this->idConstraintResolver->resolve($query);
+        if (null !== $constrainedIds) {
+            $searchParams['id'] = $constrainedIds;
+        }
+
         // Una sola rama computada (TASK-028 rebanada 2). Antes había un if/else
         // escrito a medida del filtro «parcial»; con un segundo filtro computado
         // ese bloque —búsqueda con tope, ComputedFilter, paginator, isTruncated—
         // se habría duplicado entero, que es cómo se propagan los defectos D4.
         $computedKeys = ComputedPredicates::activeKeys($query);
 
-        if ([] !== $computedKeys) {
+        if ([] === $constrainedIds) {
+            // The core ignores an empty `id` filter and would list every REA.
+            $items = [];
+            $this->paginator(0);
+            $totalResults = 0;
+            $isTruncated = false;
+        } elseif ([] !== $computedKeys) {
             // Las representaciones se piden de una vez, acotadas al tope, en vez
             // de resolver ids y releer cada uno: los predicados necesitan el item
             // entero, así que un read por id serían hasta HARD_CAP consultas.
@@ -325,6 +342,8 @@ class IndexController extends AbstractActionController
         $view->setVariable('resourceFilterTitles', $titles);
         $view->setVariable('itemSets', $this->masterViewQuery->learningResourceItemSets());
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
+        // TASK-070: «Sin campo obligatorio» is offered only with a readable REA template.
+        $view->setVariable('requiredFieldsAvailable', $this->idConstraintResolver->hasRequiredFields());
         return $view;
     }
 

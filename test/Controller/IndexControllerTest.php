@@ -60,6 +60,8 @@ class IndexControllerTest extends TestCase
     /** @var array<string,mixed> */
     private array $lastUpdate = [];
     private ?object $owner = null;
+    /** @var list<array<string,mixed>> */
+    private array $searches = [];
 
     protected function setUp(): void
     {
@@ -91,7 +93,10 @@ class IndexControllerTest extends TestCase
             }
             return new Response($this->item);
         });
-        $this->api->method('search')->willReturn(new Response([$this->item], 1));
+        $this->api->method('search')->willReturnCallback(function ($resource, $query = []) {
+            $this->searches[] = $query;
+            return new Response([$this->item], 1);
+        });
         $this->api->method('update')->willReturnCallback(function ($resource = null, $id = null, $data = []) {
             if ($this->denyWrite) {
                 throw new PermissionDeniedException('private');
@@ -1124,5 +1129,35 @@ class IndexControllerTest extends TestCase
         $this->owner = null;
         $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
         $this->assertNull($this->data('drawerHistory')['history']);
+    }
+
+    /** TASK-070: ids from the resolver bound the page search. */
+    public function testConstrainedIdsBoundThePageSearch(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('resolve')->willReturn([7, 9]);
+
+        $view = $this->controller->indexAction();
+
+        $this->assertSame([$this->item], $view->getVariable('items'));
+        $this->assertSame([7, 9], end($this->searches)['id']);
+    }
+
+    /** TASK-070: the core ignores `id => []` and would list every REA. */
+    public function testAnEmptyIdSetShowsNoResultsWithoutSearching(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('resolve')->willReturn([]);
+
+        $view = $this->controller->indexAction();
+
+        $this->assertSame([], $view->getVariable('items'));
+        $this->assertSame(0, $view->getVariable('totalResults'));
+        $this->assertSame([], $this->searches);
+    }
+
+    public function testTheSearchFormKnowsWhetherRequiredFieldsExist(): void
+    {
+        $this->dependencies['idConstraintResolver']->method('hasRequiredFields')->willReturn(true);
+
+        $this->assertTrue($this->controller->searchAction()->getVariable('requiredFieldsAvailable'));
     }
 }

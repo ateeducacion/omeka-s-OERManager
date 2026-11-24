@@ -55,7 +55,9 @@ return [
                     // TASK-067: validates the REA site on save.
                     $container->get(Service\ReaSite::class),
                     // TASK-039: reasons to reject and to discard.
-                    $container->get(Service\Workflow\ReasonVocabularies::class)
+                    $container->get(Service\Workflow\ReasonVocabularies::class),
+                    // TASK-070: «En cola» and «Sin campo obligatorio» as id sets.
+                    $container->get(Service\IdConstraintResolver::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
