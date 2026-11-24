@@ -2075,8 +2075,15 @@ body.oer-master-view.sidebar-open footer {
 }
 
 /* TASK-070: a row the curator has just published, rejected or discarded. */
+/* Tint and the muted token, not opacity: the row stays usable, so its text
+   keeps WCAG AA contrast (test/js/contrast.test.js). */
 #oer-master-view-table tr.oer-row-done > td {
-    opacity: 0.55;
+    background-color: var(--oer-surface);
+    color: var(--oer-muted);
+}
+
+#oer-master-view-table tr.oer-row-done .oer-open-drawer {
+    color: var(--oer-muted);
 }
 
 #oer-master-view-table .oer-row-done-status {
