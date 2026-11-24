@@ -283,4 +283,10 @@ final class ModuleConfigTest extends TestCase
             $queue[0]['query']
         );
     }
+
+    /** TASK-070: the queue sorts by catalogue entry date, so the sort selector must offer it. */
+    public function testMasterViewCanSortByEntryDate(): void
+    {
+        $this->assertArrayHasKey('created', $this->config['sort_defaults']['admin']['oer_items'] ?? []);
+    }
 }

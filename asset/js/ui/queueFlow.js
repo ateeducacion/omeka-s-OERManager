@@ -89,6 +89,8 @@ export function initQueueFlow() {
         } else {
             content.prepend(button);
         }
-        button.focus();
+        // Next tick: something else in the sidebar's synchronous load path
+        // moves focus to the body after this listener (seen in the browser).
+        window.setTimeout(() => button.focus(), 0);
     });
 }

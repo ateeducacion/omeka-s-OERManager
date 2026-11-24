@@ -812,4 +812,13 @@ return [
             'oer_items' => ['sort_by' => 'modified', 'sort_order' => 'desc'],
         ],
     ],
+    // TASK-070: «Cola (N)» sorts by catalogue entry date, which no column
+    // offers; without this the sort selector would show another option.
+    'sort_defaults' => [
+        'admin' => [
+            'oer_items' => [
+                'created' => 'Fecha de alta', // @translate
+            ],
+        ],
+    ],
 ];

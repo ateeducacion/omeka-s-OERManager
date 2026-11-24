@@ -2082,6 +2082,12 @@ body.oer-master-view.sidebar-open footer {
 #oer-master-view-table .oer-row-done-status {
     margin-inline-start: 0.5em;
     font-style: italic;
+    white-space: nowrap;
+}
+
+/* The row's badge still shows the state before the action. */
+#oer-master-view-table tr.oer-row-done .oer-workflow-badge {
+    display: none;
 }
 
 .oer-queue-next {
