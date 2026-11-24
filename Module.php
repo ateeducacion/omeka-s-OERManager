@@ -231,11 +231,6 @@ class Module extends AbstractModule implements InitProviderInterface
             'published' => 'Publicado', // @translate
             'out_of_flow' => 'Publicado fuera del flujo', // @translate
         ],
-        'age' => [
-            '7' => 'Creado hace más de 7 días', // @translate
-            '30' => 'Creado hace más de 30 días', // @translate
-            '90' => 'Creado hace más de 90 días', // @translate
-        ],
     ];
 
     /**
@@ -289,7 +284,17 @@ class Module extends AbstractModule implements InitProviderInterface
             if ('' === $value) {
                 continue;
             }
-            if (isset(self::FILTER_VALUE_LABELS[$key][$value])) {
+            if ('age' === $key) {
+                // TASK-070: only the ages MasterViewQuery applies, with the
+                // advanced search's own label; any other value filters nothing.
+                if (!ctype_digit($value) || !in_array((int) $value, Service\MasterViewQuery::AGE_DAYS, true)) {
+                    continue;
+                }
+                $value = sprintf(
+                    $this->getServiceLocator()->get('MvcTranslator')->translate('Creado hace más de %d días'),
+                    (int) $value
+                );
+            } elseif (isset(self::FILTER_VALUE_LABELS[$key][$value])) {
                 $value = self::FILTER_VALUE_LABELS[$key][$value];
             } elseif (in_array($key, self::RESOURCE_FILTERS, true)) {
                 try {
@@ -305,9 +310,18 @@ class Module extends AbstractModule implements InitProviderInterface
         // marcada, agrupado bajo la misma etiqueta que la sección "Gobernanza"
         // del formulario avanzado.
         foreach ((array) ($query['missing'] ?? []) as $missingKey) {
-            if (is_string($missingKey) && isset(self::MISSING_FILTER_LABELS[$missingKey])) {
-                $filters[self::MISSING_GROUP_LABEL][] = self::MISSING_FILTER_LABELS[$missingKey];
+            if (!is_string($missingKey) || !isset(self::MISSING_FILTER_LABELS[$missingKey])) {
+                continue;
             }
+            // TASK-070: without a readable REA template the filter does
+            // nothing, so a chip would make the list look filtered.
+            if (
+                Service\IdConstraints::MISSING_REQUIRED === $missingKey
+                && !$this->getServiceLocator()->get(Service\IdConstraintResolver::class)->hasRequiredFields()
+            ) {
+                continue;
+            }
+            $filters[self::MISSING_GROUP_LABEL][] = self::MISSING_FILTER_LABELS[$missingKey];
         }
 
         // `integrity` es escalar pero, igual que `missing`, no viaja como
