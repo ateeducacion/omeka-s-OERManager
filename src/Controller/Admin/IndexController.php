@@ -166,7 +166,7 @@ class IndexController extends AbstractActionController
         // sort_order en la request si no vienen, así que ha de ir ANTES de leer
         // la query. Es el patrón del core (cfr. Admin\ItemController::browseAction).
         $this->browse()->setDefaults('oer_items');
-        $query = $this->params()->fromQuery();
+        $query = MasterViewQuery::normalizeQuery($this->params()->fromQuery());
         $searchParams = $this->masterViewQuery->buildSearchParams($query);
 
         // TASK-070: «En cola» and «Sin campo obligatorio» are unions the core
@@ -319,7 +319,7 @@ class IndexController extends AbstractActionController
      */
     public function searchAction()
     {
-        $query = $this->params()->fromQuery();
+        $query = MasterViewQuery::normalizeQuery($this->params()->fromQuery());
 
         // Los filtros curriculares llegan como id: se resuelve su título para que
         // el chip precargado diga qué se está filtrando y no un número.

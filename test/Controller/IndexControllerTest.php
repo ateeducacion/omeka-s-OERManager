@@ -1191,4 +1191,13 @@ class IndexControllerTest extends TestCase
             $this->assertSame($left, $data['leftQueue'] ?? null, $case);
         }
     }
+
+    /** TASK-070 code review: `title[]=x` used to reach `$escape()` in the views and fail with HTTP 500. */
+    public function testArrayValuedFiltersNeverReachTheSearchOrTheViews(): void
+    {
+        $this->params->query = ['title' => ['x'], 'status' => ['queue'], 'missing' => ['licence']];
+
+        $this->assertSame(['missing' => ['licence']], $this->controller->indexAction()->getVariable('query'));
+        $this->assertSame(['missing' => ['licence']], $this->controller->searchAction()->getVariable('query'));
+    }
 }

@@ -58,6 +58,7 @@ class BatchSelection
      */
     public function resolveMatching(array $query): array
     {
+        $query = MasterViewQuery::normalizeQuery($query);
         unset($query['page'], $query['per_page'], $query['sort_by'], $query['sort_order']);
         $params = $this->baseParams($query);
 

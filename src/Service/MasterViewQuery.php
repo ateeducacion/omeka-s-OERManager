@@ -83,6 +83,29 @@ class MasterViewQuery
     }
 
     /**
+     * The master view's filters are single values, except `missing[]`. A
+     * filter sent as an array (`title[]=x`, `status[]=queue`, `age[]=7`) is
+     * dropped here, where the request query enters, so neither the search nor
+     * the views cast or escape an array (TASK-070 code review). `missing`
+     * keeps only its string entries.
+     *
+     * @param array<string,mixed> $query raw GET parameters
+     * @return array<string,mixed>
+     */
+    public static function normalizeQuery(array $query): array
+    {
+        $normalized = [];
+        foreach ($query as $key => $value) {
+            if ('missing' === $key) {
+                $normalized[$key] = array_values(array_filter((array) $value, 'is_string'));
+            } elseif (is_scalar($value)) {
+                $normalized[$key] = $value;
+            }
+        }
+        return $normalized;
+    }
+
+    /**
      * @param array $query Parámetros GET de la página (filtros, orden, paginación)
      * @return array Parámetros para $api->search('items', ...)
      */

@@ -157,4 +157,13 @@ final class BatchSelectionTest extends TestCase
 
         $this->assertSame([2], $this->searches[0][0]['id']);
     }
+
+    /** TASK-070 code review: the batch reads the same normalized query as the master view. */
+    public function testArrayValuedFiltersAreDroppedFromTheBatchQuery(): void
+    {
+        $this->selection()->resolveMatching(['title' => ['x'], 'status' => 'queue']);
+
+        $this->assertArrayNotHasKey('title', $this->searches[0][0]);
+        $this->assertSame('queue', $this->searches[0][0]['status']);
+    }
 }

@@ -178,4 +178,25 @@ final class MasterViewQueryTest extends TestCase
         $this->assertArrayNotHasKey('property', $params);
         $this->assertArrayNotHasKey('is_public', $params);
     }
+
+    /**
+     * TASK-070 code review: only `missing[]` is a list; any other filter sent
+     * as an array (`title[]=x`, `status[]=queue`) is dropped, so neither the
+     * search nor the views cast or escape an array.
+     */
+    public function testNormalizeQueryKeepsOnlyScalarsAndTheMissingList(): void
+    {
+        $this->assertSame(
+            ['status' => 'queue', 'page' => 2, 'missing' => ['licence', 'required']],
+            MasterViewQuery::normalizeQuery([
+                'title' => ['x'],
+                'status' => 'queue',
+                'age' => ['7'],
+                'page' => 2,
+                'missing' => ['licence', ['nested'], 'required'],
+                'visibility' => null,
+            ])
+        );
+        $this->assertSame(['missing' => ['licence']], MasterViewQuery::normalizeQuery(['missing' => 'licence']));
+    }
 }
