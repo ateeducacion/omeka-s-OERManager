@@ -31,6 +31,16 @@ $curricular = [
 
 <form id="oer-advanced-search" method="get"
       action="<?php echo $escape($this->url('admin/oer-manager')); ?>">
+    <?php
+    // TASK-070: the sort the curator came with (e.g. «Cola (N)», oldest
+    // first) survives the search; the sort selector of the list changes it.
+    foreach (['sort_by', 'sort_order'] as $sortKey):
+        if ('' === (string) ($query[$sortKey] ?? '')) {
+            continue;
+        }
+        ?>
+    <input type="hidden" name="<?php echo $sortKey; ?>" value="<?php echo $escape((string) $query[$sortKey]); ?>">
+    <?php endforeach; ?>
 
     <div id="oer-master-view-table"
         data-search-terms-url="<?php echo $escape($this->url('admin/oer-manager', ['action' => 'search-terms'])); ?>"
