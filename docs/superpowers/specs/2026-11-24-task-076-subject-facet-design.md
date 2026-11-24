@@ -45,7 +45,9 @@ the API, the Moodle repository and other consumers without a subject filter.
    distinct `cur:materia` targets of class `cur:Materia` of its `schema:about` values, as public
    `resource:item` values, in a stable order (by target title, then id). Literal or URI
    `schema:about` values, targets that are not `cur:MateriaCurso`, and `MateriaCurso` without
-   `cur:materia` contribute nothing. Retired subjects are derived like any other (the retired-term
+   `cur:materia` contribute nothing. The derived value is public, so it only repeats what is already
+   public: a private `cur:materia` value or a private `cur:Materia` item contributes nothing
+   (security review, 2026-11-24). Retired subjects are derived like any other (the retired-term
    rule of ADR-0022 §6 already flags the REA through its `MateriaCurso`).
 2. **Never edited by hand.** Any value written to `lrmi:educationalAlignment` on a REA, from any
    path, is replaced by the derived set on the same save. Items of other classes are untouched.

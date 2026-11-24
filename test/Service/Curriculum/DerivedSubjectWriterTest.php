@@ -113,12 +113,21 @@ final class DerivedSubjectWriterTest extends TestCase
         };
     }
 
-    private function resource(int $id, ?string $class, string $title = '', array $values = []): object
+    private function resource(int $id, ?string $class, string $title = '', array $values = [], bool $public = true): object
     {
         $classEntity = null === $class ? null : $this->member($class);
-        return new class ($id, $classEntity, $title, $this->collection($values)) {
-            public function __construct(private int $id, private $class, private string $title, private object $values)
+        return new class ($id, $classEntity, $title, $this->collection($values), $public) {
+            public function __construct(
+                private int $id,
+                private $class,
+                private string $title,
+                private object $values,
+                private bool $public
+            ) {
+            }
+            public function isPublic()
             {
+                return $this->public;
             }
             public function getId()
             {
@@ -139,11 +148,15 @@ final class DerivedSubjectWriterTest extends TestCase
         };
     }
 
-    private function value(string $term, ?object $target): object
+    private function value(string $term, ?object $target, bool $public = true): object
     {
-        return new class ($this->member($term), $target) {
-            public function __construct(private object $p, private ?object $t)
+        return new class ($this->member($term), $target, $public) {
+            public function __construct(private object $p, private ?object $t, private bool $public)
             {
+            }
+            public function isPublic()
+            {
+                return $this->public;
             }
             public function getProperty()
             {
@@ -261,5 +274,23 @@ final class DerivedSubjectWriterTest extends TestCase
         $rea = $this->rea([$this->value('schema:about', $this->materiaCurso(101, $maths))]);
         $this->assertFalse($this->writer(false)->apply($rea));
         $this->assertSame([], $this->alignmentIds($rea));
+    }
+
+    /**
+     * Security review of TASK-076: the derived value is public, so it may only
+     * repeat what is already public. A private cur:materia edge or a private
+     * cur:Materia item contributes nothing.
+     */
+    public function testPrivateEdgesAndSubjectsAreNotDerived(): void
+    {
+        $privateSubject = $this->resource(40, 'cur:Materia', 'Privada', [], false);
+        $public = $this->resource(30, 'cur:Materia', 'Matemáticas (ESO)');
+        $privateEdge = $this->resource(101, 'cur:MateriaCurso', 'MC', [$this->value('cur:materia', $public, false)]);
+        $rea = $this->rea([
+            $this->value('schema:about', $privateEdge),
+            $this->value('schema:about', $this->materiaCurso(102, $privateSubject)),
+        ]);
+        $this->assertSame([], $this->writer()->derivedIds($rea));
+        $this->assertFalse($this->writer()->apply($rea));
     }
 }

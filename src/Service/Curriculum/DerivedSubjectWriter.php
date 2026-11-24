@@ -120,8 +120,15 @@ class DerivedSubjectWriter
                 if (CurModel::EDGE_MATERIA !== StatusGuard::term($edge->getProperty())) {
                     continue;
                 }
+                // The derived value is public: only follow what is already
+                // public, the edge and the subject item (security review).
                 $subject = $edge->getValueResource();
-                if (null === $subject || !method_exists($subject, 'getResourceClass')) {
+                if (
+                    !$edge->isPublic()
+                    || null === $subject
+                    || !method_exists($subject, 'getResourceClass')
+                    || !$subject->isPublic()
+                ) {
                     continue;
                 }
                 $targets[(int) $subject->getId()] = $subject;
