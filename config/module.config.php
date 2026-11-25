@@ -511,6 +511,33 @@ return [
             Service\Ai\ProposalStore::class => function ($container) {
                 return new Service\Ai\ProposalStore(sys_get_temp_dir() . '/oer-manager-proposals');
             },
+            // TASK-011: the AI proposal stored in the REA (private curation:data).
+            Service\Ai\StoredProposalWriter::class => function ($container) {
+                $entityManager = $container->get('Omeka\EntityManager');
+                $api = $container->get('Omeka\ApiManager');
+                $propertyId = null;
+                $resolved = false;
+                return new Service\Ai\StoredProposalWriter(
+                    function () use ($entityManager, $api, &$propertyId, &$resolved) {
+                        if (!$resolved) {
+                            $resolved = true;
+                            $found = $api->search('properties', ['term' => Service\Ai\StoredProposal::TERM])
+                                ->getContent();
+                            $propertyId = $found ? (int) $found[0]->id() : null;
+                        }
+                        return null === $propertyId
+                            ? null
+                            : $entityManager->getReference(\Omeka\Entity\Property::class, $propertyId);
+                    },
+                    static fn () => new \Omeka\Entity\Value()
+                );
+            },
+            Service\Ai\StoredProposals::class => function ($container) {
+                return new Service\Ai\StoredProposals(
+                    $container->get('Omeka\EntityManager'),
+                    $container->get(Service\Ai\StoredProposalWriter::class)
+                );
+            },
         ],
     ],
     'form_elements' => [
