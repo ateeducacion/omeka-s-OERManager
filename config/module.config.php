@@ -84,6 +84,18 @@ return [
                     $container->get('Omeka\Acl')
                 );
             },
+            // TASK-011: batch AI proposal.
+            Controller\Admin\AiBatchController::class => function ($container) {
+                return new Controller\Admin\AiBatchController(
+                    $container->get(Service\Governance\BatchSelection::class),
+                    $container->get(Service\Ai\BatchProposeEligibility::class),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get('Omeka\Logger'),
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    $container->get('Omeka\Settings')
+                );
+            },
         ],
     ],
     'service_manager' => [
@@ -595,6 +607,21 @@ return [
                             'defaults' => [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\GovernanceBatchController::class,
+                                'action' => 'form',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-ai-batch' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/ai-batch[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\AiBatchController::class,
                                 'action' => 'form',
                             ],
                         ],

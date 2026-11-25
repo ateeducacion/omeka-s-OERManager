@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Test\Permissions;
 
+use OERManager\Controller\Admin\AiBatchController;
 use OERManager\Controller\Admin\GovernanceBatchController;
 use OERManager\Controller\Admin\IndexController;
 use OERManager\Controller\Admin\StatsController;
@@ -18,7 +19,12 @@ use PHPUnit\Framework\TestCase;
  */
 final class ReaAclTest extends TestCase
 {
-    private const CONTROLLERS = [IndexController::class, StatsController::class, GovernanceBatchController::class];
+    private const CONTROLLERS = [
+        IndexController::class,
+        StatsController::class,
+        GovernanceBatchController::class,
+        AiBatchController::class,
+    ];
 
     /** Expected privileges per role and controller. Anything not listed is denied. */
     private const EXPECTED = [
@@ -43,6 +49,7 @@ final class ReaAclTest extends TestCase
             ],
             StatsController::class => ['index', 'export', 'layout'],
             GovernanceBatchController::class => ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'],
+            AiBatchController::class => ['form', 'preview', 'launch', 'status', 'cancel'],
         ],
     ];
 
