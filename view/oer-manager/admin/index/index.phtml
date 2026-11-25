@@ -150,13 +150,18 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
        data-sidebar-selector="#oer-batch-sidebar"
        data-sidebar-content-url="<?php echo $escape($this->url('admin/oer-manager-batch', ['action' => 'form'])); ?>"><?php echo $translate('Licencia y autoría…'); /* @translate */ ?></a>
     <?php endif; ?>
+    <?php if (!empty($canBatchAi)): ?>
+    <a href="#" class="button oer-ai-batch-open sidebar-content"
+       data-sidebar-selector="#oer-batch-sidebar"
+       data-sidebar-content-url="<?php echo $escape($this->url('admin/oer-manager-ai-batch', ['action' => 'form'])); ?>"><?php echo $translate('Proponer con IA (lote)…'); /* @translate */ ?></a>
+    <?php endif; ?>
     <button type="button" class="oer-selection-clear"><?php echo $translate('Deseleccionar'); /* @translate */ ?></button>
 </div>
 
 <p class="oer-select-matching-strip" hidden
    data-page-all="<?php echo $escape($translate('Los %1$s REA de esta página están seleccionados.')); /* @translate */ ?>"
-   data-select-matching="<?php echo $escape($translate('Seleccionar los %1$s que coinciden con el filtro para licencia y autoría')); /* @translate */ ?>"
-   data-matching-all="<?php echo $escape($translate('Los %1$s REA que coinciden con el filtro están seleccionados para licencia y autoría; la visibilidad sigue actuando solo sobre las filas marcadas.')); /* @translate */ ?>"
+   data-select-matching="<?php echo $escape($translate('Seleccionar los %1$s que coinciden con el filtro para las acciones en lote')); /* @translate */ ?>"
+   data-matching-all="<?php echo $escape($translate('Los %1$s REA que coinciden con el filtro están seleccionados para las acciones en lote; la visibilidad sigue actuando solo sobre las filas marcadas.')); /* @translate */ ?>"
    data-clear="<?php echo $escape($translate('Deshacer selección')); /* @translate */ ?>">
     <span class="oer-select-matching-text"></span>
     <button type="button" class="oer-select-matching-action"></button>

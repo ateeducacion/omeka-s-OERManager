@@ -125,6 +125,13 @@ function currentQuery() {
     return params.toString();
 }
 
+/** What the selection bar targets now; shared with the batch AI proposal (TASK-011). */
+export function batchTarget() {
+    return 'matching' === selection.scope
+        ? { scope: 'matching', query: currentQuery() }
+        : { scope: 'ids', ids: selectedIds() };
+}
+
 function paintStrip() {
     const strip = document.querySelector('.oer-select-matching-strip');
     if (!strip) {
@@ -647,9 +654,7 @@ function mountForm(root) {
         }
         showErrors(root, {});
         const mode = root.querySelector('input[name="oer-batch-mode"]:checked').value;
-        const target = 'matching' === selection.scope
-            ? { scope: 'matching', query: currentQuery() }
-            : { scope: 'ids', ids: selectedIds() };
+        const target = batchTarget();
         post(urls.preview, previewPairs({ ticked, mode, csrf, selection: target })).then((response) => {
             if (response.error) {
                 showErrors(root, response.errors || { _: response.error });
@@ -671,7 +676,7 @@ function mountForm(root) {
 }
 
 export function initGovernanceBatch(config) {
-    if (!config || !config.canBatchGovernance) {
+    if (!config || (!config.canBatchGovernance && !config.canBatchAi)) {
         return;
     }
     selection = { scope: 'ids', pageCount: 0, checked: 0, totalMatching: config.totalResults };
