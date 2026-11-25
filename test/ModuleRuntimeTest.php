@@ -173,6 +173,14 @@ class ModuleRuntimeTest extends TestCase
         }
     }
 
+    /** TASK-011: «Propuesta IA» chip, only for the values the search applies. */
+    public function testAiProposalChipShowsOnlyKnownValues(): void
+    {
+        $this->assertSame(['Lista'], $this->chips(['ai_proposal' => 'ready'])['Propuesta IA']);
+        $this->assertSame(['Sin propuesta'], $this->chips(['ai_proposal' => 'none'])['Propuesta IA']);
+        $this->assertArrayNotHasKey('Propuesta IA', $this->chips(['ai_proposal' => 'bogus']));
+    }
+
     /** TASK-070: an array where a single value is expected (`age[]=7`) makes no chip and no warning. */
     public function testArrayValuedFiltersMakeNoChip(): void
     {

@@ -208,6 +208,7 @@ class Module extends AbstractModule implements InitProviderInterface
         'proposed' => 'Propuesta', // @translate
         'status' => 'Estado', // @translate
         'age' => 'Antigüedad', // @translate
+        'ai_proposal' => 'Propuesta IA', // @translate
     ];
 
     /** Filtros cuyo valor es el id de un item-término: se muestra su título. */
@@ -222,6 +223,7 @@ class Module extends AbstractModule implements InitProviderInterface
             'none' => 'Sin alinear', // @translate
         ],
         'proposed' => ['1' => 'Sí'], // @translate
+        'ai_proposal' => ['ready' => 'Lista', 'none' => 'Sin propuesta'], // @translate
         'status' => [
             'queue' => 'En cola', // @translate
             'draft' => 'Borrador', // @translate
@@ -282,6 +284,10 @@ class Module extends AbstractModule implements InitProviderInterface
             }
             $value = (string) ($query[$key] ?? '');
             if ('' === $value) {
+                continue;
+            }
+            // TASK-011: an unknown value filters nothing, so it gets no chip.
+            if ('ai_proposal' === $key && !isset(self::FILTER_VALUE_LABELS['ai_proposal'][$value])) {
                 continue;
             }
             if ('age' === $key) {
