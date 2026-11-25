@@ -92,7 +92,8 @@ final class ReaAcl
                 'governance-apply',
                 'recatalog-last-event',
                 'recatalog-undo',
-                // AI proposal (single); the batch one is TASK-011.
+                // AI proposal (single), and dropping a batch proposal (TASK-011).
+                'ai-proposal-discard',
                 'ai-propose',
                 'ai-propose-status',
                 'ai-propose-cancel',

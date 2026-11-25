@@ -13,6 +13,8 @@ use OERManager\Form\ConfigForm;
 use OERManager\Service\Ai\AiCataloguer;
 use OERManager\Service\Ai\EvaluationScorer;
 use OERManager\Service\Ai\ProposalStore;
+use OERManager\Service\Ai\StoredProposal;
+use OERManager\Service\Ai\StoredProposals;
 use OERManager\Service\ComputedFilter;
 use OERManager\Service\ComputedPredicates;
 use OERManager\Service\ConfigPayload;
@@ -97,6 +99,7 @@ class IndexController extends AbstractActionController
     private ReaSite $reaSite;
     private ReasonVocabularies $reasonVocabularies;
     private IdConstraintResolver $idConstraintResolver;
+    private StoredProposals $storedProposals;
 
     public function __construct(
         MasterViewQuery $masterViewQuery,
@@ -122,7 +125,8 @@ class IndexController extends AbstractActionController
         CurriculumTerms $curriculumTerms,
         ReaSite $reaSite,
         ReasonVocabularies $reasonVocabularies,
-        IdConstraintResolver $idConstraintResolver
+        IdConstraintResolver $idConstraintResolver,
+        StoredProposals $storedProposals
     ) {
         $this->masterViewQuery = $masterViewQuery;
         $this->curriculumSearch = $curriculumSearch;
@@ -148,6 +152,7 @@ class IndexController extends AbstractActionController
         $this->reaSite = $reaSite;
         $this->reasonVocabularies = $reasonVocabularies;
         $this->idConstraintResolver = $idConstraintResolver;
+        $this->storedProposals = $storedProposals;
     }
 
     /** Validador CSRF compartido por la vista (genera) y el apply (valida). */
@@ -260,6 +265,11 @@ class IndexController extends AbstractActionController
         $view->setVariable(
             'canBatchGovernance',
             (bool) $this->acl->userIsAllowed(GovernanceBatchController::class, 'preview')
+        );
+        // TASK-011: the batch AI proposal button, only where it can be used.
+        $view->setVariable(
+            'canBatchAi',
+            $this->aiEnabled() && (bool) $this->acl->userIsAllowed(AiBatchController::class, 'preview')
         );
         // D1: si el vocabulario degrada, la plantilla cae a texto libre.
         $view->setVariable('resourceTypeValues', $this->resourceTypeVocab->values());
@@ -541,7 +551,7 @@ class IndexController extends AbstractActionController
             return new JsonModel(['updated' => false, 'error' => 'unexpected']);
         }
 
-        return new JsonModel($result);
+        return new JsonModel($this->dropStoredProposal($id, $result));
     }
 
     /**
@@ -793,7 +803,7 @@ class IndexController extends AbstractActionController
                 'rejectReasons' => null,
                 'discardReasons' => null,
                 'governanceApplyUrl' => '',
-                'recatalog' => ['allowed' => false, 'reason' => '', 'current' => []],
+                'recatalog' => ['allowed' => false, 'reason' => '', 'current' => [], 'aiProposal' => null],
             ]);
         }
 
@@ -873,10 +883,50 @@ class IndexController extends AbstractActionController
     private function recatalogPanel(ItemRepresentation $item, array $current): array
     {
         if (!$this->acl->userIsAllowed(self::class, 'recatalog-apply')) {
-            return ['allowed' => false, 'reason' => '', 'current' => $current];
+            return ['allowed' => false, 'reason' => '', 'current' => $current, 'aiProposal' => null];
         }
         $code = $this->recatalogDenial($item);
-        return ['allowed' => null === $code, 'reason' => RecatalogRule::message($code), 'current' => $current];
+        return [
+            'allowed' => null === $code,
+            'reason' => RecatalogRule::message($code),
+            'current' => $current,
+            // TASK-011: only for who may propose with AI (curators), never a proposer.
+            'aiProposal' => null === $code && $this->acl->userIsAllowed(self::class, 'ai-propose')
+                ? $this->storedProposalView($item)
+                : null,
+        ];
+    }
+
+    /** The stored AI proposal of `$item` for the panel, titles resolved now; null when none is readable. */
+    private function storedProposalView(ItemRepresentation $item): ?array
+    {
+        $proposal = StoredProposal::firstOf(array_map(
+            static fn ($value): string => (string) $value->value(),
+            $item->value(StoredProposal::TERM, ['all' => true, 'default' => []])
+        ));
+        if (null === $proposal) {
+            return null;
+        }
+        return StoredProposal::forPanel($proposal, $item->modified(), function (int $id): ?string {
+            try {
+                return (string) $this->api()->read('items', $id)->getContent()->displayTitle();
+            } catch (\Exception $e) {
+                return null;
+            }
+        });
+    }
+
+    /** Removes the stored AI proposal after a successful action; never breaks it. */
+    private function dropStoredProposal(int $id, array $result): array
+    {
+        if (!empty($result['updated'])) {
+            try {
+                $this->storedProposals->remove($id);
+            } catch (\Throwable $e) {
+                $this->logger->err('OERManager stored AI proposal removal item ' . $id . ': ' . $e->getMessage());
+            }
+        }
+        return $result;
     }
 
     /**
@@ -1469,9 +1519,33 @@ class IndexController extends AbstractActionController
         return $this->workflowTransition(
             'discard',
             true,
-            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->workflowService
-                ->discard($item, $reason, $who)
+            fn (ItemRepresentation $item, WorkflowReason $reason, string $who) => $this->dropStoredProposal(
+                (int) $item->id(),
+                $this->workflowService->discard($item, $reason, $who)
+            )
         );
+    }
+
+    /** «Descartar propuesta» (TASK-011): removes the stored AI proposal of one REA. */
+    public function aiProposalDiscardAction()
+    {
+        if (!$this->getRequest()->isPost()) {
+            return new JsonModel(['error' => 'method']);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            return new JsonModel(['error' => 'csrf']);
+        }
+        $id = (int) $this->params()->fromPost('id');
+        // Same rule as re-cataloguing: who may change the REA's anchoring may drop its proposal.
+        if (null !== $this->recatalogRefusal($id)) {
+            return new JsonModel(['error' => 'denied']);
+        }
+        try {
+            return new JsonModel(['removed' => $this->storedProposals->remove($id)]);
+        } catch (\Throwable $e) {
+            $this->logger->err('OERManager stored AI proposal discard item ' . $id . ': ' . $e->getMessage());
+            return new JsonModel(['error' => 'unexpected']);
+        }
     }
 
     /** «Despublicar» (ADR-0023 §2): Publicado → Propuesto y privado, con motivo. */
@@ -1566,7 +1640,7 @@ class IndexController extends AbstractActionController
             'publish',
             $ajax,
             $id,
-            fn () => $this->workflowService->publish($item, $this->contributor()),
+            fn () => $this->dropStoredProposal($id, $this->workflowService->publish($item, $this->contributor())),
             $item
         );
     }

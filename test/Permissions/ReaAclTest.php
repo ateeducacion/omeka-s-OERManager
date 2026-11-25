@@ -44,7 +44,7 @@ final class ReaAclTest extends TestCase
                 'index', 'search', 'search-terms', 'curriculum-tree', 'set-visibility',
                 'recatalog-preview', 'recatalog-apply', 'governance-apply', 'recatalog-last-event',
                 'drawer-details', 'drawer-history', 'recatalog-undo',
-                'ai-propose', 'ai-propose-status', 'ai-propose-cancel', 'ai-evaluate',
+                'ai-propose', 'ai-propose-status', 'ai-propose-cancel', 'ai-evaluate', 'ai-proposal-discard',
                 'propose', 'reject-proposal', 'publish-proposal', 'discard', 'unpublish', 'reopen',
             ],
             StatsController::class => ['index', 'export', 'layout'],

@@ -63,6 +63,8 @@ class IndexControllerTest extends TestCase
     /** @var list<array<string,mixed>> */
     private array $searches = [];
     private bool $applyWrites = false;
+    /** TASK-011: texts of the item's `curation:data` values. */
+    private array $dataValues = [];
 
     protected function setUp(): void
     {
@@ -76,6 +78,13 @@ class IndexControllerTest extends TestCase
                 $value = $this->createMock(ValueRepresentation::class);
                 $value->method('value')->willReturn($this->workflowStatus);
                 return $value;
+            }
+            if (\OERManager\Service\Ai\StoredProposal::TERM === $term && !empty($options['all'])) {
+                return array_map(function (string $text) {
+                    $value = $this->createMock(ValueRepresentation::class);
+                    $value->method('value')->willReturn($text);
+                    return $value;
+                }, $this->dataValues);
             }
             return $options['default'] ?? null;
         });
@@ -1080,27 +1089,32 @@ class IndexControllerTest extends TestCase
         // Unreadable item: nothing to offer.
         $this->missingItem = true;
         $this->assertSame(
-            ['allowed' => false, 'reason' => '', 'current' => []],
+            ['allowed' => false, 'reason' => '', 'current' => [], 'aiProposal' => null],
             $this->controller->drawerDetailsAction()->getVariable('recatalog')
         );
         $this->missingItem = false;
 
         $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
         $this->assertSame(
-            ['allowed' => true, 'reason' => '', 'current' => $current],
+            ['allowed' => true, 'reason' => '', 'current' => $current, 'aiProposal' => null],
             $this->controller->drawerDetailsAction()->getVariable('recatalog')
         );
 
         $this->workflowStatus = WorkflowStatus::PROPOSED;
         $this->assertSame(
-            ['allowed' => false, 'reason' => RecatalogRule::message(RecatalogRule::STATUS), 'current' => $current],
+            [
+                'allowed' => false,
+                'reason' => RecatalogRule::message(RecatalogRule::STATUS),
+                'current' => $current,
+                'aiProposal' => null,
+            ],
             $this->controller->drawerDetailsAction()->getVariable('recatalog')
         );
 
         // Without the privilege at all the panel says nothing about re-cataloguing.
         $allowed = false;
         $this->assertSame(
-            ['allowed' => false, 'reason' => '', 'current' => $current],
+            ['allowed' => false, 'reason' => '', 'current' => $current, 'aiProposal' => null],
             $this->controller->drawerDetailsAction()->getVariable('recatalog')
         );
     }
@@ -1222,5 +1236,99 @@ class IndexControllerTest extends TestCase
             $this->assertSame($entered, $data['enteredQueue'] ?? null, $case);
             $this->assertSame($left, $data['leftQueue'] ?? null, $case);
         }
+    }
+
+    private function storedProposalText(): string
+    {
+        return \OERManager\Service\Ai\StoredProposal::encode([
+            'created' => '2026-11-25T10:31:07+00:00', 'model' => 'm', 'item_modified' => null,
+            'alignment' => ['lrmi:teaches' => [7]], 'justifications' => [],
+        ]);
+    }
+
+    /** TASK-011: the stored proposal reaches the panel only for who may propose with AI. */
+    public function testTheStoredProposalReachesOnlyUsersAllowedToProposeWithAi(): void
+    {
+        $this->dependencies['itemPanelData']->method('forItem')->willReturn(['current' => []]);
+        $aiAllowed = true;
+        $this->dependencies['acl']->method('userIsAllowed')
+            ->willReturnCallback(static function ($resource, $privilege) use (&$aiAllowed) {
+                return 'ai-propose' === $privilege ? $aiAllowed : 'recatalog-apply' === $privilege;
+            });
+        $this->params->query = ['id' => 7];
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
+        $this->dataValues = ['Otro uso', $this->storedProposalText()];
+
+        $proposal = $this->controller->drawerDetailsAction()->getVariable('recatalog')['aiProposal'];
+        $this->assertSame('2026-11-25T10:31:07+00:00', $proposal['created']);
+        $this->assertSame(['lrmi:teaches' => [['id' => 7, 'title' => 'Course']]], $proposal['alignment']);
+
+        $aiAllowed = false;
+        $this->assertNull($this->controller->drawerDetailsAction()->getVariable('recatalog')['aiProposal']);
+    }
+
+    public function testDiscardingTheProposalRemovesIt(): void
+    {
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador');
+        $this->params->post = ['id' => 7, 'csrf' => 'valid'];
+        $this->dependencies['storedProposals']->expects($this->once())->method('remove')->with(7)->willReturn(true);
+        $this->assertSame(['removed' => true], $this->data('aiProposalDiscard'));
+    }
+
+    public function testDiscardingTheProposalIsPostCsrfAndRuleGuarded(): void
+    {
+        $this->dependencies['storedProposals']->expects($this->never())->method('remove');
+        $this->request->post = false;
+        $this->assertSame('method', $this->data('aiProposalDiscard')['error']);
+        $this->request->post = true;
+        $this->params->post = ['id' => 7, 'csrf' => 'bad'];
+        $this->assertSame('csrf', $this->data('aiProposalDiscard')['error']);
+        // A proposer on a REA in the queue: the re-cataloguing rule refuses.
+        $this->params->post = ['id' => 7, 'csrf' => 'valid'];
+        $this->controller->plugins['identity'] = $this->user(3, 'rea_proponente');
+        $this->owner = $this->ownedBy(3);
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertSame('denied', $this->data('aiProposalDiscard')['error']);
+    }
+
+    public function testApplyPublishAndDiscardRemoveTheProposalButRejectKeepsIt(): void
+    {
+        $removed = [];
+        $this->dependencies['storedProposals']->method('remove')
+            ->willReturnCallback(static function (int $id) use (&$removed): bool {
+                $removed[] = $id;
+                return true;
+            });
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador', 'Curadora');
+        $this->request->ajax = true;
+        $this->dependencies['recatalogService']->method('apply')->willReturn(['updated' => true]);
+
+        $this->params->post = ['id' => 7, 'csrf' => 'valid', 'alignment' => ['lrmi:teaches' => [11]]];
+        $this->assertTrue($this->data('recatalogApply')['updated']);
+        $this->assertSame([7], $removed);
+
+        $this->params->post = ['id' => 7, 'csrf' => 'valid'];
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertTrue($this->data('publishProposal')['updated']);
+        $this->assertSame([7, 7], $removed);
+
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post = ['id' => 7, 'csrf' => 'valid', 'reason' => 'Revise'];
+        $this->assertTrue($this->data('rejectProposal')['updated']);
+        $this->assertSame([7, 7], $removed, 'a rejection keeps the proposal');
+
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertTrue($this->data('discard')['updated']);
+        $this->assertSame([7, 7, 7], $removed);
+    }
+
+    public function testARemovalFailureNeverBreaksTheAction(): void
+    {
+        $this->dependencies['storedProposals']->method('remove')->willThrowException(new \RuntimeException('db'));
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador', 'Curadora');
+        $this->request->ajax = true;
+        $this->params->post = ['id' => 7, 'csrf' => 'valid'];
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->assertTrue($this->data('publishProposal')['updated']);
     }
 }

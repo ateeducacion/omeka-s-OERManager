@@ -57,7 +57,9 @@ return [
                     // TASK-039: reasons to reject and to discard.
                     $container->get(Service\Workflow\ReasonVocabularies::class),
                     // TASK-070: «En cola» and «Sin campo obligatorio» as id sets.
-                    $container->get(Service\IdConstraintResolver::class)
+                    $container->get(Service\IdConstraintResolver::class),
+                    // TASK-011: the stored AI proposal (panel, removal hooks).
+                    $container->get(Service\Ai\StoredProposals::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {

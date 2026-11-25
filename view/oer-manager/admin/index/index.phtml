@@ -169,6 +169,7 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     'aiEnabled' => !empty($aiEnabled),
     'totalResults' => (int) ($totalResults ?? 0),
     'canBatchGovernance' => !empty($canBatchGovernance),
+    'canBatchAi' => !empty($canBatchAi),
 ]); ?>>
     <thead>
         <tr>

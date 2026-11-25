@@ -12,6 +12,7 @@
  * @var bool $aiEnabled
  * @var int $totalResults
  * @var bool $canBatchGovernance
+ * @var bool $canBatchAi
  */
 
 $escape = $this->plugin('escapeHtml');
@@ -19,6 +20,9 @@ $actionUrl = fn (string $action): string => $escape($this->url('admin/oer-manage
 ?>
     data-total-results="<?php echo (int) ($totalResults ?? 0); ?>"
     data-can-batch-governance="<?php echo !empty($canBatchGovernance) ? '1' : '0'; ?>"
+    data-can-batch-ai="<?php echo !empty($canBatchAi) ? '1' : '0'; ?>"
+    data-ai-batch-form-url="<?php echo $escape($this->url('admin/oer-manager-ai-batch', ['action' => 'form'])); ?>"
+    data-ai-proposal-discard-url="<?php echo $actionUrl('ai-proposal-discard'); ?>"
     data-set-visibility-url="<?php echo $actionUrl('set-visibility'); ?>"
     data-csrf-token="<?php echo $escape($csrfToken ?? ''); ?>"
     data-search-terms-url="<?php echo $actionUrl('search-terms'); ?>"
