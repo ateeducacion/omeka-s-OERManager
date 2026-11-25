@@ -538,6 +538,12 @@ return [
                     $container->get(Service\Ai\StoredProposalWriter::class)
                 );
             },
+            Service\Ai\BatchProposeEligibility::class => function ($container) {
+                return new Service\Ai\BatchProposeEligibility(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\IdConstraintResolver::class)
+                );
+            },
         ],
     ],
     'form_elements' => [

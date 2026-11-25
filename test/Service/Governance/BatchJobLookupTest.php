@@ -264,4 +264,18 @@ final class BatchJobLookupTest extends TestCase
         $this->assertSame(['state' => 'none', 'jobId' => null], $lookup->undoState(99));
         $this->assertSame(['state' => 'done', 'jobId' => 21], $lookup->recent(3)[0]['undo']);
     }
+
+    public function testIsActiveSeesOnlyALiveJobOfTheClass(): void
+    {
+        $now = static fn (): \DateTimeImmutable => new \DateTimeImmutable('2026-11-25T12:00:00+00:00');
+        $lookup = fn (array $jobs) => new BatchJobLookup($this->entityManager(null, $jobs), $now);
+
+        $this->assertFalse($lookup([])->isActive('Ai\Batch'));
+        $this->assertFalse($lookup([$this->job('Ai\Batch', 3, 'completed', [], 1, '2026-11-25T11:30:00+00:00')])->isActive('Ai\Batch'));
+        $this->assertFalse($lookup([$this->job('Other', 3, 'in_progress', [], 1, '2026-11-25T11:30:00+00:00')])->isActive('Ai\Batch'));
+        $this->assertTrue($lookup([$this->job('Ai\Batch', 3, 'in_progress', [], 1, '2026-11-25T11:30:00+00:00')])->isActive('Ai\Batch'));
+        $this->assertTrue($lookup([$this->job('Ai\Batch', 3, 'starting', [], 1, null)])->isActive('Ai\Batch'));
+        // Killed hours ago: Omeka never marks it, so it must not block launching forever.
+        $this->assertFalse($lookup([$this->job('Ai\Batch', 3, 'in_progress', [], 1, '2026-11-25T09:00:00+00:00')])->isActive('Ai\Batch'));
+    }
 }

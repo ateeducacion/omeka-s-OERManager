@@ -69,6 +69,27 @@ class BatchJobLookup
     }
 
     /**
+     * True when a Job of `$class` is starting, running or stopping and has not
+     * died (TASK-011: one AI batch at a time, so the same REA are never paid
+     * for twice). A killed Job stays `in_progress` forever, so staleness lets
+     * the next batch start.
+     */
+    public function isActive(string $class): bool
+    {
+        $jobs = $this->entityManager->getRepository('Omeka\Entity\Job')->findBy(
+            ['class' => $class, 'status' => ['starting', 'in_progress', 'stopping']],
+            ['id' => 'DESC'],
+            20
+        );
+        foreach ($jobs as $job) {
+            if (!$this->hasDied((string) $job->getStatus(), $job->getStarted())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * The most recent finished or dead governance batches, newest first: the
      * owner's, or everyone's when $ownerId is null (a site_admin). Queried by
      * class (+owner) alone, newest first, bounded to `$limit * 2` rows and
