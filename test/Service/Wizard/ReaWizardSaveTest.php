@@ -27,7 +27,7 @@ final class ReaWizardSaveTest extends TestCase
 
     private const PROPS = ['dcterms:title' => 1, 'dcterms:description' => 4, 'lrmi:learningResourceType' => 50,
         'dcterms:license' => 49, 'dcterms:creator' => 2, 'curation:status' => 90, 'curation:note' => 91,
-        'dcterms:provenance' => 51, 'schema:url' => 60];
+        'dcterms:provenance' => 51, 'schema:url' => 60, 'dcterms:references' => 61];
 
     private $api;
     private $writer;
@@ -108,7 +108,7 @@ final class ReaWizardSaveTest extends TestCase
             ['term' => 'dcterms:description', 'control' => 'textarea', 'dataType' => 'literal', 'options' => []],
             ['term' => 'lrmi:learningResourceType', 'control' => 'cards', 'dataType' => 'customvocab:7',
                 'options' => [['value' => 'Vídeo'], ['value' => 'Juego']]],
-            ['term' => 'schema:url', 'control' => 'url', 'dataType' => 'uri', 'options' => []],
+            ['term' => 'dcterms:references', 'control' => 'url', 'dataType' => 'uri', 'options' => []],
             ['term' => 'dcterms:license', 'control' => 'licence', 'dataType' => 'customvocab:3', 'options' => []],
             ['term' => 'dcterms:creator', 'control' => 'text', 'dataType' => 'literal', 'options' => []],
         ]];
@@ -125,7 +125,7 @@ final class ReaWizardSaveTest extends TestCase
     {
         return $over + [
             'values' => ['dcterms:title' => ['Fracciones'], 'dcterms:description' => ['Compras y recetas'],
-                'lrmi:learningResourceType' => ['Vídeo'], 'schema:url' => ['https://example.org/x'],
+                'lrmi:learningResourceType' => ['Vídeo'], 'dcterms:references' => ['https://example.org/x'],
                 'dcterms:license' => ['https://creativecommons.org/licenses/by-sa/4.0/'], 'dcterms:creator' => ['Ana']],
             'resource' => ['kind' => 'upload', 'token' => $this->token()],
             'alignment' => ['lrmi:educationalLevel' => [11], 'schema:about' => [21], 'lrmi:teaches' => [31]],
@@ -170,7 +170,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame([['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token]], $data['o:media']);
         $this->assertSame([['type' => 'literal', 'property_id' => 1, '@value' => 'Fracciones']], $data['dcterms:title']);
         $this->assertSame([['type' => 'customvocab:7', 'property_id' => 50, '@value' => 'Vídeo']], $data['lrmi:learningResourceType']);
-        $this->assertSame([['type' => 'uri', 'property_id' => 60, '@id' => 'https://example.org/x']], $data['schema:url']);
+        $this->assertSame([['type' => 'uri', 'property_id' => 61, '@id' => 'https://example.org/x']], $data['dcterms:references']);
         $this->assertArrayNotHasKey('dcterms:license', $data, 'governance terms go through GovernanceService');
         $this->assertArrayNotHasKey('curation:status', $data);
         // Template met: set with an append-only commit that clears nothing.
@@ -204,14 +204,22 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame([], $this->creates);
     }
 
-    public function testAUrlIsIngestedByTheCoreUrlIngesterAndABadOneRefused(): void
+    /** Code review of PR #100: Omeka's `url` ingester downloads and refuses web pages, so a link is a value. */
+    public function testALinkIsStoredAsAUriValueNotDownloaded(): void
     {
-        $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'https://example.org/r']]), self::schema(), null, 7, 'Ana P');
-        $this->assertSame([['o:ingester' => 'url', 'ingest_url' => 'https://example.org/r']], $this->creates[0][1]['o:media']);
-        $this->assertSame(
-            ['ok' => false, 'error' => 'url_invalid'],
-            $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'javascript:alert(1)']]), self::schema(), null, 7, 'Ana P')
-        );
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'https://ejemplo.es/recursos/matemáticas/']]), self::schema(), null, 7, 'Ana P');
+        $data = $this->creates[0][1];
+        $this->assertArrayNotHasKey('o:media', $data);
+        $this->assertSame([['type' => 'uri', 'property_id' => 60, '@id' => 'https://ejemplo.es/recursos/matemáticas/']], $data['schema:url']);
+        foreach (['javascript:alert(1)', 'https://', 'https://x y', 'ftp://example.org/a'] as $bad) {
+            $this->assertSame(
+                ['ok' => false, 'error' => 'url_invalid'],
+                $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => $bad]]), self::schema(), null, 7, 'Ana P'),
+                $bad
+            );
+        }
     }
 
     public function testAnApiValidationErrorAnswersItsMessages(): void
@@ -285,7 +293,7 @@ final class ReaWizardSaveTest extends TestCase
         $existing = $this->item(100, 'Fracciones');
         $existing->method('media')->willReturn([$old]);
         $existing->method('resourceTemplate')->willReturn(null);
-        $this->api->expects($this->once())->method('delete')->with('media', 55);
+        $this->api->expects($this->once())->method('batchDelete')->with('media', [55]);
 
         $state = $this->state();
         $result = $this->save()->save($state, self::schema(), $existing, 7, 'Ana P');
@@ -293,7 +301,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertTrue($result['ok']);
         [$resource, $id, $data, , $options] = $this->updates[0];
         $this->assertSame(['items', 100], [$resource, $id]);
-        $this->assertSame([1, 4, 50, 60], $data['clear_property_values'], 'title, description, type, url; never provenance');
+        $this->assertSame([1, 4, 50, 61], $data['clear_property_values'], 'only changed data terms; never provenance');
         $this->assertSame(['isPartial' => true, 'collectionAction' => 'append'], $options);
         $this->assertArrayNotHasKey('o:is_public', $data);
         $this->assertSame('media', $this->creates[0][0]);
@@ -306,7 +314,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->governance->method('apply')->willReturn(['updated' => true]);
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
         $existing = $this->item(100, 'Fracciones');
-        $this->api->expects($this->never())->method('delete');
+        $this->api->expects($this->never())->method('batchDelete');
         $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
         $this->assertSame([], $this->creates);
     }
@@ -347,6 +355,77 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame(
             [['type' => 'customvocab:7', 'property_id' => 50, '@id' => 'https://example.org/video', 'o:label' => 'Vídeo']],
             $this->creates[0][1]['lrmi:learningResourceType']
+        );
+    }
+
+    public function testAResumeRewritesOnlyTheTermsThatChanged(): void
+    {
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $existing = $this->item(100, 'Fracciones', [
+            'dcterms:title' => [$this->value('Fracciones')],
+            'dcterms:description' => [$this->value('Compras y recetas')],
+        ]);
+        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $this->assertSame([50, 61], $this->updates[0][2]['clear_property_values']);
+        $this->assertArrayNotHasKey('dcterms:title', $this->updates[0][2]);
+    }
+
+    public function testAResumeToALinkReplacesTheFilesAndAnUploadClearsTheLink(): void
+    {
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $old = $this->createMock(MediaRepresentation::class);
+        $old->method('id')->willReturn(55);
+        $existing = $this->item(100, 'Fracciones');
+        $existing->method('media')->willReturn([$old]);
+        $this->api->expects($this->once())->method('batchDelete')->with('media', [55]);
+        $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'https://example.org/r']]), self::schema(), $existing, 7, 'Ana P');
+        $this->assertContains(60, $this->updates[0][2]['clear_property_values']);
+        $this->assertSame('https://example.org/r', $this->updates[0][2]['schema:url'][0]['@id']);
+
+        $this->updates = [];
+        $linked = $this->item(101, 'Fracciones', ['schema:url' => [$this->value('', null, 'uri', 'https://example.org/r')]]);
+        $this->save()->save($this->state(), self::schema(), $linked, 7, 'Ana P');
+        $this->assertContains(60, $this->updates[0][2]['clear_property_values']);
+        $this->assertArrayNotHasKey('schema:url', $this->updates[0][2]);
+    }
+
+    /** Code review of PR #100: the template is kept only if the stored REA already meets it. */
+    public function testAResumeDropsTheTemplateUntilTheStoredReaMeetsItAndSetsItAtTheEnd(): void
+    {
+        $this->required = ['dcterms:title', 'dcterms:license'];
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $existing = $this->item(100, 'Fracciones', ['dcterms:title' => [$this->value('Fracciones')]]);
+        $existing->method('resourceTemplate')->willReturn(new \stdClass());
+        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $this->assertNull($this->updates[0][2]['o:resource_template']);
+        $this->assertSame([[100, [], ['o:resource_template' => ['o:id' => 12]]]], $this->commits);
+    }
+
+    /** Code review of PR #100: once the REA exists, every failure answers its id. */
+    public function testAFailureAfterTheCreationAnswersTheId(): void
+    {
+        $exception = new ValidationException('refused');
+        $this->governance->method('apply')->willThrowException($exception);
+        $this->assertSame(
+            ['ok' => false, 'id' => 100, 'step' => 'governance', 'error' => 'invalid', 'messages' => []],
+            $this->save()->save($this->state(), self::schema(), null, 7, 'Ana P')
+        );
+    }
+
+    public function testAnUnexpectedFailureWhileProposingAnswersTheIdAndTheClass(): void
+    {
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $this->api = $this->createMock(ApiManager::class);
+        $this->api->method('search')->willReturn($this->response([$this->classRep(9)]));
+        $this->api->method('create')->willReturn($this->response($this->item(100, 'x')));
+        $this->api->method('read')->willThrowException(new \LogicException('boom'));
+        $this->assertSame(
+            ['ok' => false, 'id' => 100, 'step' => 'propose', 'error' => 'unexpected', 'exception' => 'LogicException'],
+            $this->save()->save($this->state(['propose' => true]), self::schema(), null, 7, 'Ana P')
         );
     }
 }

@@ -262,9 +262,12 @@ export function licenceFor(declared, options) {
     return '';
   }
   let code = '';
+  if (/all rights reserved|derechos reservados|copyright/.test(text)) {
+    return '';
+  }
   if (/public domain|dominio publico|cc0/.test(text)) {
     code = 'zero';
-  } else if (/attribution|reconocimiento|\bby\b|cc[ -]by/.test(text)) {
+  } else if (/creative commons|attribution|reconocimiento|\bcc[ -]?by/.test(text)) {
     const nc = /non.?commercial|no comercial|\bnc\b/.test(text);
     const sa = /share.?alike|compartir igual|\bsa\b/.test(text);
     const nd = /no.?deriv|sin obra derivada|\bnd\b/.test(text);
@@ -300,12 +303,17 @@ export function fromItem(item) {
   if (!item) {
     return state;
   }
-  const align = item.alignment || {};
+  const align = item.alignment && !Array.isArray(item.alignment) ? item.alignment : {};
   state.id = item.id;
   state.status = item.status || null;
   state.rejection = item.rejection || '';
-  state.values = item.values || {};
-  state.resource = item.media ? { kind: 'keep', ...item.media } : null;
+  // PHP sends an empty map as []: string keys set on an Array are lost by JSON.stringify.
+  state.values = item.values && !Array.isArray(item.values) ? item.values : {};
+  if (item.media) {
+    state.resource = { kind: 'keep', ...item.media };
+  } else if (item.link) {
+    state.resource = { kind: 'url', url: item.link };
+  }
   state.stage = item.stage ? { id: item.stage, title: '' } : null;
   state.courses = (align[COURSE_TERM] || []).map((c) => ({ id: c.id, title: c.title }));
   const subjects = align[SUBJECT_TERM] || [];
@@ -321,4 +329,16 @@ export function fromItem(item) {
   state.assesses = (align[ASSESSES_TERM] || []).map((t) => ({ id: t.id, title: t.title }));
   state.axes = (align[AXES_TERM] || []).map((t) => ({ id: t.id, title: t.title }));
   return state;
+}
+
+/** An http(s) link as ReaWizardSave::isWebLink() accepts it (IRIs included). */
+export function isWebLink(url) {
+  const text = String(url || '').trim();
+  return text.length <= 2000 && /^https?:\/\/[^\s/?#]+\S*$/iu.test(text) && !/[\u0000-\u001f\u007f<>"]/u.test(text);
+}
+
+/** The field shows one value: editing it replaces the first and keeps the others. */
+export function withFirstValue(list, value) {
+  const rest = (list || []).slice(1);
+  return String(value).trim() === '' ? rest : [value, ...rest];
 }

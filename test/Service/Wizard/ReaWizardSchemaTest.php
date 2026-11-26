@@ -20,7 +20,7 @@ final class ReaWizardSchemaTest extends TestCase
             self::prop('dcterms:title', ['literal'], true, 'Título del recurso'),
             self::prop('dcterms:description'),
         ]);
-        $this->assertSame(['dcterms:title', 'dcterms:description'], array_column($schema['data'], 'term'));
+        $this->assertSame(['dcterms:title', 'dcterms:description', 'dcterms:license'], array_column($schema['data'], 'term'));
         $this->assertSame('Título del recurso', $schema['data'][0]['label']);
         $this->assertSame('L dcterms:description', $schema['data'][1]['label']);
         $this->assertTrue($schema['data'][0]['required']);
@@ -35,9 +35,8 @@ final class ReaWizardSchemaTest extends TestCase
             self::prop('lrmi:learningResourceType', ['customvocab:7']),
             self::prop('dcterms:language', ['customvocab:9']),
             self::prop('dcterms:license', ['customvocab:3']),
-            self::prop('schema:url', ['uri']),
+            self::prop('dcterms:references', ['uri']),
             self::prop('dcterms:creator', ['literal']),
-            self::prop('schema:isPartOf', ['resource:item']),
         ]);
         $controls = array_column($schema['data'], 'control', 'term');
         $this->assertSame([
@@ -46,9 +45,8 @@ final class ReaWizardSchemaTest extends TestCase
             'lrmi:learningResourceType' => 'cards',
             'dcterms:language' => 'select',
             'dcterms:license' => 'licence',
-            'schema:url' => 'url',
+            'dcterms:references' => 'url',
             'dcterms:creator' => 'text',
-            'schema:isPartOf' => 'text',
         ], $controls);
         $vocabs = array_column($schema['data'], 'vocabId', 'term');
         $this->assertSame(7, $vocabs['lrmi:learningResourceType']);
@@ -60,13 +58,28 @@ final class ReaWizardSchemaTest extends TestCase
     {
         $terms = array_merge(ReaWizardSchema::ANCHORING_TERMS, ReaWizardSchema::MACHINE_TERMS);
         $schema = ReaWizardSchema::fromTemplate(array_map(fn (string $t) => self::prop($t), [...$terms, 'dcterms:title']));
-        $this->assertSame(['dcterms:title'], array_column($schema['data'], 'term'));
+        $this->assertSame(['dcterms:title', 'dcterms:license'], array_column($schema['data'], 'term'));
         $this->assertSame(ReaWizardSchema::ANCHORING_TERMS, $schema['anchoring']);
     }
 
-    public function testAnEmptyTemplateHasNoFieldsButStillAnchors(): void
+    public function testTheTitleAndTheLicenceAreAlwaysThereEvenIfTheTemplateLacksThem(): void
     {
-        $this->assertSame(['data' => [], 'anchoring' => ReaWizardSchema::ANCHORING_TERMS], ReaWizardSchema::fromTemplate([]));
+        $schema = ReaWizardSchema::fromTemplate([self::prop('dcterms:description')]);
+        $this->assertSame(['dcterms:title', 'dcterms:description', 'dcterms:license'], array_column($schema['data'], 'term'));
+        $this->assertSame(['text', 'textarea', 'licence'], array_column($schema['data'], 'control'));
+        $this->assertSame(ReaWizardSchema::ANCHORING_TERMS, $schema['anchoring']);
+    }
+
+    /** Code review of PR #100: a resource value (the project) cannot be edited as text, so it is not touched. */
+    public function testResourceValuedAndLinkTermsAreNeverDataFields(): void
+    {
+        $schema = ReaWizardSchema::fromTemplate([
+            self::prop('dcterms:title'),
+            self::prop('schema:isPartOf', ['resource:item']),
+            self::prop('dcterms:hasPart', ['resource']),
+            self::prop('schema:url', ['uri']),
+        ]);
+        $this->assertSame(['dcterms:title', 'dcterms:license'], array_column($schema['data'], 'term'));
     }
 
     public function testHelpOnlyForTheKnownTerms(): void
@@ -79,7 +92,7 @@ final class ReaWizardSchemaTest extends TestCase
     public function testATermListedTwiceIsShownOnce(): void
     {
         $schema = ReaWizardSchema::fromTemplate([self::prop('dcterms:title'), self::prop('dcterms:title')]);
-        $this->assertCount(1, $schema['data']);
+        $this->assertSame(['dcterms:title', 'dcterms:license'], array_column($schema['data'], 'term'));
     }
 
     public function testRequiredTermsAndGovernance(): void

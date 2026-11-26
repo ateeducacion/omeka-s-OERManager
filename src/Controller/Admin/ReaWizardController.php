@@ -60,7 +60,8 @@ class ReaWizardController extends AbstractActionController
         'title_required' => 'Para guardar un borrador basta con el título. Escríbelo en el paso «Datos».', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
         'upload_expired' => 'El fichero subido ya no está disponible. Vuelve a subirlo en el paso «Tu recurso».', // @translate
-        'url_invalid' => 'El enlace no es válido: debe empezar por http:// o https://.', // @translate
+        // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
+        'url_invalid' => 'El enlace no es válido: revisa que esté completo y empiece por http:// o https://.', // @translate
         'invalid' => 'El catálogo no ha aceptado el REA.', // @translate
         'denied' => 'No tienes permiso para guardar este REA.', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
@@ -239,6 +240,15 @@ class ReaWizardController extends AbstractActionController
             $this->logger->err('OERManager wizard save failed: ' . get_class($e));
             return $this->failure('unexpected');
         }
+        if (isset($result['exception'])) {
+            // The class only: never the catalogue's content or the user's data.
+            $this->logger->err(sprintf(
+                'OERManager wizard save, step %s: %s',
+                (string) ($result['step'] ?? '?'),
+                (string) $result['exception']
+            ));
+            unset($result['exception']);
+        }
         if (!$result['ok']) {
             $code = (string) $result['error'];
             return new JsonModel($result + ['message' => self::MESSAGES[$code] ?? self::MESSAGES['unexpected']]);
@@ -395,8 +405,10 @@ class ReaWizardController extends AbstractActionController
             'modified' => null === $item->modified() ? 0 : $item->modified()->getTimestamp() * 1000,
             'status' => $status ?? 'Borrador', // no status = Borrador (WorkflowStatus::normalize)
             'rejection' => implode(' — ', $notes),
-            'values' => $values,
-            'alignment' => $alignment,
+            // An empty map must reach the browser as `{}`: as `[]` its string keys would be lost.
+            'values' => $values ?: new \stdClass(),
+            'alignment' => $alignment ?: new \stdClass(),
+            'link' => self::link($item),
             'stage' => $stage,
             'media' => null === $media ? null : [
                 'name' => (string) ($media->source() ?: $media->filename()),
@@ -404,6 +416,17 @@ class ReaWizardController extends AbstractActionController
                 'mediaType' => (string) $media->mediaType(),
             ],
         ];
+    }
+
+    /** The main resource when it is a link (ReaWizardSchema::LINK_TERM), or null. */
+    private static function link(ItemRepresentation $item): ?string
+    {
+        $value = $item->value(ReaWizardSchema::LINK_TERM);
+        if (null === $value) {
+            return null;
+        }
+        $uri = (string) $value->uri();
+        return '' !== $uri ? $uri : (string) $value->value();
     }
 
     private function guard(): ?JsonModel

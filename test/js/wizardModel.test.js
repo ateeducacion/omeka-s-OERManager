@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   missing, missingItems, firstIncomplete, summary, savePayload, recoverable, storageKey,
-  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem,
+  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue,
 } from '../../asset/js/core/wizardModel.js';
 
 const schema = { data: [
@@ -179,4 +179,34 @@ test('a resumed REA becomes the wizard state', () => {
   assert.deepEqual(state.subject, { name: 'Matemáticas', ids: [21] });
   assert.deepEqual(state.teaches, [{ id: 31, title: 'Fracciones' }]);
   assert.deepEqual(state.axes, [{ id: 70, title: 'Sostenibilidad' }]);
+});
+
+test('a licence is only read from Creative Commons or public-domain wording', () => {
+  const options = [{ uri: 'https://creativecommons.org/licenses/by/4.0/' }];
+  assert.equal(licenceFor('Copyright, all rights reserved by Departamento X', options), '');
+  assert.equal(licenceFor('todos los derechos reservados por el centro', options), '');
+  assert.equal(licenceFor('Reconocimiento 4.0', options), options[0].uri);
+});
+
+test('a resumed REA without data or with a link keeps a usable state', () => {
+  const state = fromItem({ id: 5, values: [], alignment: [], link: 'https://example.org/r', media: null });
+  assert.deepEqual(state.values, {});
+  state.values['dcterms:title'] = ['Nuevo'];
+  assert.match(JSON.stringify(savePayload(state, false)), /"dcterms:title":\["Nuevo"\]/);
+  assert.deepEqual(state.resource, { kind: 'url', url: 'https://example.org/r' });
+});
+
+test('links are checked as the server checks them', () => {
+  assert.equal(isWebLink('https://ejemplo.es/recursos/matemáticas/'), true);
+  assert.equal(isWebLink('http://example.org'), true);
+  for (const bad of ['https://', 'javascript:alert(1)', 'https://a b', 'ftp://x.org', 'https://x.org/<b>']) {
+    assert.equal(isWebLink(bad), false, bad);
+  }
+});
+
+test('editing the first value keeps the others', () => {
+  assert.deepEqual(withFirstValue(['Ana', 'Luis', 'Eva'], 'Ana María'), ['Ana María', 'Luis', 'Eva']);
+  assert.deepEqual(withFirstValue(['Ana', 'Luis'], ''), ['Luis']);
+  assert.deepEqual(withFirstValue(undefined, 'Ana'), ['Ana']);
+  assert.deepEqual(withFirstValue([], ''), []);
 });

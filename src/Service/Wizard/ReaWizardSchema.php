@@ -31,7 +31,15 @@ final class ReaWizardSchema
     /** Never shown: WorkflowService, the stored AI proposal and the audit ledger own them. */
     public const MACHINE_TERMS = ['curation:status', 'curation:note', 'curation:data', 'dcterms:provenance'];
 
+    /**
+     * The main resource when it is a link (code review of PR #100): Omeka's `url`
+     * ingester downloads its target and refuses a web page, so a link is a URI
+     * value of the REA, managed by step ①, never a data field.
+     */
+    public const LINK_TERM = 'schema:url';
+
     public const RESOURCE_TYPE_TERM = 'lrmi:learningResourceType';
+    public const LICENCE_TERM = 'dcterms:license';
     public const DESCRIPTION_TERM = 'dcterms:description';
     public const TITLE_TERM = 'dcterms:title';
 
@@ -59,12 +67,15 @@ final class ReaWizardSchema
         $seen = [];
         foreach ($properties as $property) {
             $term = (string) $property['term'];
-            $hidden = in_array($term, self::ANCHORING_TERMS, true) || in_array($term, self::MACHINE_TERMS, true);
+            $dataType = (string) ($property['dataTypes'][0] ?? 'literal');
+            // A resource value (the project, `schema:isPartOf`) cannot be edited as text: the
+            // wizard neither shows nor clears it (code review of PR #100).
+            $hidden = in_array($term, self::ANCHORING_TERMS, true) || in_array($term, self::MACHINE_TERMS, true)
+                || self::LINK_TERM === $term || str_starts_with($dataType, 'resource');
             if ($hidden || isset($seen[$term])) {
                 continue;
             }
             $seen[$term] = true;
-            $dataType = (string) ($property['dataTypes'][0] ?? 'literal');
             $alternate = trim((string) ($property['alternateLabel'] ?? ''));
             $data[] = [
                 'term' => $term,
@@ -76,7 +87,29 @@ final class ReaWizardSchema
                 'help' => self::HELP[$term] ?? '',
             ];
         }
+        // The title (a draft needs it) and the licence (proposing needs it) are always offered,
+        // even with a template that lacks them: otherwise «Le falta» could never be cleared.
+        if (!isset($seen[self::TITLE_TERM])) {
+            array_unshift($data, self::synthetic(self::TITLE_TERM, 'Título', 'text')); // @translate
+        }
+        if (!isset($seen[self::LICENCE_TERM])) {
+            $data[] = self::synthetic(self::LICENCE_TERM, 'Licencia', 'licence'); // @translate
+        }
         return ['data' => $data, 'anchoring' => self::ANCHORING_TERMS];
+    }
+
+    /** @return array<string,mixed> */
+    private static function synthetic(string $term, string $label, string $control): array
+    {
+        return [
+            'term' => $term,
+            'label' => $label,
+            'required' => false,
+            'control' => $control,
+            'dataType' => 'licence' === $control ? 'uri' : 'literal',
+            'vocabId' => null,
+            'help' => self::HELP[$term] ?? '',
+        ];
     }
 
     /**
@@ -104,7 +137,7 @@ final class ReaWizardSchema
 
     private static function control(string $term, string $dataType): string
     {
-        if (GovernanceFields::LICENCE === $term) {
+        if (self::LICENCE_TERM === $term) {
             return 'licence';
         }
         if (self::DESCRIPTION_TERM === $term) {

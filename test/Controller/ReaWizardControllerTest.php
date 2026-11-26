@@ -307,6 +307,34 @@ final class ReaWizardControllerTest extends TestCase
         $this->assertSame('unexpected', $this->data('save')['error']);
     }
 
+    public function testAFailureAfterTheCreationIsLoggedByClassAndAnswersTheId(): void
+    {
+        $this->save->method('save')->willReturn(['ok' => false, 'id' => 100, 'step' => 'propose', 'error' => 'unexpected',
+            'exception' => 'LogicException']);
+        $this->logger->expects($this->once())->method('err')->with('OERManager wizard save, step propose: LogicException');
+        $this->params->post = ['csrf' => 'valid', 'state' => '{}'];
+        $data = $this->data('save');
+        $this->assertSame(100, $data['id']);
+        $this->assertArrayNotHasKey('exception', $data);
+    }
+
+    /** Code review of PR #100: an empty map must reach the browser as an object, not as []. */
+    public function testAResumedReaWithoutDataSendsObjectsAndItsLink(): void
+    {
+        $item = $this->item(100, '', ['schema:url' => [$this->value('', null, 'uri', 'https://example.org/r')]]);
+        $owner = $this->createMock(UserRepresentation::class);
+        $owner->method('id')->willReturn(7);
+        $item->method('owner')->willReturn($owner);
+        $item->method('userIsAllowed')->willReturn(true);
+        $this->item = $item;
+        $this->params->query = ['id' => '100'];
+        $state = $this->controller->indexAction()->getVariable('config')['item'];
+        $this->assertSame('{}', json_encode($state['values']));
+        $this->assertSame('{}', json_encode($state['alignment']));
+        $this->assertSame('https://example.org/r', $state['link']);
+        $this->assertNull($state['media']);
+    }
+
     public function testAnUnreadableOrOversizedStateIsRefused(): void
     {
         foreach (['not json', '"a string"', str_repeat('x', 300000)] as $raw) {

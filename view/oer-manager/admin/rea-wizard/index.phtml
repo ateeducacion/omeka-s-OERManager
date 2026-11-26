@@ -17,65 +17,133 @@ $escape = $this->plugin('escapeHtml');
 $escapeAttr = $this->plugin('escapeHtmlAttr');
 $config = $config ?? null;
 
-// Every fixed string the script shows, translated here (msgid => text).
+// Every fixed string the script shows, keyed by its msgid so that `t()` in
+// asset/js/wizard.js finds the translation (NFR-005). The server's messages
+// and the fields' help come translated too.
+$msgids = [
+    'Tu recurso', // @translate
+    'Datos', // @translate
+    'Curso y materia', // @translate
+    'Revisar y proponer', // @translate
+    'Estás aquí', // @translate
+    'Hecho', // @translate
+    'Por completar', // @translate
+    'Más adelante', // @translate
+    'Paso %d de 4', // @translate
+    'Sube el fichero de tu recurso o pega el enlace donde ya está publicado. Solo uno por REA.', // @translate
+    'Sube un fichero', // @translate
+    'Arrástralo hasta aquí o búscalo en tu equipo.', // @translate
+    'Elegir fichero', // @translate
+    'Hasta %s · eXeLearning (.elpx), .zip, PDF, imagen, audio, vídeo u ofimática', // @translate
+    'O pega un enlace', // @translate
+    'Si tu recurso ya está en otra web, copia aquí su dirección.', // @translate
+    'Usar este enlace', // @translate
+    'Subiendo «%s»…', // @translate
+    'Cambiar el fichero', // @translate
+    'Cambiar el enlace', // @translate
+    'Sustituir el recurso', // @translate
+    'Mantener el actual', // @translate
+    'Enlace a otra web', // @translate
+    'Fichero actual del REA', // @translate
+    'subido', // @translate
+    'Hemos rellenado algunos datos a partir del fichero. Revísalos en el paso siguiente.', // @translate
+    'No podemos usar «%s»', // @translate
+    'Escribe un enlace que empiece por http:// o https://.', // @translate
+    'Datos del recurso', // @translate
+    'Cuéntanos qué es. Lo marcado como obligatorio hace falta para proponerlo.', // @translate
+    'obligatorio', // @translate
+    'opcional', // @translate
+    'Del fichero', // @translate
+    'Elige una opción…', // @translate
+    'Elige una licencia…', // @translate
+    '¿Para qué curso y materia?', // @translate
+    'Así lo encontrará el profesorado que busca recursos para su clase.', // @translate
+    'Etapa', // @translate
+    'Curso', // @translate
+    'Materia', // @translate
+    'Saberes', // @translate
+    'Criterios', // @translate
+    'Ejes', // @translate
+    'Sin elegir', // @translate
+    'Ninguno', // @translate
+    'Opcional', // @translate
+    '%d marcados', // @translate
+    '%d marcado', // @translate
+    '¿En qué etapa se usa?', // @translate
+    '¿En qué curso o cursos?', // @translate
+    'Puedes marcar más de uno si sirve para varios.', // @translate
+    '¿De qué materia?', // @translate
+    'Materias de %s.', // @translate
+    '¿Qué saberes trabaja?', // @translate
+    'Criterios de evaluación', // @translate
+    'Marca los saberes de %s que el alumnado trabaja con tu recurso. Debajo de cada uno, su código en el currículo.', // @translate
+    'Opcional. Marca los criterios con los que se puede evaluar lo que hace el alumnado. Puedes saltar esta parte.', // @translate
+    'Ejes temáticos', // @translate
+    'Marca los ejes que trabaja tu recurso. Puedes dejarlo en blanco.', // @translate
+    'Buscar en la lista', // @translate
+    'Buscar, por ejemplo: fracciones', // @translate
+    'Nada coincide con «%s». Prueba con otra palabra.', // @translate
+    'Esta materia no tiene términos vigentes en el currículo.', // @translate
+    'No hay nada que elegir aquí todavía.', // @translate
+    'Cargando…', // @translate
+    'No hay currículo disponible para anclar el recurso.', // @translate
+    'Puedes guardar el borrador y continuar más tarde. Si el problema sigue, avisa al equipo de la Mediateca.', // @translate
+    'No se pudo cargar el currículo. Vuelve a intentarlo.', // @translate
+    'Volver a intentarlo', // @translate
+    'Hasta ahora', // @translate
+    'Comprueba que todo está bien. Al proponerlo, el equipo de curación lo revisará antes de publicarlo.', // @translate
+    'Le falta', // @translate
+    'Está todo lo necesario para proponerlo.', // @translate
+    'Completar', // @translate
+    'Puede que ya esté en la Mediateca', // @translate
+    'Hay otro REA con el mismo título o con un fichero del mismo nombre. Ábrelo para comprobarlo. Si es distinto, puedes proponer el tuyo igualmente.', // @translate
+    'mismo título', // @translate
+    'mismo nombre de fichero', // @translate
+    'Cambiar', // @translate
+    'Título', // @translate
+    'Todavía no has añadido ningún fichero ni enlace.', // @translate
+    'Atrás', // @translate
+    'Siguiente', // @translate
+    'Revisar', // @translate
+    'Guardar borrador', // @translate
+    'Guardar y proponer', // @translate
+    'Guardando…', // @translate
+    'Completa lo que falta para poder proponerlo. El borrador solo necesita el título.', // @translate
+    'Para guardar un borrador basta con el título. Escríbelo en el paso «Datos».', // @translate
+    '¿Recuperar lo que no guardaste?', // @translate
+    'En este equipo hay cambios que no llegaste a guardar.', // @translate
+    'Recuperar', // @translate
+    'Empezar de cero', // @translate
+    'Devuelto para revisar', // @translate
+    'Corrige lo que se pide y vuelve a proponerlo.', // @translate
+    'No se pudo guardar', // @translate
+    'Lo que escribes se guarda en este equipo', // @translate
+    'El recurso: un fichero o un enlace', // @translate
+    'La licencia', // @translate
+    'El curso', // @translate
+    'La materia', // @translate
+    'Los saberes que trabaja', // @translate
+    'Los criterios de evaluación', // @translate
+    'Los ejes temáticos', // @translate
+    'El fichero es demasiado grande para el catálogo.', // @translate
+    'No se pudo subir el fichero. Vuelve a intentarlo.', // @translate
+    'Se conserva %d valor más de este campo.', // @translate
+    'Se conservan %d valores más de este campo.', // @translate
+];
+$msgids = array_merge($msgids, array_values(\OERManager\Controller\Admin\ReaWizardController::MESSAGES));
 $strings = [];
-foreach ([
-    $translate('Tu recurso'), $translate('Datos'), $translate('Curso y materia'), $translate('Revisar y proponer'),
-    $translate('Estás aquí'), $translate('Hecho'), $translate('Por completar'), $translate('Más adelante'),
-    $translate('Paso %d de 4'),
-    $translate('Sube el fichero de tu recurso o pega el enlace donde ya está publicado. Solo uno por REA.'),
-    $translate('Sube un fichero'), $translate('Arrástralo hasta aquí o búscalo en tu equipo.'),
-    $translate('Elegir fichero'), $translate('Hasta %s · eXeLearning (.elpx), .zip, PDF, imagen, audio, vídeo u ofimática'),
-    $translate('O pega un enlace'), $translate('Si tu recurso ya está en otra web, copia aquí su dirección.'),
-    $translate('Usar este enlace'), $translate('Subiendo «%s»…'), $translate('Cambiar el fichero'),
-    $translate('Cambiar el enlace'), $translate('Sustituir el recurso'), $translate('Mantener el actual'),
-    $translate('Enlace a otra web'), $translate('Fichero actual del REA'), $translate('subido'),
-    $translate('Hemos rellenado algunos datos a partir del fichero. Revísalos en el paso siguiente.'),
-    $translate('No podemos usar «%s»'), $translate('Escribe un enlace que empiece por http:// o https://.'),
-    $translate('Datos del recurso'),
-    $translate('Cuéntanos qué es. Lo marcado como obligatorio hace falta para proponerlo.'),
-    $translate('obligatorio'), $translate('opcional'), $translate('Del fichero'), $translate('Elige una opción…'),
-    $translate('Elige una licencia…'),
-    $translate('¿Para qué curso y materia?'),
-    $translate('Así lo encontrará el profesorado que busca recursos para su clase.'),
-    $translate('Etapa'), $translate('Curso'), $translate('Materia'), $translate('Saberes'), $translate('Criterios'),
-    $translate('Ejes'), $translate('Sin elegir'), $translate('Ninguno'), $translate('Opcional'),
-    $translate('%d marcados'), $translate('%d marcado'),
-    $translate('¿En qué etapa se usa?'), $translate('¿En qué curso o cursos?'),
-    $translate('Puedes marcar más de uno si sirve para varios.'), $translate('¿De qué materia?'),
-    $translate('Materias de %s.'), $translate('¿Qué saberes trabaja?'), $translate('Criterios de evaluación'),
-    $translate('Marca los saberes de %s que el alumnado trabaja con tu recurso. Debajo de cada uno, su código en el currículo.'),
-    $translate('Opcional. Marca los criterios con los que se puede evaluar lo que hace el alumnado. Puedes saltar esta parte.'),
-    $translate('Ejes temáticos'), $translate('Marca los ejes que trabaja tu recurso. Puedes dejarlo en blanco.'),
-    $translate('Buscar en la lista'), $translate('Buscar, por ejemplo: fracciones'),
-    $translate('Nada coincide con «%s». Prueba con otra palabra.'),
-    $translate('Esta materia no tiene términos vigentes en el currículo.'),
-    $translate('No hay nada que elegir aquí todavía.'), $translate('Cargando…'),
-    $translate('No hay currículo disponible para anclar el recurso.'),
-    $translate('Puedes guardar el borrador y continuar más tarde. Si el problema sigue, avisa al equipo de la Mediateca.'),
-    $translate('No se pudo cargar el currículo. Vuelve a intentarlo.'), $translate('Volver a intentarlo'),
-    $translate('Hasta ahora'),
-    $translate('Comprueba que todo está bien. Al proponerlo, el equipo de curación lo revisará antes de publicarlo.'),
-    $translate('Le falta'), $translate('Está todo lo necesario para proponerlo.'), $translate('Completar'),
-    $translate('Puede que ya esté en la Mediateca'),
-    $translate('Hay otro REA con el mismo título o con un fichero del mismo nombre. Ábrelo para comprobarlo. Si es distinto, puedes proponer el tuyo igualmente.'),
-    $translate('mismo título'), $translate('mismo nombre de fichero'),
-    $translate('Cambiar'), $translate('Título'), $translate('Curso y materia'),
-    $translate('Todavía no has añadido ningún fichero ni enlace.'),
-    $translate('Atrás'), $translate('Siguiente'), $translate('Revisar'), $translate('Guardar borrador'),
-    $translate('Guardar y proponer'), $translate('Guardando…'),
-    $translate('Completa lo que falta para poder proponerlo. El borrador solo necesita el título.'),
-    $translate('Para guardar un borrador basta con el título. Escríbelo en el paso «Datos».'),
-    $translate('¿Recuperar lo que no guardaste?'),
-    $translate('En este equipo hay cambios que no llegaste a guardar.'), $translate('Recuperar'),
-    $translate('Empezar de cero'), $translate('Devuelto para revisar'),
-    $translate('Corrige lo que se pide y vuelve a proponerlo.'),
-    $translate('No se pudo guardar'), $translate('Lo que escribes se guarda en este equipo'),
-    $translate('El recurso: un fichero o un enlace'), $translate('La licencia'), $translate('El curso'),
-    $translate('La materia'), $translate('Los saberes que trabaja'), $translate('Los criterios de evaluación'),
-    $translate('Los ejes temáticos'),
-] as $string) {
-    $strings[$string] = $string;
+foreach ($msgids as $msgid) {
+    $strings[$msgid] = $translate($msgid);
+}
+if (null !== $config) {
+    foreach ($config['schema']['data'] as &$field) {
+        $field['label'] = $translate((string) $field['label']);
+        if ('' !== (string) $field['help']) {
+            // An empty msgid would translate to the catalogue's header.
+            $strings[(string) $field['help']] = $translate((string) $field['help']);
+        }
+    }
+    unset($field);
 }
 $json = static fn ($value): string => (string) json_encode(
     $value,

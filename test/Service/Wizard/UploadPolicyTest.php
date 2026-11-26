@@ -19,6 +19,7 @@ final class UploadPolicyTest extends TestCase
             ['application/vnd.oasis.opendocument.text', 'a.odt'],
             ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'a.pptx'],
             ['application/msword', 'a.doc'],
+            ['text/rtf', 'apuntes.rtf'], ['application/vnd.ms-office', 'viejo.xls'], ['application/CDFV2', 'viejo.doc'],
         ] as [$type, $name]) {
             $this->assertNull(UploadPolicy::refusal($type, $name, self::OPEN), $name);
         }

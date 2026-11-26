@@ -41,6 +41,8 @@ class ReaWizardSave
     public const STEP_GOVERNANCE = 'governance';
     public const STEP_ANCHORING = 'anchoring';
     public const STEP_MEDIA = 'media';
+    public const STEP_TEMPLATE = 'template';
+    public const STEP_PROPOSE = 'propose';
 
     public function __construct(
         private readonly ApiManager $api,
@@ -77,9 +79,9 @@ class ReaWizardSave
         if ('' === ($values[ReaWizardSchema::TITLE_TERM][0] ?? '')) {
             return ['ok' => false, 'error' => 'title_required'];
         }
-        $media = $this->media($state['resource'] ?? null, $userId);
-        if (isset($media['error'])) {
-            return ['ok' => false, 'error' => $media['error']];
+        $resource = $this->resource($state['resource'] ?? null, $userId);
+        if (isset($resource['error'])) {
+            return ['ok' => false, 'error' => $resource['error']];
         }
         $alignment = [];
         foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
@@ -90,66 +92,81 @@ class ReaWizardSave
         }
         $required = $this->templateFields->requiredTerms();
         $meetsTemplate = MinimumRule::meetsTemplate(['values' => $values, 'alignment' => $alignment], $required);
+        // Kept only if the stored REA already meets it: the governance and anchoring values that
+        // will meet it are written after this update, which Omeka validates against the template.
+        $keepTemplate = null !== $existing && null !== $existing->resourceTemplate()
+            && $meetsTemplate && $this->storedMeets($existing, $required);
 
         try {
             $id = null === $existing
-                ? $this->create($values, $fields, $media['payload'])
-                : $this->update($existing, $values, $fields, $meetsTemplate);
+                ? $this->create($values, $fields, $resource)
+                : $this->update($existing, $values, $fields, $resource, $keepTemplate);
         } catch (ValidationException $e) {
             return ['ok' => false, 'error' => 'invalid', 'messages' => self::messages($e)];
         } catch (PermissionDeniedException $e) {
             return ['ok' => false, 'error' => 'denied'];
         }
 
-        if (null !== $existing && null !== $media['payload']) {
-            try {
-                $this->replaceMedia($existing, $media['payload']);
-            } catch (ValidationException $e) {
-                return ['ok' => false, 'id' => $id, 'step' => self::STEP_MEDIA, 'error' => 'invalid',
-                    'messages' => self::messages($e)];
-            }
-        }
-        if (null !== $media['token']) {
-            $this->uploads->forget($media['token']);
-        }
-
-        $governance = $this->governanceRaw($values, $fields);
-        if ($governance) {
-            $result = $this->governance->apply($id, $governance, $contributor, null, false, null, false);
-            if (!empty($result['errors'])) {
-                return ['ok' => false, 'id' => $id, 'step' => self::STEP_GOVERNANCE, 'error' => 'governance',
-                    'errors' => $result['errors']];
-            }
-        }
+        // From here on the REA exists: every answer carries its id, so a retry updates it
+        // instead of creating another one (code review of PR #100).
+        $step = self::STEP_MEDIA;
         try {
-            $this->recatalog->apply($id, $alignment, $contributor);
-        } catch (\RuntimeException $e) {
-            return ['ok' => false, 'id' => $id, 'step' => self::STEP_ANCHORING, 'error' => 'anchoring',
-                'message' => $e->getMessage()];
+            if (null !== $existing && null !== $resource['media']) {
+                $this->replaceMedia($existing, $resource['media']);
+            }
+            if (null !== $resource['token']) {
+                $this->uploads->forget($resource['token']);
+            }
+            $step = self::STEP_GOVERNANCE;
+            $governance = $this->governanceRaw($values, $fields);
+            if ($governance) {
+                $result = $this->governance->apply($id, $governance, $contributor, null, false, null, false);
+                if (!empty($result['errors'])) {
+                    return ['ok' => false, 'id' => $id, 'step' => $step, 'error' => 'governance',
+                        'errors' => $result['errors']];
+                }
+            }
+            $step = self::STEP_ANCHORING;
+            try {
+                $this->recatalog->apply($id, $alignment, $contributor);
+            } catch (ValidationException | PermissionDeniedException $e) {
+                throw $e;
+            } catch (\RuntimeException $e) {
+                // RecatalogService's domain message names the invalid or retired term.
+                return ['ok' => false, 'id' => $id, 'step' => $step, 'error' => 'anchoring',
+                    'message' => $e->getMessage()];
+            }
+            $step = self::STEP_TEMPLATE;
+            $templateId = GovernanceSettings::parseId($this->settings->get(GovernanceSettings::REA_TEMPLATE_ID));
+            if ($meetsTemplate && !$keepTemplate && null !== $templateId) {
+                $this->writer->commit($id, [], ['o:resource_template' => ['o:id' => $templateId]]);
+            }
+            if (!($state['propose'] ?? false)) {
+                return ['ok' => true, 'id' => $id, 'proposed' => false];
+            }
+            $step = self::STEP_PROPOSE;
+            $item = $this->api->read('items', $id)->getContent();
+            $hasResource = [] !== $item->media() || null !== $item->value(ReaWizardSchema::LINK_TERM);
+            $missing = MinimumRule::missing(
+                ['resource' => $hasResource, 'values' => $values, 'alignment' => $alignment],
+                $required
+            );
+            if ($missing) {
+                return ['ok' => false, 'id' => $id, 'error' => 'incomplete', 'missing' => $missing];
+            }
+            $proposed = $this->workflow->propose($item, $contributor);
+            if (!($proposed['updated'] ?? false)) {
+                return ['ok' => false, 'id' => $id, 'error' => (string) ($proposed['error'] ?? 'invalid_transition')];
+            }
+            return ['ok' => true, 'id' => $id, 'proposed' => true];
+        } catch (ValidationException $e) {
+            return ['ok' => false, 'id' => $id, 'step' => $step, 'error' => 'invalid',
+                'messages' => self::messages($e)];
+        } catch (PermissionDeniedException $e) {
+            return ['ok' => false, 'id' => $id, 'step' => $step, 'error' => 'denied'];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'id' => $id, 'step' => $step, 'error' => 'unexpected', 'exception' => get_class($e)];
         }
-
-        $templateId = GovernanceSettings::parseId($this->settings->get(GovernanceSettings::REA_TEMPLATE_ID));
-        $hasTemplate = null !== $existing && null !== $existing->resourceTemplate() && $meetsTemplate;
-        if ($meetsTemplate && !$hasTemplate && null !== $templateId) {
-            $this->writer->commit($id, [], ['o:resource_template' => ['o:id' => $templateId]]);
-        }
-
-        if (!($state['propose'] ?? false)) {
-            return ['ok' => true, 'id' => $id, 'proposed' => false];
-        }
-        $item = $this->api->read('items', $id)->getContent();
-        $missing = MinimumRule::missing(
-            ['resource' => [] !== $item->media(), 'values' => $values, 'alignment' => $alignment],
-            $required
-        );
-        if ($missing) {
-            return ['ok' => false, 'id' => $id, 'error' => 'incomplete', 'missing' => $missing];
-        }
-        $proposed = $this->workflow->propose($item, $contributor);
-        if (!($proposed['updated'] ?? false)) {
-            return ['ok' => false, 'id' => $id, 'error' => (string) ($proposed['error'] ?? 'invalid_transition')];
-        }
-        return ['ok' => true, 'id' => $id, 'proposed' => true];
     }
 
     /**
@@ -173,8 +190,14 @@ class ReaWizardSave
         return $values;
     }
 
-    /** @return array{payload:?array<string,mixed>,token:?string}|array{error:string} */
-    private function media(mixed $resource, int $userId): array
+    /**
+     * The main resource: the stored upload (media of the module's ingester), a
+     * link (a `schema:url` value: Omeka's `url` ingester downloads its target and
+     * refuses a web page), or nothing to change.
+     *
+     * @return array{media:?array<string,mixed>,token:?string,link:?string,kind:string}|array{error:string}
+     */
+    private function resource(mixed $resource, int $userId): array
     {
         $kind = is_array($resource) ? (string) ($resource['kind'] ?? '') : '';
         if ('upload' === $kind) {
@@ -182,25 +205,32 @@ class ReaWizardSave
             if (null === $this->uploads->get($userId, $token)) {
                 return ['error' => 'upload_expired'];
             }
-            return ['payload' => ['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token], 'token' => $token];
+            return ['media' => ['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token], 'token' => $token,
+                'link' => null, 'kind' => $kind];
         }
         if ('url' === $kind) {
             $url = trim((string) ($resource['url'] ?? ''));
-            $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-            if (false === filter_var($url, FILTER_VALIDATE_URL) || !in_array($scheme, ['http', 'https'], true)) {
+            if (!self::isWebLink($url) || null === $this->writer->propertyId(ReaWizardSchema::LINK_TERM)) {
                 return ['error' => 'url_invalid'];
             }
-            return ['payload' => ['o:ingester' => 'url', 'ingest_url' => $url], 'token' => null];
+            return ['media' => null, 'token' => null, 'link' => $url, 'kind' => $kind];
         }
-        return ['payload' => null, 'token' => null];
+        return ['media' => null, 'token' => null, 'link' => null, 'kind' => 'keep'];
+    }
+
+    /** An http(s) link of at most 2000 characters, IRIs included (accented paths), without spaces. */
+    public static function isWebLink(string $url): bool
+    {
+        return mb_strlen($url) <= 2000 && 1 === preg_match('#^https?://[^\s/?\#]+[^\s]*$#iu', $url)
+            && 1 !== preg_match('/[\x00-\x1F\x7F<>"]/u', $url);
     }
 
     /**
      * @param array<string,list<string>> $values
      * @param array<string,array<string,mixed>> $fields
-     * @param array<string,mixed>|null $media
+     * @param array<string,mixed> $resource
      */
-    private function create(array $values, array $fields, ?array $media): int
+    private function create(array $values, array $fields, array $resource): int
     {
         $data = $this->dataValues($values, $fields) + ['o:is_public' => false];
         $classId = $this->learningResourceClassId();
@@ -211,43 +241,114 @@ class ReaWizardSave
         if (null !== $siteId) {
             $data['o:site'] = [['o:id' => $siteId]];
         }
-        if (null !== $media) {
-            $data['o:media'] = [$media];
+        if (null !== $resource['media']) {
+            $data['o:media'] = [$resource['media']];
+        }
+        if (null !== $resource['link']) {
+            $data[ReaWizardSchema::LINK_TERM] = [$this->linkValue($resource['link'])];
         }
         return (int) $this->api->create('items', $data)->getContent()->id();
     }
 
     /**
+     * Clears and rewrites only the data terms whose posted values differ from
+     * the stored ones, so an unchanged value keeps its language, visibility and
+     * annotation (code review of PR #100).
+     *
      * @param array<string,list<string>> $values
      * @param array<string,array<string,mixed>> $fields
+     * @param array<string,mixed> $resource
      */
-    private function update(ItemRepresentation $existing, array $values, array $fields, bool $meetsTemplate): int
-    {
+    private function update(
+        ItemRepresentation $existing,
+        array $values,
+        array $fields,
+        array $resource,
+        bool $keepTemplate
+    ): int {
         $id = (int) $existing->id();
         $clear = [];
+        $changed = [];
         foreach (array_keys($fields) as $term) {
-            $propertyId = ReaWizardSchema::isGovernance($term) ? null : $this->writer->propertyId($term);
+            if (ReaWizardSchema::isGovernance($term) || self::stored($existing, $term) === $values[$term]) {
+                continue;
+            }
+            $propertyId = $this->writer->propertyId($term);
             if (null !== $propertyId) {
                 $clear[] = $propertyId;
+                $changed[$term] = $values[$term];
             }
         }
-        $data = $this->dataValues($values, $fields) + ['clear_property_values' => $clear];
-        // Omeka would refuse the update while the template is set and a required value is gone.
-        if (null !== $existing->resourceTemplate() && !$meetsTemplate) {
+        $data = $this->dataValues($changed, $fields);
+        // The link is the main resource: a new upload or a new link replaces it.
+        $linkId = $this->writer->propertyId(ReaWizardSchema::LINK_TERM);
+        $storedLink = self::stored($existing, ReaWizardSchema::LINK_TERM);
+        if (null !== $linkId && 'keep' !== $resource['kind'] && $storedLink !== array_filter([$resource['link']])) {
+            $clear[] = $linkId;
+            if (null !== $resource['link']) {
+                $data[ReaWizardSchema::LINK_TERM] = [$this->linkValue($resource['link'])];
+            }
+        }
+        $data['clear_property_values'] = $clear;
+        if (null !== $existing->resourceTemplate() && !$keepTemplate) {
             $data['o:resource_template'] = null;
         }
         $this->api->update('items', $id, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
+        if (null !== $resource['link']) {
+            // One main resource per REA: a link replaces the files.
+            $this->deleteMedia(array_map(static fn ($m) => (int) $m->id(), $existing->media()));
+        }
         return $id;
     }
 
-    /** @param array<string,mixed> $media */
+    /**
+     * The new file becomes the only media: every previous one is deleted, in
+     * one batch (TASK-064 lesson: two deletes in a request fail with Access).
+     *
+     * @param array<string,mixed> $media
+     */
     private function replaceMedia(ItemRepresentation $existing, array $media): void
     {
-        $previous = $existing->media()[0] ?? null;
+        $previous = array_map(static fn ($m) => (int) $m->id(), $existing->media());
         $this->api->create('media', ['o:item' => ['o:id' => (int) $existing->id()]] + $media);
-        if (null !== $previous) {
-            $this->api->delete('media', (int) $previous->id());
+        $this->deleteMedia($previous);
+    }
+
+    /** @param list<int> $ids */
+    private function deleteMedia(array $ids): void
+    {
+        if ($ids) {
+            $this->api->batchDelete('media', $ids);
         }
+    }
+
+    /** Whether every required template property already has a stored value. */
+    private function storedMeets(ItemRepresentation $existing, array $required): bool
+    {
+        foreach ($required as $term) {
+            if (null === $existing->value($term)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** @return list<string> the stored values of a term as the wizard posts them (URI or text) */
+    private static function stored(ItemRepresentation $existing, string $term): array
+    {
+        $out = [];
+        foreach ((array) $existing->value($term, ['all' => true, 'default' => []]) as $value) {
+            $uri = (string) $value->uri();
+            $out[] = '' !== $uri ? $uri : trim((string) $value->value());
+        }
+        return $out;
+    }
+
+    /** @return array<string,mixed> */
+    private function linkValue(string $url): array
+    {
+        return ['type' => 'uri', 'property_id' => (int) $this->writer->propertyId(ReaWizardSchema::LINK_TERM),
+            '@id' => $url];
     }
 
     /**
@@ -259,7 +360,7 @@ class ReaWizardSave
     {
         $data = [];
         foreach ($fields as $term => $field) {
-            if (ReaWizardSchema::isGovernance($term) || [] === $values[$term]) {
+            if (ReaWizardSchema::isGovernance($term) || [] === ($values[$term] ?? [])) {
                 continue;
             }
             $propertyId = $this->writer->propertyId($term);

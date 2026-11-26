@@ -321,6 +321,19 @@ try {
     $pending[] = 'Anchoring and «Guardar y proponer» end to end: need a curriculum readable by non-administrators'
         . ' (development catalogue with EducationalCurriculum; TASK-069 for isolated users).';
 
+    $section('A link to a web page (stored as a value, not downloaded)');
+    $linked = $a->save(['values' => ['dcterms:title' => [$marker . ' Enlace']],
+        'resource' => ['kind' => 'url', 'url' => 'https://www3.gobiernodecanarias.org/medusa/ecoescuela/recursosdigitales/'],
+        'alignment' => []]);
+    $check(!empty($linked['ok']), 'a draft with a link to a web page is saved', json_encode($linked));
+    $asAdmin();
+    $linkItem = !empty($linked['id']) ? $api->read('items', (int) $linked['id'])->getContent() : null;
+    $check(null !== $linkItem && [] === $linkItem->media()
+        && str_starts_with((string) $linkItem->value('schema:url')?->uri(), 'https://www3.gobiernodecanarias.org/'),
+        'the link is a schema:url value and nothing was downloaded');
+    [, $linkPage] = $a->page('?id=' . (int) ($linked['id'] ?? 0));
+    $check(str_starts_with((string) ($linkPage['item']['link'] ?? ''), 'https://'), 'resuming shows the link');
+
     $section('Duplicates (filtered by the API ACL)');
     $other = $c->save(['values' => ['dcterms:title' => [$title]], 'resource' => null, 'alignment' => []]);
     $check(!empty($other['ok']), 'the curator saves another draft with the same title');

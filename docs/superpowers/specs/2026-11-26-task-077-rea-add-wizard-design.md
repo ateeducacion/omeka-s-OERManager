@@ -214,3 +214,9 @@ holds either way.
   carries the REA template only once it meets it (plan, decision 7).
 - **Media ingestion (spike settled).** A module ingester ingests the file stored in step ① at `save`; the file
   is not sent again (plan, decision 2 and 8).
+- **A link is a value, not media (code review of PR #100).** Omeka's `url` ingester downloads its target and
+  runs it through the file validator, so a link to a web page (the usual case: an eXeLearning site published
+  elsewhere) was refused and nothing saved. «Pegar un enlace» writes a `schema:url` URI value instead; the
+  minimum rule counts it as the resource, and a new file or link replaces the other. For the owner to confirm.
+- **Resource-valued template properties** (the project, `schema:isPartOf`) are not shown or cleared by the
+  wizard: they cannot be edited as text. A resume rewrites only the data terms that changed.

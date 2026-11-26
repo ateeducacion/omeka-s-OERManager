@@ -24,6 +24,10 @@ final class UploadPolicy
         'application/vnd.ms-excel',
         'application/vnd.ms-powerpoint',
         'application/rtf',
+        // What finfo reports for RTF and some legacy Office files.
+        'text/rtf',
+        'application/vnd.ms-office',
+        'application/cdfv2',
     ];
 
     private const PREFIXES = [

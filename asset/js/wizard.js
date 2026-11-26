@@ -9,7 +9,7 @@
  */
 import {
   emptyState, fromItem, missing, missingItems, firstIncomplete, summary, savePayload,
-  storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes,
+  storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes, isWebLink, withFirstValue,
   TITLE_TERM, LICENCE_TERM, TEACHES_TERM, ASSESSES_TERM,
 } from './core/wizardModel.js';
 
@@ -186,9 +186,9 @@ function list(key, load) {
   if (key in ui.lists) {
     return ui.lists[key];
   }
-  if (!ui.loading[key]) {
+  // A failed load waits for «Volver a intentarlo»: never a retry loop (code review of PR #100).
+  if (!ui.loading[key] && !ui.failed[key]) {
     ui.loading[key] = true;
-    delete ui.failed[key];
     load().then((rows) => {
       ui.lists[key] = rows;
     }).catch(() => {
@@ -218,16 +218,15 @@ const loaders = {
 // ---- Navigation ------------------------------------------------------------
 
 function go(step, sub) {
-  ui.step = step;
-  ui.sub = sub || (step === 3 ? ui.sub : 1);
+  ui.step = Math.min(4, Math.max(1, Number(step) || 1));
+  ui.sub = ui.step === 3 ? Math.min(6, Math.max(1, Number(sub) || ui.sub || 1)) : 1;
   ui.maxStep = Math.max(ui.maxStep, step);
   ui.error = null;
   ui.q = '';
   ui.focus = true;
-  if (step === 4) {
+  if (ui.step === 4) {
     loadDuplicates();
   }
-  storage.write();
   render();
 }
 
@@ -242,7 +241,9 @@ function back() {
   if (ui.step === 3 && ui.sub > 1) {
     return go(3, ui.sub - 1);
   }
-  go(ui.step - 1, ui.step - 1 === 3 ? 6 : 1);
+  if (ui.step > 1) {
+    go(ui.step - 1, ui.step - 1 === 3 ? 6 : 1);
+  }
 }
 
 // ---- Pieces ----------------------------------------------------------------
@@ -267,8 +268,9 @@ function choice(type, name, checked, onchange, title, hint, iconName, extra = ''
       hint ? h('span', { class: 'oer-wz-choice-hint' }, hint) : null));
 }
 
-function loadingOrRetry(key, retry) {
+function loadingOrRetry(key) {
   if (ui.failed[key]) {
+    const retry = () => { delete ui.failed[key]; render(); };
     return notice('error', 'error', h('p', {}, t('No se pudo cargar el currículo. Vuelve a intentarlo.')),
       h('div', { class: 'oer-wz-notice-actions' }, h('button', { type: 'button', class: 'oer-wz-btn', onclick: retry }, t('Volver a intentarlo'))));
   }
@@ -298,7 +300,7 @@ async function uploadFile(file) {
   }
   ui.uploading = null;
   if (!result.ok) {
-    ui.uploadError = { name: file.name, message: result.message };
+    ui.uploadError = { name: file.name, message: t(result.message || 'No se pudo subir el fichero. Vuelve a intentarlo.') };
     return render();
   }
   state.resource = { kind: 'upload', token: result.token, name: result.name, size: result.size, mediaType: result.mediaType };
@@ -375,7 +377,7 @@ function stepResource() {
   const urlError = h('p', { class: 'oer-wz-help', role: 'alert' });
   const useUrl = () => {
     const value = urlInput.value.trim();
-    if (!/^https?:\/\/\S+$/i.test(value)) {
+    if (!isWebLink(value)) {
       urlError.textContent = t('Escribe un enlace que empiece por http:// o https://.');
       return;
     }
@@ -415,7 +417,7 @@ function fieldHead(field, forId) {
 }
 
 function setValue(term, value) {
-  state.values[term] = value === '' ? [] : [value];
+  state.values[term] = withFirstValue(state.values[term], value);
   if (state.suggested[term]) {
     delete state.suggested[term];
     root.querySelector('[data-wz-tag="' + CSS.escape(term) + '"]')?.remove();
@@ -425,9 +427,13 @@ function setValue(term, value) {
 
 function dataField(field) {
   const id = nextId('wz-field');
-  const helpId = field.help ? id + '-help' : null;
   const current = (state.values[field.term] || [])[0] || '';
-  const help = field.help ? h('p', { id: helpId, class: 'oer-wz-help' }, t(field.help)) : null;
+  const others = (state.values[field.term] || []).length - 1;
+  const helpId = field.help || others > 0 ? id + '-help' : null;
+  const help = field.help || others > 0
+    ? h('p', { id: helpId, class: 'oer-wz-help' }, field.help ? t(field.help) : null,
+      others > 0 ? ' ' + t(others === 1 ? 'Se conserva %d valor más de este campo.' : 'Se conservan %d valores más de este campo.', others) : null)
+    : null;
   const optionValue = (o) => o.uri || o.value;
   const optionLabel = (o) => o.label || o.value || o.uri;
   if (field.control === 'cards') {
@@ -485,7 +491,7 @@ function subTabs() {
 function subStage() {
   const stages = loaders.stages();
   if (!stages) {
-    return loadingOrRetry('stages', () => { delete ui.failed.stages; render(); });
+    return loadingOrRetry('stages');
   }
   if (state.stage && !state.stage.title) {
     state.stage.title = (stages.find((s) => s.id === state.stage.id) || {}).title || '';
@@ -509,7 +515,7 @@ function subStage() {
 function subCourse() {
   const courses = loaders.courses(state.stage.id);
   if (!courses) {
-    return loadingOrRetry('courses:' + state.stage.id, () => render());
+    return loadingOrRetry('courses:' + state.stage.id);
   }
   return h('fieldset', { class: 'oer-wz-field' }, h('legend', {}, h('h3', {}, t('¿En qué curso o cursos?'))),
     h('p', { class: 'oer-wz-help' }, t('Puedes marcar más de uno si sirve para varios.')),
@@ -530,7 +536,7 @@ function subSubject() {
   const ids = state.courses.map((c) => c.id);
   const subjects = loaders.subjects(ids);
   if (!subjects) {
-    return loadingOrRetry('subjects:' + ids.join(','), () => render());
+    return loadingOrRetry('subjects:' + ids.join(','));
   }
   const groups = subjectGroups(subjects);
   const name = nextId('wz-subject');
@@ -559,7 +565,7 @@ function subTerms(dimension) {
     ? t('Opcional. Marca los criterios con los que se puede evaluar lo que hace el alumnado. Puedes saltar esta parte.')
     : t('Marca los saberes de %s que el alumnado trabaja con tu recurso. Debajo de cada uno, su código en el currículo.', state.subject.name));
   if (!trees) {
-    return h('div', { class: 'oer-wz-field' }, head, help, loadingOrRetry('trees:' + ids.join(','), () => render()));
+    return h('div', { class: 'oer-wz-field' }, head, help, loadingOrRetry('trees:' + ids.join(',')));
   }
   const listBox = h('div', { class: 'oer-wz-panel' });
   const paint = () => {
@@ -595,7 +601,7 @@ function subTerms(dimension) {
 function subAxes() {
   const axes = loaders.axes();
   if (!axes) {
-    return loadingOrRetry('axes', () => render());
+    return loadingOrRetry('axes');
   }
   return h('fieldset', { class: 'oer-wz-field' },
     h('legend', {}, h('h3', {}, t('Ejes temáticos'), h('span', { class: 'oer-wz-optional', style: 'font-size: 15px' }, ' · ' + t('opcional')))),
@@ -715,8 +721,9 @@ async function save(propose) {
   if (result.error === 'upload_expired') {
     state.resource = null;
     ui.step = 1;
+    ui.sub = 1;
   }
-  ui.error = { message: result.message || t('No se pudo guardar'), details: result.messages || [], missing: result.missing || [] };
+  ui.error = { message: t(result.message || 'No se pudo guardar'), details: result.messages || [], missing: result.missing || [] };
   ui.focus = true;
   render();
   root.querySelector('[data-wz-error]')?.focus();
@@ -780,7 +787,7 @@ function navigation() {
       'aria-describedby': codes.length ? helpId : null, onclick: () => save(true) }, t('Guardar y proponer')));
   }
   const nav = [h('div', { class: 'oer-wz-nav' },
-    h('div', {}, ui.step > 1 || ui.sub > 1 ? h('button', { type: 'button', class: 'oer-wz-link', onclick: back }, icon('back'), t('Atrás')) : null),
+    h('div', {}, ui.step > 1 || (ui.step === 3 && ui.sub > 1) ? h('button', { type: 'button', class: 'oer-wz-link', onclick: back }, icon('back'), t('Atrás')) : null),
     h('div', { class: 'oer-wz-nav-end' }, ui.busy ? h('span', { class: 'oer-wz-busy', role: 'status' }, t('Guardando…')) : null, ...end))];
   if (ui.step === 4 && codes.length) {
     nav.push(h('p', { id: helpId, class: 'oer-wz-help oer-wz-nav-help' }, t('Completa lo que falta para poder proponerlo. El borrador solo necesita el título.')));
