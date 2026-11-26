@@ -26,6 +26,8 @@ const PAIRS = [
   // The admin's red: focus, hover and what needs action.
   ['--wz-accent', '--wz-canvas', TEXT],
   ['--wz-mark', '--wz-surface-mark', TEXT],
+  // The required asterisk.
+  ['--wz-mark', '--wz-canvas', TEXT],
   // States.
   ['--wz-error-ink', '--wz-error-soft', TEXT],
   ['--wz-ok-ink', '--wz-ok-soft', UI],

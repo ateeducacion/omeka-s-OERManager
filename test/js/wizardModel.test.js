@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   missing, missingItems, firstIncomplete, summary, savePayload, recoverable, storageKey,
-  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList, suggestedType, typeMatches,
+  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts,
 } from '../../asset/js/core/wizardModel.js';
 
 const schema = { data: [
@@ -300,4 +300,13 @@ test('typeMatches finds types in every category, ignoring case and accents', () 
   assert.equal(typeMatches(TYPES, 'visuales').length, 2);
   assert.deepEqual(typeMatches(TYPES, '  '), []);
   assert.deepEqual(typeMatches(TYPES, 'zzz'), []);
+});
+
+test('typeLabelParts moves the text in brackets to a second line', () => {
+  assert.deepEqual(typeLabelParts('Vídeos (tutoriales, lecciones, documentales)'),
+    { title: 'Vídeos', hint: 'tutoriales, lecciones, documentales' });
+  assert.deepEqual(typeLabelParts('Herramientas autor (Exelearning, etc.)'), { title: 'Herramientas autor', hint: 'Exelearning, etc.' });
+  assert.deepEqual(typeLabelParts('Infografías'), { title: 'Infografías', hint: '' });
+  // Brackets in the middle stay in the title.
+  assert.deepEqual(typeLabelParts('Mapas (conceptuales) y esquemas'), { title: 'Mapas (conceptuales) y esquemas', hint: '' });
 });

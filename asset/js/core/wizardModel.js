@@ -414,6 +414,16 @@ export function suggestedType(resource, options) {
 }
 
 /**
+ * A type's label as a short title and a hint: the text in brackets at the end
+ * goes to a second, grey line («Vídeos» · «tutoriales, lecciones…»).
+ */
+export function typeLabelParts(label) {
+  const text = String(label || '').trim();
+  const match = /^(.+?)\s*\(([^()]+)\)$/.exec(text);
+  return match ? { title: match[1].trim(), hint: match[2].trim() } : { title: text, hint: '' };
+}
+
+/**
  * Resource types whose name or category contains `query`, ignoring case and
  * accents, from every category, as `{group, value, label}`.
  */

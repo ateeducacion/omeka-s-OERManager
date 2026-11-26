@@ -10,7 +10,7 @@
 import {
   emptyState, fromItem, missing, missingItems, firstIncomplete, summary, savePayload,
   storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes, isWebLink, withFirstValue,
-  typeGroups, blockOpen, axisList, suggestedType, typeMatches,
+  typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts,
   TITLE_TERM, LICENCE_TERM, TEACHES_TERM, ASSESSES_TERM,
 } from './core/wizardModel.js';
 
@@ -43,6 +43,8 @@ const ICONS = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
   returned: '<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/>',
   school: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>',
   touch: '<path d="M9 11V5a2 2 0 0 1 4 0v6"/><path d="M13 10a2 2 0 0 1 4 0v3a7 7 0 0 1-7 7 6 6 0 0 1-5-3l-2-4a2 2 0 0 1 3-2l2 2"/>',
@@ -416,8 +418,7 @@ function typeIcon(label) {
 
 function fieldHead(field, forId) {
   return h('div', { class: 'oer-wz-field-head' },
-    h(forId ? 'label' : 'span', { class: 'oer-wz-label', for: forId || null }, field.label,
-      field.required ? h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio')) : null),
+    h(forId ? 'label' : 'span', { class: 'oer-wz-label', for: forId || null }, ...labelParts(field)),
     state.suggested[field.term] ? h('span', { class: 'oer-wz-tag', 'data-wz-tag': field.term }, t('Del fichero')) : null);
 }
 
@@ -462,27 +463,37 @@ function dataField(field) {
   return h('div', { class: 'oer-wz-field' }, fieldHead(field, id), help, control);
 }
 
+/** The field's name, a red asterisk when required (the admin's convention) and «obligatorio» in words. */
+function labelParts(field) {
+  return [field.label, field.required ? [h('span', { class: 'oer-wz-req', 'aria-hidden': 'true' }, ' *'),
+    h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio'))] : null];
+}
+
 /**
- * The resource type, chosen category first (second review of PR #100): the
- * file's suggestion, a search over every category, the categories as buttons
- * and only the open category's types. Once chosen, it shrinks to one line.
+ * The resource type (third review of PR #100): the file's suggestion, a search
+ * with a clear button, and the categories as a menu beside their types (an
+ * accordion on narrow screens). Once chosen, it shrinks to one line.
  */
 function typePicker(field, id, help) {
   const current = (state.values[field.term] || [])[0] || '';
   const groups = typeGroups(field.options);
   const chosen = groups.flatMap((g) => g.items.map((item) => ({ group: g.group, ...item }))).find((item) => item.value === current);
-  const legend = h('legend', { class: 'oer-wz-label', style: 'margin-bottom: 4px' }, field.label,
-    field.required ? h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio')) : null);
-  const pick = (value) => {
-    setValue(field.term, value);
+  const close = (focusChange) => {
     Object.assign(ui, { typeOpen: false, typeQ: '', typeCat: null, focus: false });
     render();
-    root.querySelector('[data-wz-type-change]')?.focus();
+    if (focusChange) {
+      root.querySelector('[data-wz-type-change]')?.focus();
+    }
+  };
+  const pick = (value) => {
+    setValue(field.term, value);
+    close(true);
   };
   if (chosen && !ui.typeOpen) {
-    return h('fieldset', { class: 'oer-wz-field' }, legend, help,
-      h('div', { class: 'oer-wz-type-chosen' }, icon(typeIcon(chosen.group + ' ' + chosen.label)),
-        h('p', { class: 'oer-wz-type-path' }, h('span', { class: 'oer-wz-type-group-name' }, t(chosen.group) + ' › '), h('strong', {}, chosen.label)),
+    const parts = typeLabelParts(chosen.label);
+    return h('fieldset', { class: 'oer-wz-field' }, h('legend', { class: 'oer-wz-label' }, ...labelParts(field)), help,
+      h('div', { class: 'oer-wz-type-chosen' }, icon('check'),
+        h('p', { class: 'oer-wz-type-path' }, h('span', { class: 'oer-wz-type-group-name' }, t(chosen.group) + ' › '), h('strong', {}, parts.title)),
         h('button', { type: 'button', class: 'oer-wz-btn', 'data-wz-type-change': '', onclick: () => {
           Object.assign(ui, { typeOpen: true, typeCat: chosen.group, focus: false });
           render();
@@ -490,47 +501,56 @@ function typePicker(field, id, help) {
         } }, t('Cambiar'))));
   }
   const suggestion = suggestedType(state.resource, field.options);
-  const body = h('div', { class: 'oer-wz-type-body' });
+  const card = (item, group) => {
+    const parts = typeLabelParts(item.label);
+    const hint = [group ? t(group) : null, parts.hint || null].filter(Boolean).join(' · ');
+    return h('label', { class: 'oer-wz-typecard' },
+      h('input', { type: 'radio', name: id, checked: current === item.value, onchange: () => pick(item.value) }),
+      h('span', { class: 'oer-wz-typecard-text' }, h('span', { class: 'oer-wz-typecard-title' }, parts.title),
+        hint ? h('span', { class: 'oer-wz-typecard-hint' }, hint) : null),
+      current === item.value ? h('span', { class: 'oer-wz-typecard-check' }, icon('check')) : null);
+  };
+  const body = h('div', { class: 'oer-wz-typepick' });
   const paint = () => {
     if (ui.typeQ.trim()) {
       const matches = typeMatches(field.options, ui.typeQ);
       body.replaceChildren(matches.length
-        ? h('div', { class: 'oer-wz-grid is-compact' }, matches.map((m) =>
-          choice('radio', id, current === m.value, () => pick(m.value), m.label, t(m.group), typeIcon(m.group + ' ' + m.label), ' is-compact')))
+        ? h('div', { class: 'oer-wz-typecards is-results', role: 'group', 'aria-label': t('Resultados') }, matches.map((m) => card(m, m.group)))
         : h('p', { class: 'oer-wz-help' }, t('Nada coincide con «%s». Prueba con otra palabra.', ui.typeQ)));
       return;
     }
-    const open = ui.typeCat || chosen?.group || suggestion?.group || null;
-    const items = (groups.find((g) => g.group === open) || { items: [] }).items;
-    body.replaceChildren(
-      h('div', { class: 'oer-wz-cats', role: 'group', 'aria-label': t('Categorías') }, groups.map((g) =>
-        h('button', { type: 'button', class: 'oer-wz-cat', 'aria-pressed': g.group === open ? 'true' : 'false',
-          onclick: () => { ui.typeCat = g.group; paint(); } },
-        icon(typeIcon(g.group)), h('span', {}, t(g.group)), h('span', { class: 'oer-wz-cat-count' }, String(g.items.length))))),
-      open
-        ? h('div', { class: 'oer-wz-grid is-compact', role: 'group', 'aria-label': t(open) }, items.map((item) =>
-          choice('radio', id, current === item.value, () => pick(item.value), item.label, null, typeIcon(open + ' ' + item.label), ' is-compact')))
-        : h('p', { class: 'oer-wz-help' }, t('Elige primero una categoría.')));
+    const open = ui.typeCat || chosen?.group || suggestion?.group || groups[0]?.group || null;
+    body.replaceChildren(h('ul', { class: 'oer-wz-typemenu' }, groups.map((g, i) => {
+      const isOpen = g.group === open;
+      const panelId = id + '-panel-' + i;
+      return h('li', { class: isOpen ? 'is-open' : '' },
+        h('button', { type: 'button', class: 'oer-wz-typemenu-cat', 'aria-expanded': isOpen ? 'true' : 'false', 'aria-controls': panelId,
+          onclick: () => { ui.typeCat = g.group; paint(); body.querySelector('[aria-expanded="true"]')?.focus(); } },
+        h('span', {}, t(g.group)), h('span', { class: 'oer-wz-cat-count' }, String(g.items.length))),
+        isOpen ? h('div', { id: panelId, class: 'oer-wz-typecards', role: 'group', 'aria-label': t(g.group) }, g.items.map((item) => card(item, null))) : null);
+    })));
   };
   paint();
   const searchId = nextId('wz-type-q');
-  return h('fieldset', { class: 'oer-wz-field' }, legend, help,
+  const input = h('input', { id: searchId, class: 'oer-wz-input', type: 'text', 'data-wz-type-search': '', value: ui.typeQ, autocomplete: 'off',
+    placeholder: t('Buscar un tipo, por ejemplo: infografía'), oninput: (e) => { ui.typeQ = e.target.value; clear.hidden = !ui.typeQ; paint(); } });
+  const clear = h('button', { type: 'button', class: 'oer-wz-search-clear', 'aria-label': t('Borrar la búsqueda'), hidden: !ui.typeQ,
+    onclick: () => { ui.typeQ = ''; input.value = ''; clear.hidden = true; paint(); input.focus(); } }, icon('close'));
+  return h('fieldset', { class: 'oer-wz-field oer-wz-typefield' },
+    h('div', { class: 'oer-wz-typehead' }, h('legend', { class: 'oer-wz-label' }, ...labelParts(field)),
+      chosen ? h('button', { type: 'button', class: 'oer-wz-link', onclick: () => close(true) }, t('Cancelar')) : null),
+    help,
     suggestion && suggestion.value !== current
-      ? h('div', { class: 'oer-wz-suggest' }, icon(typeIcon(suggestion.group + ' ' + suggestion.label)),
-        h('p', {}, state.resource?.kind === 'url' ? t('Sugerido por tu enlace:') : t('Sugerido por tu fichero:'), ' ',
-          h('strong', {}, suggestion.label), h('span', { class: 'oer-wz-type-group-name' }, ' · ' + t(suggestion.group))),
-        h('button', { type: 'button', class: 'oer-wz-btn is-primary', onclick: () => pick(suggestion.value) }, t('Usar este tipo')))
+      ? h('div', { class: 'oer-wz-suggest' }, icon('bulb'),
+        h('p', {}, state.resource?.kind === 'url' ? t('Por tu enlace, parece «%s».', typeLabelParts(suggestion.label).title)
+          : t('Por tu fichero, parece «%s».', typeLabelParts(suggestion.label).title),
+        h('span', { class: 'oer-wz-type-group-name' }, ' ' + t(suggestion.group))),
+        h('button', { type: 'button', class: 'oer-wz-btn is-primary', onclick: () => pick(suggestion.value) }, t('Usar este')))
       : null,
-    h('div', { class: 'oer-wz-search' },
+    h('div', { class: 'oer-wz-search is-clearable', role: 'search' },
       h('label', { for: searchId, class: 'oer-wz-visually-hidden' }, t('Buscar un tipo de recurso')),
-      icon('search'),
-      h('input', { id: searchId, class: 'oer-wz-input', type: 'search', 'data-wz-type-search': '', value: ui.typeQ,
-        placeholder: t('Buscar un tipo, por ejemplo: infografía'), oninput: (e) => { ui.typeQ = e.target.value; paint(); } })),
-    body,
-    chosen ? h('p', {}, h('button', { type: 'button', class: 'oer-wz-link', onclick: () => {
-      Object.assign(ui, { typeOpen: false, typeQ: '', typeCat: null, focus: false });
-      render();
-    } }, t('Mantener «%s»', chosen.label))) : null);
+      icon('search'), input, clear),
+    body);
 }
 
 function stepData() {

@@ -304,8 +304,8 @@
 }
 
 .oer-wizard .oer-wz-input:focus {
-    border-color: var(--wz-accent);
-    outline: 2px solid var(--wz-accent);
+    border-color: var(--wz-strong);
+    outline: 2px solid var(--wz-strong);
     outline-offset: 0;
 }
 
@@ -392,22 +392,50 @@
     color: var(--wz-strong);
 }
 
-/* Step ②: the resource type, category first (second review of PR #100). */
+/* Required fields: the admin's red asterisk, and «obligatorio» in words. */
+.oer-wizard .oer-wz-req {
+    color: var(--wz-mark);
+    font-weight: 700;
+}
+
+/* Step ②: the resource type (third review of PR #100): suggestion → search →
+   category menu beside its types; an accordion on narrow screens. */
+.oer-wizard .oer-wz-typefield {
+    gap: 16px;
+}
+
+.oer-wizard .oer-wz-typefield > .oer-wz-help {
+    margin-top: -12px;
+}
+
+.oer-wizard .oer-wz-typehead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
 .oer-wizard .oer-wz-suggest {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 10px 14px;
     padding: 12px 16px;
-    border: 1px solid var(--wz-hairline);
     border-left: 4px solid var(--wz-strong);
     border-radius: 4px;
-    background: var(--wz-surface);
+    background: var(--wz-card);
     color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-suggest > .oer-wz-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-suggest p {
     flex: 1 1 260px;
+    font-weight: 700;
 }
 
 .oer-wizard .oer-wz-type-group-name {
@@ -415,62 +443,172 @@
     font-weight: 400;
 }
 
-.oer-wizard .oer-wz-cats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 4px 0 12px;
+.oer-wizard .oer-wz-search.is-clearable .oer-wz-input {
+    min-height: 44px;
+    padding-right: 48px;
+    border-radius: 22px;
 }
 
-.oer-wizard .oer-wz-cat {
+.oer-wizard .oer-wz-search-clear {
+    position: absolute;
+    top: 4px;
+    right: 4px;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    min-height: 36px;
-    padding: 4px 12px;
-    border: 1px solid var(--wz-control);
-    border-radius: 999px;
-    background: var(--wz-canvas);
-    color: var(--wz-ink);
-    font-size: 15px;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wz-body-soft);
     cursor: pointer;
 }
 
-.oer-wizard .oer-wz-cat .oer-wz-icon {
-    width: 16px;
-    height: 16px;
-    color: var(--wz-body-soft);
+.oer-wizard .oer-wz-search-clear:hover {
+    background: var(--wz-card);
+    color: var(--wz-ink);
 }
 
-.oer-wizard .oer-wz-cat:hover {
-    border-color: var(--wz-strong);
-    background: var(--wz-canvas);
+.oer-wizard .oer-wz-search-clear .oer-wz-icon {
+    position: static;
+    width: 18px;
+    height: 18px;
+    color: inherit;
 }
 
-.oer-wizard .oer-wz-cat[aria-pressed="true"] {
-    border-color: var(--wz-strong);
-    background: var(--wz-strong);
-    color: var(--wz-on-dark);
+/* The menu: categories in column 1, the open category's types in column 2. */
+.oer-wizard .oer-wz-typemenu {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    column-gap: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-typemenu > li {
+    display: contents;
+}
+
+.oer-wizard .oer-wz-typemenu-cat {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 0;
+    border-left: 4px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--wz-body);
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-typemenu-cat:hover {
+    background: var(--wz-surface);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-typemenu-cat[aria-expanded="true"] {
+    border-left-color: var(--wz-strong);
+    background: var(--wz-surface);
+    color: var(--wz-ink);
     font-weight: 700;
 }
 
-.oer-wizard .oer-wz-cat[aria-pressed="true"] .oer-wz-icon {
-    color: var(--wz-on-dark);
-}
-
 .oer-wizard .oer-wz-cat-count {
-    min-width: 22px;
-    padding: 0 6px;
+    flex: none;
+    min-width: 26px;
+    padding: 1px 8px;
     border-radius: 999px;
     background: var(--wz-card);
-    color: var(--wz-ink);
+    color: var(--wz-body-soft);
     font-size: 12px;
     font-weight: 700;
     text-align: center;
 }
 
-.oer-wizard .oer-wz-type-body {
-    margin-top: 4px;
+.oer-wizard .oer-wz-typemenu .oer-wz-typecards {
+    grid-column: 2;
+    grid-row: 1 / span 20;
+    align-self: start;
+}
+
+.oer-wizard .oer-wz-typecards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+/* A type: the whole card is the click target (a real radio inside its label). */
+.oer-wizard .oer-wz-typecard {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 40px 10px 14px;
+    border: 1px solid var(--wz-control);
+    border-radius: 6px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-typecard:hover {
+    border-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-typecard:has(input:checked) {
+    padding: 9px 39px 9px 13px;
+    border: 2px solid var(--wz-strong);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-typecard:has(input:focus-visible) {
+    outline: 2px solid var(--wz-strong);
+    outline-offset: 2px;
+}
+
+.oer-wizard .oer-wz-typecard input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: none;
+    accent-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-typecard-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-typecard-title {
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-typecard-hint {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+}
+
+.oer-wizard .oer-wz-typecard-check {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    display: inline-flex;
+    color: var(--wz-strong);
+    transform: translateY(-50%);
 }
 
 .oer-wizard .oer-wz-type-chosen {
@@ -479,18 +617,36 @@
     align-items: center;
     gap: 10px 14px;
     padding: 10px 14px;
-    border: 1px solid var(--wz-hairline);
-    border-radius: 4px;
-    background: var(--wz-surface);
+    border: 2px solid var(--wz-strong);
+    border-radius: 6px;
+    background: var(--wz-card);
     color: var(--wz-ink);
 }
 
-.oer-wizard .oer-wz-type-chosen .oer-wz-icon {
-    color: var(--wz-body-soft);
+.oer-wizard .oer-wz-type-chosen > .oer-wz-icon {
+    color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-type-path {
     flex: 1 1 240px;
+}
+
+@media (max-width: 720px) {
+    .oer-wizard .oer-wz-typemenu {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .oer-wizard .oer-wz-typemenu > li {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .oer-wizard .oer-wz-typemenu .oer-wz-typecards {
+        padding: 4px 0 12px 16px;
+    }
 }
 
 .oer-wizard .oer-wz-grid.is-compact {
