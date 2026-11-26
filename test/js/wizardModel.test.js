@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   missing, missingItems, firstIncomplete, summary, savePayload, recoverable, storageKey,
-  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue,
+  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList,
 } from '../../asset/js/core/wizardModel.js';
 
 const schema = { data: [
@@ -209,4 +209,51 @@ test('editing the first value keeps the others', () => {
   assert.deepEqual(withFirstValue(['Ana', 'Luis'], ''), ['Luis']);
   assert.deepEqual(withFirstValue(undefined, 'Ana'), ['Ana']);
   assert.deepEqual(withFirstValue([], ''), []);
+});
+
+test('resource types are grouped by the text before the first colon', () => {
+  const groups = typeGroups([
+    { value: 'Contenidos multimedia: Vídeos (tutoriales, lecciones, documentales)' },
+    { uri: 'https://example.org/t/2', label: 'Actividades: Cuestionario' },
+    { value: 'Contenidos multimedia: Podcast' },
+    { value: 'Sin categoría' },
+    { value: 'Actividades: Juego: de rol' },
+  ]);
+  assert.deepEqual(groups, [
+    { group: 'Contenidos multimedia', items: [
+      { value: 'Contenidos multimedia: Vídeos (tutoriales, lecciones, documentales)', label: 'Vídeos (tutoriales, lecciones, documentales)' },
+      { value: 'Contenidos multimedia: Podcast', label: 'Podcast' },
+    ] },
+    { group: 'Actividades', items: [
+      { value: 'https://example.org/t/2', label: 'Cuestionario' },
+      { value: 'Actividades: Juego: de rol', label: 'Juego: de rol' },
+    ] },
+    { group: 'Otros', items: [{ value: 'Sin categoría', label: 'Sin categoría' }] },
+  ]);
+  assert.deepEqual(typeGroups([]), []);
+});
+
+test('a block opens with a ticked term, with matches of a search, or when it is the only one', () => {
+  const block = { block: 'I. Comunicación', items: [{ id: 1 }, { id: 2 }] };
+  assert.equal(blockOpen(block, { checked: [2], query: '', single: false }), true);
+  assert.equal(blockOpen(block, { checked: [], query: 'poder', single: false }), true);
+  assert.equal(blockOpen(block, { checked: [], query: '', single: true }), true);
+  assert.equal(blockOpen(block, { checked: [9], query: '  ', single: false }), false);
+  // What the user did with the block wins, except that a search shows its matches.
+  assert.equal(blockOpen(block, { checked: [], query: '', single: false, user: true }), true);
+  assert.equal(blockOpen(block, { checked: [2], query: '', single: false, user: false }), false);
+  assert.equal(blockOpen(block, { checked: [], query: 'x', single: false, user: false }), true);
+});
+
+test('axes are filtered without accents, sorted and split by initial letter', () => {
+  const axes = [
+    { id: 3, title: 'Sostenibilidad', description: 'Medio ambiente' },
+    { id: 1, title: 'Arte y acción cultural' },
+    { id: 2, title: 'Ámbito digital' },
+    { id: 4, title: 'Salud emocional' },
+  ];
+  assert.deepEqual(axisList(axes, '').map((g) => [g.letter, g.items.map((a) => a.id)]), [['A', [2, 1]], ['S', [4, 3]]]);
+  assert.deepEqual(axisList(axes, 'ambito').map((g) => g.items.map((a) => a.id)), [[2]]);
+  assert.deepEqual(axisList(axes, 'medio').map((g) => g.items.map((a) => a.id)), [[3]]);
+  assert.deepEqual(axisList(axes, 'zzz'), []);
 });

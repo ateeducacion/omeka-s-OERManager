@@ -10,6 +10,7 @@
 import {
   emptyState, fromItem, missing, missingItems, firstIncomplete, summary, savePayload,
   storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes, isWebLink, withFirstValue,
+  typeGroups, blockOpen, axisList,
   TITLE_TERM, LICENCE_TERM, TEACHES_TERM, ASSESSES_TERM,
 } from './core/wizardModel.js';
 
@@ -404,8 +405,9 @@ function stepResource() {
 
 function typeIcon(label) {
   const text = String(label).toLowerCase();
-  const rules = [[/v[ií]deo/, 'video'], [/juego|gamif/, 'game'], [/presentaci/, 'slides'], [/interactiv/, 'touch'],
-    [/documento|ficha|texto|lectura/, 'doc'], [/situaci|secuencia|unidad|proyecto/, 'school']];
+  const rules = [[/v[ií]deo|multimedia|audio|podcast/, 'video'], [/juego|gamif/, 'game'], [/presentaci/, 'slides'],
+    [/interactiv|actividad|ejercicio|cuestionario/, 'touch'], [/documento|ficha|texto|lectura/, 'doc'],
+    [/situaci|secuencia|unidad|proyecto|did[aá]ctic/, 'school']];
   return (rules.find(([re]) => re.test(text)) || [null, 'resource'])[1];
 }
 
@@ -441,9 +443,12 @@ function dataField(field) {
       h('legend', { class: 'oer-wz-label', style: 'margin-bottom: 4px' }, field.label,
         field.required ? h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio')) : null),
       help,
-      h('div', { class: 'oer-wz-grid' }, field.options.map((option) =>
-        choice('radio', id, current === optionValue(option), () => setValue(field.term, optionValue(option)),
-          optionLabel(option), null, typeIcon(optionLabel(option))))));
+      // Owner's review of PR #100: «Categoría: tipo» options grouped by category, compact cards.
+      typeGroups(field.options).map((group) => h('div', { class: 'oer-wz-type-group' },
+        h('p', { class: 'oer-wz-cap oer-wz-block', id: id + '-' + group.group.replace(/\W+/g, '-') }, t(group.group)),
+        h('div', { class: 'oer-wz-grid is-compact', role: 'group', 'aria-label': t(group.group) }, group.items.map((item) =>
+          choice('radio', id, current === item.value, () => setValue(field.term, item.value),
+            item.label, null, typeIcon(group.group + ' ' + item.label), ' is-compact'))))));
   }
   let control;
   if (field.control === 'textarea') {

@@ -342,3 +342,63 @@ export function withFirstValue(list, value) {
   const rest = (list || []).slice(1);
   return String(value).trim() === '' ? rest : [value, ...rest];
 }
+
+/**
+ * Resource type options grouped by category (owner's review of PR #100): every
+ * option of the «Tipos de recursos» vocabulary reads «Categoría: tipo». The card
+ * shows the part after the first `: `; the stored value is the whole option.
+ */
+export function typeGroups(options) {
+  const groups = new Map();
+  let others = null;
+  for (const option of options || []) {
+    const text = String(option.label || option.value || option.uri || '');
+    const value = option.uri || option.value;
+    const at = text.indexOf(': ');
+    const name = at > 0 ? text.slice(0, at).trim() : '';
+    const item = { value, label: at > 0 ? text.slice(at + 2).trim() : text };
+    if (!name) {
+      others ??= { group: 'Otros', items: [] };
+      others.items.push(item);
+      continue;
+    }
+    if (!groups.has(name)) {
+      groups.set(name, { group: name, items: [] });
+    }
+    groups.get(name).items.push(item);
+  }
+  return [...groups.values(), ...(others ? [others] : [])];
+}
+
+/**
+ * Whether a block of knowledge or criteria is open: with a ticked term, with
+ * matches of an active search, or when it is the subject's only block. What
+ * the user did with it (`user`) wins, except that a search shows its matches.
+ */
+export function blockOpen(group, { checked = [], query = '', single = false, user } = {}) {
+  if (String(query).trim() && group.items.length > 0) {
+    return true;
+  }
+  if (user !== undefined) {
+    return Boolean(user);
+  }
+  const ticked = new Set((checked || []).map(Number));
+  return single || group.items.some((item) => ticked.has(Number(item.id)));
+}
+
+/** Thematic axes filtered as you type (accents ignored), sorted and split by initial letter. */
+export function axisList(axes, query = '') {
+  const needle = normalise(query).trim();
+  const sorted = (axes || [])
+    .filter((axis) => !needle || normalise(axis.title + ' ' + (axis.description || '')).includes(needle))
+    .sort((a, b) => String(a.title).localeCompare(String(b.title), 'es', { sensitivity: 'base' }));
+  const letters = new Map();
+  for (const axis of sorted) {
+    const letter = normalise(axis.title).trim().charAt(0).toUpperCase() || '#';
+    if (!letters.has(letter)) {
+      letters.set(letter, { letter, items: [] });
+    }
+    letters.get(letter).items.push(axis);
+  }
+  return [...letters.values()];
+}
