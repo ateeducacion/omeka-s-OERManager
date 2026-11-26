@@ -7,6 +7,7 @@ namespace OERManager\Permissions;
 use OERManager\Controller\Admin\AiBatchController;
 use OERManager\Controller\Admin\GovernanceBatchController;
 use OERManager\Controller\Admin\IndexController;
+use OERManager\Controller\Admin\ReaWizardController;
 use OERManager\Controller\Admin\StatsController;
 
 /**
@@ -109,6 +110,8 @@ final class ReaAcl
                 'discard',
                 'unpublish',
                 'reopen',
+                // TASK-077: curators also add REA with the wizard, from «Mis propuestas».
+                'my-proposals',
             ],
         ],
         StatsController::class => [
@@ -121,6 +124,12 @@ final class ReaAcl
         // TASK-011 (ADR-0023 §1: «AI (single and batch)» is the curator's).
         AiBatchController::class => [
             self::CURATOR => ['form', 'preview', 'launch', 'status', 'cancel'],
+        ],
+        // TASK-077: the guided wizard to add a REA. Which REA may be resumed is
+        // RecatalogRule's call; the API decides every write item by item.
+        ReaWizardController::class => [
+            self::PROPOSER => ReaWizardController::PRIVILEGES,
+            self::CURATOR => ReaWizardController::PRIVILEGES,
         ],
     ];
 
