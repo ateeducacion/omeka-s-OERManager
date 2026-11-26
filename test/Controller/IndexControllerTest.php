@@ -1331,4 +1331,24 @@ class IndexControllerTest extends TestCase
         $this->workflowStatus = WorkflowStatus::PROPOSED;
         $this->assertTrue($this->data('publishProposal')['updated']);
     }
+
+    /** Final review of TASK-011: the re-cataloguing written by «Confirmar y publicar» drops the proposal even if the gate refuses. */
+    public function testConfirmAndPublishDropsTheProposalOnceItsReCataloguingIsWritten(): void
+    {
+        $removed = 0;
+        $this->dependencies['storedProposals']->method('remove')
+            ->willReturnCallback(static function () use (&$removed): bool {
+                $removed++;
+                return true;
+            });
+        $this->controller->plugins['identity'] = $this->user(1, 'rea_curador', 'Curadora');
+        $this->request->ajax = true;
+        $this->workflowStatus = WorkflowStatus::PROPOSED;
+        $this->params->post = ['id' => 7, 'csrf' => 'valid', 'alignment' => ['lrmi:teaches' => [11]]];
+        $this->dependencies['recatalogService']->method('apply')->willReturn(['updated' => true]);
+        $this->issues = [['severity' => 'error', 'code' => 'missing_licence', 'field' => 'dcterms:license',
+            'message' => 'Sin licencia']];
+        $this->assertSame('integrity', $this->data('publishProposal')['error']);
+        $this->assertSame(1, $removed);
+    }
 }

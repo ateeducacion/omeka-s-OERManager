@@ -1597,12 +1597,14 @@ class IndexController extends AbstractActionController
                 return $this->workflowFailure($ajax, $id, $refusal['error'], $refusal['message']);
             }
             try {
-                $this->recatalogService->apply(
+                // TASK-011: once the re-cataloguing is written the proposal is spent,
+                // even if the integrity gate then refuses the publication.
+                $this->dropStoredProposal($id, $this->recatalogService->apply(
                     $id,
                     $alignment,
                     $this->contributor(),
                     $this->collectJustifications()
-                );
+                ));
             } catch (PermissionDeniedException $e) {
                 return $this->workflowFailure($ajax, $id, 'denied', self::WORKFLOW_MESSAGES['publish']['denied']);
             } catch (\RuntimeException $e) {
