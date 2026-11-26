@@ -50,3 +50,11 @@ e-mail notifications, batch publication, an ACL that limits a curator to REA ite
 4. Performance with 86 000 items and isolation joins: TASK-052.
 5. Checks run as `global_admin` hide ACL and isolation: TASK-067 and TASK-030 use real users with
    REA roles.
+
+## Addendum 1 (2026-11-26): TASK-077 joins milestone 2
+
+The owner added **TASK-077**, a guided screen to add a REA from «Mis propuestas», for proposers and
+curators, driven by the configured REA template and centred on the curricular anchoring. It belongs to
+milestone 2 (panel and queue): the single additions of ADR-0023 §3 start there. It depends on TASK-069
+(isolated users must reach the curriculum) and on PEND-012 (the template's required fields). Its exit
+check: a `rea_proponente` who is not an administrator adds and proposes a REA through it in the container.
