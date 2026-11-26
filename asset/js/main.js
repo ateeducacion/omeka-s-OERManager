@@ -11,6 +11,7 @@ import { initSearchForm } from './ui/searchForm.js';
 import { initWorkflowDrawer } from './ui/workflowDrawer.js';
 import { initQueueFlow } from './ui/queueFlow.js';
 import { initGovernanceBatch } from './ui/governanceBatch.js';
+import { initAiBatch } from './ui/aiBatch.js';
 
 const config = readConfig();
 if (config) {
@@ -29,4 +30,5 @@ if (config) {
     initWorkflowDrawer();
     initQueueFlow();
     initGovernanceBatch(config);
+    initAiBatch(config);
 }

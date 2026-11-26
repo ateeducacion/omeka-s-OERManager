@@ -1,0 +1,28 @@
+<?php
+/**
+ * TASK-011: the batch AI proposal sidebar, served into `#oer-batch-sidebar`.
+ * Everything happens in `asset/js/ui/aiBatch.js`; the markup only carries the
+ * URLs, the CSRF and the empty boxes.
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var string $csrf
+ * @var array<string,string> $urls
+ * @var float $costPerRea
+ */
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+?>
+<div class="oer-ai-batch"
+     data-csrf="<?php echo $escape($csrf); ?>"
+     data-preview-url="<?php echo $escape($urls['preview']); ?>"
+     data-launch-url="<?php echo $escape($urls['launch']); ?>"
+     data-status-url="<?php echo $escape($urls['status']); ?>"
+     data-cancel-url="<?php echo $escape($urls['cancel']); ?>"
+     data-item-url="<?php echo $escape($urls['item']); ?>">
+    <h3><?php echo $translate('Proponer con IA (lote)'); ?></h3>
+    <p><?php echo $translate('La IA propone el anclaje de los REA en cola que aún no tienen propuesta. No cambia ningún REA: la propuesta queda guardada hasta que un curador la revise en el panel.'); ?></p>
+    <button type="button" class="button oer-ai-batch-preview-button"><?php echo $translate('Calcular'); ?></button>
+    <div class="oer-ai-batch-preview" hidden aria-live="polite"></div>
+    <div class="oer-ai-batch-progress" hidden aria-live="polite"></div>
+    <p class="oer-ai-batch-error error" hidden role="alert"></p>
+</div>

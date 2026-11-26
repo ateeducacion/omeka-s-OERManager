@@ -230,6 +230,20 @@ $curricular = [
         </div>
     </div>
 
+    <?php $currentAiProposal = is_scalar($query['ai_proposal'] ?? '') ? (string) ($query['ai_proposal'] ?? '') : ''; ?>
+    <div class="field">
+        <div class="field-meta">
+            <label for="oer-search-ai-proposal"><?php echo $translate('Propuesta IA'); ?></label>
+        </div>
+        <div class="inputs">
+            <select id="oer-search-ai-proposal" name="ai_proposal">
+                <option value=""><?php echo $translate('Con o sin propuesta'); ?></option>
+                <option value="ready" <?php echo 'ready' === $currentAiProposal ? 'selected' : ''; ?>><?php echo $translate('Lista'); ?></option>
+                <option value="none" <?php echo 'none' === $currentAiProposal ? 'selected' : ''; ?>><?php echo $translate('Sin propuesta'); ?></option>
+            </select>
+        </div>
+    </div>
+
     <div class="field">
         <div class="field-meta">
             <span class="label"><?php echo $translate('Gobernanza'); ?></span>

@@ -3,6 +3,7 @@
 namespace OERManager\Service;
 
 use OERManager\ColumnType\AlignmentStatus;
+use OERManager\Service\Ai\StoredProposal;
 use OERManager\Service\Governance\IntegrityPolicy;
 use OERManager\Service\Workflow\WorkflowStatus;
 use Omeka\Api\Manager as ApiManager;
@@ -37,6 +38,9 @@ class MasterViewQuery
 
     /** «Creado hace más de» N days (TASK-070), on `o:created`. Other values are ignored. */
     public const AGE_DAYS = [7, 30, 90];
+
+    /** «Propuesta IA» (TASK-011): native search on the stored proposal's marker. */
+    public const AI_PROPOSAL_FILTERS = ['ready' => 'sw', 'none' => 'nsw'];
 
     /** Filtros que apuntan a un item-término del currículo, y su property (ADR-0004). */
     public const RESOURCE_FILTERS = [
@@ -206,6 +210,11 @@ class MasterViewQuery
                     'type' => 'nex',
                 ];
             }
+        }
+
+        $aiProposal = $query['ai_proposal'] ?? null;
+        if (is_string($aiProposal) && isset(self::AI_PROPOSAL_FILTERS[$aiProposal])) {
+            $params['property'][] = StoredProposal::searchRow(self::AI_PROPOSAL_FILTERS[$aiProposal]);
         }
 
         $this->addAlignmentFilter($params, $query['alignment'] ?? '');

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace OERManager\Permissions;
 
+use OERManager\Controller\Admin\AiBatchController;
 use OERManager\Controller\Admin\GovernanceBatchController;
 use OERManager\Controller\Admin\IndexController;
 use OERManager\Controller\Admin\StatsController;
@@ -91,7 +92,8 @@ final class ReaAcl
                 'governance-apply',
                 'recatalog-last-event',
                 'recatalog-undo',
-                // AI proposal (single); the batch one is TASK-011.
+                // AI proposal (single), and dropping a batch proposal (TASK-011).
+                'ai-proposal-discard',
                 'ai-propose',
                 'ai-propose-status',
                 'ai-propose-cancel',
@@ -115,6 +117,10 @@ final class ReaAcl
         // Licence and authorship batch (TASK-028 slice 4): the curator's own batches.
         GovernanceBatchController::class => [
             self::CURATOR => ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'],
+        ],
+        // TASK-011 (ADR-0023 §1: «AI (single and batch)» is the curator's).
+        AiBatchController::class => [
+            self::CURATOR => ['form', 'preview', 'launch', 'status', 'cancel'],
         ],
     ];
 

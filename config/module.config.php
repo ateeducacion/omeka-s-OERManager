@@ -57,7 +57,9 @@ return [
                     // TASK-039: reasons to reject and to discard.
                     $container->get(Service\Workflow\ReasonVocabularies::class),
                     // TASK-070: «En cola» and «Sin campo obligatorio» as id sets.
-                    $container->get(Service\IdConstraintResolver::class)
+                    $container->get(Service\IdConstraintResolver::class),
+                    // TASK-011: the stored AI proposal (panel, removal hooks).
+                    $container->get(Service\Ai\StoredProposals::class)
                 );
             },
             Controller\Admin\StatsController::class => function ($container) {
@@ -82,6 +84,18 @@ return [
                     $container->get('Omeka\Logger'),
                     $container->get(Service\Governance\BatchJobLookup::class),
                     $container->get('Omeka\Acl')
+                );
+            },
+            // TASK-011: batch AI proposal.
+            Controller\Admin\AiBatchController::class => function ($container) {
+                return new Controller\Admin\AiBatchController(
+                    $container->get(Service\Governance\BatchSelection::class),
+                    $container->get(Service\Ai\BatchProposeEligibility::class),
+                    $container->get('Omeka\Job\Dispatcher'),
+                    $container->get(Service\Ai\ProposalStore::class),
+                    $container->get('Omeka\Logger'),
+                    $container->get(Service\Governance\BatchJobLookup::class),
+                    $container->get('Omeka\Settings')
                 );
             },
         ],
@@ -532,6 +546,39 @@ return [
             Service\Ai\ProposalStore::class => function ($container) {
                 return new Service\Ai\ProposalStore(sys_get_temp_dir() . '/oer-manager-proposals');
             },
+            // TASK-011: the AI proposal stored in the REA (private curation:data).
+            Service\Ai\StoredProposalWriter::class => function ($container) {
+                $entityManager = $container->get('Omeka\EntityManager');
+                $api = $container->get('Omeka\ApiManager');
+                $propertyId = null;
+                $resolved = false;
+                return new Service\Ai\StoredProposalWriter(
+                    function () use ($entityManager, $api, &$propertyId, &$resolved) {
+                        if (!$resolved) {
+                            $resolved = true;
+                            $found = $api->search('properties', ['term' => Service\Ai\StoredProposal::TERM])
+                                ->getContent();
+                            $propertyId = $found ? (int) $found[0]->id() : null;
+                        }
+                        return null === $propertyId
+                            ? null
+                            : $entityManager->getReference(\Omeka\Entity\Property::class, $propertyId);
+                    },
+                    static fn () => new \Omeka\Entity\Value()
+                );
+            },
+            Service\Ai\StoredProposals::class => function ($container) {
+                return new Service\Ai\StoredProposals(
+                    $container->get('Omeka\EntityManager'),
+                    $container->get(Service\Ai\StoredProposalWriter::class)
+                );
+            },
+            Service\Ai\BatchProposeEligibility::class => function ($container) {
+                return new Service\Ai\BatchProposeEligibility(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\IdConstraintResolver::class)
+                );
+            },
         ],
     ],
     'form_elements' => [
@@ -583,6 +630,21 @@ return [
                             'defaults' => [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\GovernanceBatchController::class,
+                                'action' => 'form',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-ai-batch' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/ai-batch[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\AiBatchController::class,
                                 'action' => 'form',
                             ],
                         ],

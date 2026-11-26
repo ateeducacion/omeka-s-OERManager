@@ -54,7 +54,8 @@ final class ProposeRunner
                     continue;
                 }
                 $text = trim((string) $value->value());
-                if ('' !== $text) {
+                // TASK-011: a stored AI proposal is machine data, not text about the resource.
+                if ('' !== $text && !StoredProposal::isProposal($text)) {
                     $parts[] = $text;
                 }
             }
