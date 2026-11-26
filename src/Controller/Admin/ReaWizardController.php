@@ -286,6 +286,10 @@ class ReaWizardController extends AbstractActionController
                 // A vocabulary that does not resolve degrades to a text field, never hidden.
                 $field['control'] = 'text';
             }
+            if ([] === $field['options'] && 'licence' === $field['control']) {
+                // Without a licence vocabulary the licence is a free URI (GovernanceService's notice).
+                $field['control'] = 'url';
+            }
         }
         unset($field);
         return $schema;

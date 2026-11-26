@@ -209,6 +209,27 @@ final class ReaWizardControllerTest extends TestCase
         $this->assertNull($config['item']);
     }
 
+    public function testWithoutALicenceVocabularyTheLicenceIsAUrlField(): void
+    {
+        $governance = $this->createMock(GovernanceService::class);
+        $governance->method('formOptions')->willReturn(['options' => ['licence' => []]]);
+        $controller = new ReaWizardController(
+            $this->save,
+            $this->uploads,
+            new MediaMetadataReader(),
+            $this->duplicates,
+            $governance,
+            new WorkflowService($this->api, $this->createMock(CurationWriter::class)),
+            $this->settings,
+            $this->logger,
+            fn () => $this->template,
+            static fn () => []
+        );
+        $controller->plugins = $this->controller->plugins;
+        $controls = array_column($controller->indexAction()->getVariable('config')['schema']['data'], 'control', 'term');
+        $this->assertSame('url', $controls['dcterms:license']);
+    }
+
     public function testWithoutATemplateThePageSaysSoAndSavingIsRefused(): void
     {
         $this->template = null;
