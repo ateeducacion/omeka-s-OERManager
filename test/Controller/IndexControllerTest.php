@@ -464,6 +464,15 @@ class IndexControllerTest extends TestCase
         $this->assertSame([], $calls);
     }
 
+    /** TASK-077: the wizard lists the thematic axes to tick, without a search text. */
+    public function testSearchTermsBrowseListsTheAxes(): void
+    {
+        $this->dependencies['curriculumSearch']->expects($this->once())->method('searchAxes')
+            ->with('', 100)->willReturn([['id' => 70]]);
+        $this->params->query = ['dimension' => 'dcterms:relation', 'browse' => '1'];
+        $this->assertSame([['id' => 70]], $this->data('searchTerms')['results']);
+    }
+
     public function testCurriculumTreeValidatesEachCourseSubjectAndMarksRetiredLinks(): void
     {
         $terms = $this->dependencies['curriculumTerms'];

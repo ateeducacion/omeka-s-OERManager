@@ -61,6 +61,15 @@ final class GovernanceSettingsTest extends TestCase
         $this->assertSame(40260, GovernanceSettings::parseId(' 40260 '));
     }
 
+    public function testParseDefaultLicenceKeepsOnlyAWebUri(): void
+    {
+        $uri = 'https://creativecommons.org/licenses/by-sa/4.0/';
+        $this->assertSame($uri, GovernanceSettings::parseDefaultLicence('  ' . $uri . ' '));
+        foreach ([null, '', 'CC BY-SA', 'javascript:alert(1)', ['x'], 'https://' . str_repeat('a', 600)] as $raw) {
+            $this->assertSame('', GovernanceSettings::parseDefaultLicence($raw));
+        }
+    }
+
     public function testParseRightsHolderTrimsAndKeepsText(): void
     {
         $this->assertSame(

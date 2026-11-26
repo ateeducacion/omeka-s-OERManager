@@ -448,6 +448,10 @@ class IndexController extends AbstractActionController
         if ('etapa' === $dimension) {
             return ['results' => $this->curriculumSearch->searchEtapas('', self::BROWSE_LIMIT)];
         }
+        // TASK-077: the wizard ticks thematic axes from the whole list (72 today).
+        if ('dcterms:relation' === $dimension) {
+            return ['results' => $this->curriculumSearch->searchAxes('', self::BROWSE_LIMIT)];
+        }
         if (null === CurModel::scopeFor($dimension, $context)) {
             return ['results' => [], 'error' => 'parent_required'];
         }
