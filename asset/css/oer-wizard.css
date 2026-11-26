@@ -815,6 +815,104 @@ body.oer-wizard-page {
     padding: 0 16px 16px;
 }
 
+/* Step ③: thematic axes, a search, chips and an alphabetical checklist (owner's review of PR #100). */
+.oer-wizard .oer-wz-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.oer-wizard .oer-wz-chips .oer-wz-block {
+    margin: 0 4px 0 0;
+}
+
+.oer-wizard .oer-wz-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 12px;
+    border: 1.5px solid var(--wz-blue);
+    border-radius: 999px;
+    background: var(--wz-card);
+    color: var(--wz-blue);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-chip-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wz-blue);
+    font: 700 14px var(--wz-sans);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-chip-x:hover {
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-axes {
+    columns: 3 240px;
+    column-gap: 24px;
+}
+
+.oer-wizard .oer-wz-axes-letter {
+    break-inside: avoid-column;
+    margin-bottom: 10px;
+}
+
+.oer-wizard .oer-wz-letter {
+    margin: 0 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--wz-hairline);
+    color: var(--wz-blue);
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.oer-wizard .oer-wz-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    color: var(--wz-ink);
+    font-size: 15px;
+    line-height: 1.35;
+    cursor: pointer;
+    break-inside: avoid;
+}
+
+.oer-wizard .oer-wz-check:hover {
+    background: var(--wz-surface);
+}
+
+.oer-wizard .oer-wz-check input {
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    flex: none;
+    accent-color: var(--wz-blue);
+}
+
+.oer-wizard .oer-wz-check-desc {
+    display: none;
+    color: var(--wz-body-soft);
+    font-size: 13px;
+}
+
+.oer-wizard .oer-wz-check:focus-within .oer-wz-check-desc {
+    display: block;
+}
+
 /* Step ④. */
 .oer-wizard .oer-wz-record {
     display: flex;

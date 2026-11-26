@@ -108,7 +108,7 @@ const licenceOptions = (fieldOf(LICENCE_TERM) || {}).options || [];
 let state = cfg ? fromItem(cfg.item) : emptyState();
 const ui = {
   step: 1, sub: 1, maxStep: 1, busy: false, error: null, uploadError: null, uploading: null,
-  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', userBlocks: {},
+  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', axisQ: '', userBlocks: {},
   duplicates: null, focus: true,
 };
 
@@ -204,7 +204,9 @@ function list(key, load) {
 }
 
 const urls = cfg ? cfg.urls : {};
-const rows = (data) => (data.results || []).map((r) => ({ id: Number(r.id), title: r.title, parentTitle: r.parentTitle || '' }));
+const rows = (data) => (data.results || []).map((r) => ({
+  id: Number(r.id), title: r.title, parentTitle: r.parentTitle || '', description: r.description || '',
+}));
 const loaders = {
   stages: () => list('stages', () => getJson(urls.searchTerms, { dimension: 'etapa', browse: 1 }).then(rows)),
   courses: (stageId) => list('courses:' + stageId, () =>
@@ -624,14 +626,57 @@ function subAxes() {
   if (!axes) {
     return loadingOrRetry('axes');
   }
-  return h('fieldset', { class: 'oer-wz-field' },
+  if (!axes.length) {
+    return h('p', { class: 'oer-wz-help' }, t('No hay nada que elegir aquí todavía.'));
+  }
+  // Owner's review of PR #100: 72 flat axes, so a search, the ticked ones as chips and
+  // an alphabetical checklist. No invented categories: the data has none.
+  const chips = h('div', { class: 'oer-wz-chips', 'aria-live': 'polite' });
+  const listBox = h('div', { class: 'oer-wz-axes' });
+  const toggle = (axis, on) => {
+    state.axes = on ? [...state.axes, { id: axis.id, title: axis.title }] : state.axes.filter((a) => a.id !== axis.id);
+    changed();
+    paintChips();
+    root.querySelector('[data-wz-summary]').textContent = summary(state);
+  };
+  const paintChips = () => {
+    chips.replaceChildren(...(state.axes.length
+      ? [h('span', { class: 'oer-wz-cap oer-wz-block' }, t('Marcados')), ...[...state.axes]
+        .sort((a, b) => a.title.localeCompare(b.title, 'es', { sensitivity: 'base' }))
+        .map((axis) => h('span', { class: 'oer-wz-chip' }, axis.title,
+          h('button', { type: 'button', class: 'oer-wz-chip-x', 'aria-label': t('Quitar «%s»', axis.title), onclick: () => {
+            toggle(axis, false);
+            const box = listBox.querySelector('input[data-axis="' + axis.id + '"]');
+            if (box) {
+              box.checked = false;
+            }
+          } }, '✕')))]
+      : []));
+  };
+  const paintList = () => {
+    const letters = axisList(axes, ui.axisQ);
+    listBox.replaceChildren(...(letters.length
+      ? letters.map((group) => h('div', { class: 'oer-wz-axes-letter' },
+        h('p', { class: 'oer-wz-letter', 'aria-hidden': 'true' }, group.letter),
+        group.items.map((axis) => h('label', { class: 'oer-wz-check', title: axis.description || null },
+          h('input', { type: 'checkbox', 'data-axis': String(axis.id), checked: state.axes.some((a) => a.id === axis.id),
+            onchange: (e) => toggle(axis, e.target.checked) }),
+          h('span', { class: 'oer-wz-choice-text' }, h('span', {}, axis.title),
+            axis.description ? h('span', { class: 'oer-wz-check-desc' }, axis.description) : null)))))
+      : [h('p', { class: 'oer-wz-help' }, t('Nada coincide con «%s». Prueba con otra palabra.', ui.axisQ))]));
+  };
+  paintChips();
+  paintList();
+  const searchId = nextId('wz-axis-q');
+  return h('fieldset', { class: 'oer-wz-field', style: 'gap: 14px' },
     h('legend', {}, h('h3', {}, t('Ejes temáticos'), h('span', { class: 'oer-wz-optional', style: 'font-size: 15px' }, ' · ' + t('opcional')))),
     h('p', { class: 'oer-wz-help', style: 'font-size: 15px' }, t('Marca los ejes que trabaja tu recurso. Puedes dejarlo en blanco.')),
-    axes.length ? h('div', { class: 'oer-wz-grid is-wide' }, axes.map((axis) => choice('checkbox', 'wz-axis', state.axes.some((a) => a.id === axis.id), (e) => {
-      state.axes = e.target.checked ? [...state.axes, { id: axis.id, title: axis.title }] : state.axes.filter((a) => a.id !== axis.id);
-      changed();
-      root.querySelector('[data-wz-summary]').textContent = summary(state);
-    }, axis.title))) : h('p', { class: 'oer-wz-help' }, t('No hay nada que elegir aquí todavía.')));
+    h('div', { class: 'oer-wz-search' },
+      h('label', { for: searchId, class: 'oer-wz-visually-hidden' }, t('Buscar un eje temático')),
+      icon('search'),
+      h('input', { id: searchId, class: 'oer-wz-input', type: 'search', placeholder: t('Buscar, por ejemplo: sostenibilidad'), value: ui.axisQ,
+        oninput: (e) => { ui.axisQ = e.target.value; paintList(); } })),
+    chips, listBox);
 }
 
 function stepAnchoring() {

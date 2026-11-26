@@ -34,6 +34,9 @@ const PAIRS = [
   ['--wz-on-dark', '--wz-blue-hover', TEXT],
   ['--wz-on-dark-soft', '--wz-blue', TEXT],
   ['--wz-yellow', '--wz-blue', TEXT],
+  // Axis chips (owner's review of PR #100) and the hover ground of the axis checklist.
+  ['--wz-blue', '--wz-card', UI],
+  ['--wz-ink', '--wz-surface', TEXT],
   // States.
   ['--wz-error-ink', '--wz-error-soft', TEXT],
   ['--wz-ok-ink', '--wz-ok-soft', UI],
