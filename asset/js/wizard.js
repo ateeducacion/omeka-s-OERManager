@@ -491,6 +491,11 @@ function subStage() {
     state.stage.title = (stages.find((s) => s.id === state.stage.id) || {}).title || '';
   }
   const name = nextId('wz-stage');
+  if (!stages.length) {
+    // No curriculum this user can read (TASK-069 for isolated users): say so, never an empty list.
+    return notice('important', 'alert', h('p', { class: 'oer-wz-notice-title' }, t('No hay currículo disponible para anclar el recurso.')),
+      h('p', {}, t('Puedes guardar el borrador y continuar más tarde. Si el problema sigue, avisa al equipo de la Mediateca.')));
+  }
   return h('fieldset', { class: 'oer-wz-field' }, h('legend', {}, h('h3', { style: 'margin-bottom: 10px' }, t('¿En qué etapa se usa?'))),
     h('div', { class: 'oer-wz-grid' }, stages.map((stage) => choice('radio', name, state.stage?.id === stage.id, () => {
       if (state.stage?.id !== stage.id) {
