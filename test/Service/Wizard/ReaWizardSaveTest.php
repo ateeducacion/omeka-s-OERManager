@@ -27,7 +27,8 @@ final class ReaWizardSaveTest extends TestCase
 
     private const PROPS = ['dcterms:title' => 1, 'dcterms:description' => 4, 'lrmi:learningResourceType' => 50,
         'dcterms:license' => 49, 'dcterms:creator' => 2, 'curation:status' => 90, 'curation:note' => 91,
-        'dcterms:provenance' => 51, 'schema:url' => 60, 'dcterms:references' => 61];
+        'dcterms:provenance' => 51, 'schema:url' => 60, 'dcterms:references' => 61,
+        'schema:isPartOf' => 70];
 
     private $api;
     private $writer;
@@ -356,6 +357,41 @@ final class ReaWizardSaveTest extends TestCase
             [['type' => 'customvocab:7', 'property_id' => 50, '@id' => 'https://example.org/video', 'o:label' => 'Vídeo']],
             $this->creates[0][1]['lrmi:learningResourceType']
         );
+    }
+
+    public function testAnItemVocabularyValueIsWrittenAsALinkToTheItem(): void
+    {
+        // Owner's report on PR #100: «Proyecto» (schema:isPartOf) is a CustomVocab of items.
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $schema = self::schema();
+        $schema['data'][] = ['term' => 'schema:isPartOf', 'control' => 'select', 'dataType' => 'customvocab:9',
+            'options' => [['value' => '41371', 'label' => 'Impulsa', 'resource' => 41371]]];
+        $state = $this->state();
+        $state['values']['schema:isPartOf'] = ['41371'];
+        $this->save()->save($state, $schema, null, 7, 'Ana P');
+        $this->assertSame(
+            [['type' => 'customvocab:9', 'property_id' => 70, 'value_resource_id' => 41371]],
+            $this->creates[0][1]['schema:isPartOf']
+        );
+    }
+
+    public function testAResumeReadsAnItemValueAsItsIdAndLeavesItUntouched(): void
+    {
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $schema = self::schema();
+        $schema['data'][] = ['term' => 'schema:isPartOf', 'control' => 'select', 'dataType' => 'customvocab:9',
+            'options' => [['value' => '41371', 'label' => 'Impulsa', 'resource' => 41371]]];
+        $existing = $this->item(100, 'Fracciones', [
+            'dcterms:title' => [$this->value('Fracciones')],
+            'schema:isPartOf' => [$this->value('', $this->item(41371, 'Impulsa'), 'customvocab:9')],
+        ]);
+        $state = $this->state(['resource' => ['kind' => 'keep']]);
+        $state['values']['schema:isPartOf'] = ['41371'];
+        $this->save()->save($state, $schema, $existing, 7, 'Ana P');
+        $this->assertArrayNotHasKey('schema:isPartOf', $this->updates[0][2], 'an unchanged project is not rewritten');
+        $this->assertNotContains(70, $this->updates[0][2]['clear_property_values'] ?? []);
     }
 
     public function testAResumeRewritesOnlyTheTermsThatChanged(): void

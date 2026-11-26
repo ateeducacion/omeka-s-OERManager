@@ -333,15 +333,27 @@ class ReaWizardSave
         return true;
     }
 
-    /** @return list<string> the stored values of a term as the wizard posts them (URI or text) */
+    /** @return list<string> the stored values of a term as the wizard posts them (URI, item id or text) */
     private static function stored(ItemRepresentation $existing, string $term): array
     {
-        $out = [];
-        foreach ((array) $existing->value($term, ['all' => true, 'default' => []]) as $value) {
-            $uri = (string) $value->uri();
-            $out[] = '' !== $uri ? $uri : trim((string) $value->value());
+        return array_map(
+            static fn ($value): string => self::posted($value),
+            (array) $existing->value($term, ['all' => true, 'default' => []])
+        );
+    }
+
+    /**
+     * One stored value as the wizard shows and posts it: its URI, the id of the
+     * item it links (an item-set vocabulary) or its text.
+     */
+    public static function posted(object $value): string
+    {
+        $uri = (string) $value->uri();
+        if ('' !== $uri) {
+            return $uri;
         }
-        return $out;
+        $resource = $value->valueResource();
+        return null !== $resource ? (string) $resource->id() : trim((string) $value->value());
     }
 
     /** @return array<string,mixed> */
@@ -386,6 +398,10 @@ class ReaWizardSave
         }
         if (null !== ($field['vocabId'] ?? null) || str_starts_with($dataType, 'customvocab:')) {
             foreach ((array) ($field['options'] ?? []) as $option) {
+                // An item-set vocabulary links the chosen item (owner's report on PR #100).
+                if (isset($option['resource']) && (string) $option['resource'] === $value) {
+                    return ['type' => $dataType, 'property_id' => $propertyId, 'value_resource_id' => (int) $value];
+                }
                 if (isset($option['uri']) && $option['uri'] === $value) {
                     $out = ['type' => $dataType, 'property_id' => $propertyId, '@id' => $value];
                     if ('' !== (string) ($option['label'] ?? '')) {

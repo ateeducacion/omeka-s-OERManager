@@ -373,8 +373,7 @@ class ReaWizardController extends AbstractActionController
         foreach ($schema['data'] as $field) {
             $term = (string) $field['term'];
             foreach ((array) $item->value($term, ['all' => true, 'default' => []]) as $value) {
-                $uri = (string) $value->uri();
-                $values[$term][] = '' !== $uri ? $uri : (string) $value->value();
+                $values[$term][] = ReaWizardSave::posted($value);
             }
         }
         $alignment = [];

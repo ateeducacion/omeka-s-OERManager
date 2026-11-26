@@ -106,4 +106,23 @@ final class ReaWizardSchemaTest extends TestCase
         $this->assertTrue(ReaWizardSchema::isGovernance('dcterms:license'));
         $this->assertFalse(ReaWizardSchema::isGovernance('dcterms:title'));
     }
+
+    public function testVocabularyOptionsForTermsUrisAndItems(): void
+    {
+        // CustomVocab::listValues(): term => term, uri => label, item id => title.
+        $this->assertSame(
+            [['value' => 'Vídeo'], ['value' => 'Juego']],
+            ReaWizardSchema::vocabOptions('literal', ['Vídeo' => 'Vídeo', 'Juego' => 'Juego'])
+        );
+        $this->assertSame(
+            [['uri' => 'https://example.org/a', 'label' => 'A']],
+            ReaWizardSchema::vocabOptions('uri', ['https://example.org/a' => 'A'])
+        );
+        // An item-set vocabulary («Proyectos», schema:isPartOf): its items, by id (owner's report on PR #100).
+        $this->assertSame(
+            [['value' => '41371', 'label' => 'Impulsa', 'resource' => 41371], ['value' => '41372', 'label' => 'Radio', 'resource' => 41372]],
+            ReaWizardSchema::vocabOptions('resource', [41371 => 'Impulsa', 41372 => 'Radio'])
+        );
+        $this->assertSame([], ReaWizardSchema::vocabOptions(null, []));
+    }
 }

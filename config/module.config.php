@@ -125,20 +125,10 @@ return [
                         }
                         return $properties;
                     },
-                    // Entries of a CustomVocab, by id: `{value}` or `{uri, label}`.
+                    // Entries of a CustomVocab, by id: terms, URIs or the items of an item set.
                     static function (int $id) use ($api): array {
                         $vocab = $api->read('custom_vocabs', $id)->getContent();
-                        $entries = [];
-                        if ('uri' === $vocab->type()) {
-                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
-                                $entries[] = ['uri' => (string) $uri, 'label' => (string) ($label ?? '')];
-                            }
-                            return $entries;
-                        }
-                        foreach (($vocab->listTerms() ?? []) as $term) {
-                            $entries[] = ['value' => (string) $term];
-                        }
-                        return $entries;
+                        return Service\Wizard\ReaWizardSchema::vocabOptions($vocab->type(), $vocab->listValues());
                     }
                 );
             },

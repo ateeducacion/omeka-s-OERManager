@@ -51,7 +51,7 @@ final class ReaWizardSchema
         'dcterms:license' => 'Qué pueden hacer otras personas con tu recurso.', // @translate
         'dcterms:creator' => 'Quién lo ha hecho: personas, centro o equipo.', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
-        'schema:isPartOf' => 'Si el recurso nació en un proyecto o programa educativo, escribe su nombre.', // @translate
+        'schema:isPartOf' => 'Si el recurso nació en un proyecto o programa educativo, indícalo.', // @translate
     ];
 
     /**
@@ -127,6 +127,30 @@ final class ReaWizardSchema
             }
         }
         return $terms;
+    }
+
+    /**
+     * The options of a CustomVocab, from its type and `listValues()` (terms by
+     * term, URIs by URI, items by id). An item-set vocabulary (such as the
+     * projects of `schema:isPartOf`) offers its items: the option's value is
+     * the item id as text, and `resource` tells the save to link the item.
+     *
+     * @param array<int|string,string> $values
+     * @return list<array<string,mixed>>
+     */
+    public static function vocabOptions(?string $type, array $values): array
+    {
+        $options = [];
+        foreach ($values as $key => $label) {
+            if ('resource' === $type) {
+                $options[] = ['value' => (string) $key, 'label' => (string) $label, 'resource' => (int) $key];
+            } elseif ('uri' === $type) {
+                $options[] = ['uri' => (string) $key, 'label' => (string) $label];
+            } elseif ('literal' === $type) {
+                $options[] = ['value' => (string) $key];
+            }
+        }
+        return $options;
     }
 
     /** Written by GovernanceService (RF-015), not in the item payload. */
