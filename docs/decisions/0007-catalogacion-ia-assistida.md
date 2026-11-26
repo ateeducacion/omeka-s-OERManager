@@ -30,3 +30,23 @@ Esto **revisa** una decisión previa registrada en `project-memory.md` («Proces
 - Decisiones de plan mode con el propietario, 2026-06-22 (TASK-004).
 - ADR-0004 (mapeo RDF), ADR-0006 (raíces de árboles), ADR-0002 (auditoría reversible).
 - Skill `recatalogador` (invariantes de escritura RDF).
+
+## Addendum 1 (2026-11-25, TASK-011): the batch stores proposals in the REA
+
+The batch proposal (RF-011, ADR-0023 §3) runs as `AiBatchProposeJob` and keeps the rule of point 1:
+the AI proposes and the curator confirms.
+
+1. The Job stores **one private `curation:data` value per REA**, a literal whose text is the stable,
+   untranslatable marker `OERManager/ai-proposal/1`, a space and a versioned JSON object: term ids per
+   dimension, the justifications, the model and the dates. It stores no prompts and no titles.
+2. It **never applies** the proposal. Alignment, axes, status and visibility are untouched; the curator
+   opens the REA, finds the proposal pre-filled as pending chips and confirms it through the
+   re-cataloguer (point 4, RF-009 unchanged).
+3. The value is written directly on the entity, not through the API: imported REA usually fail the
+   template's required fields, and the write must not move `o:modified`.
+4. The value is removed when the re-cataloguer applies a change, on «Confirmar y publicar», on
+   «Descartar» and on «Descartar propuesta». A rejection keeps it.
+5. Only users allowed `ai-propose` (curators) receive it in the panel; only `curation:data` values
+   carrying the marker are read or written.
+
+Spec: `docs/superpowers/specs/2026-11-25-task-011-batch-ai-proposal-design.md`.

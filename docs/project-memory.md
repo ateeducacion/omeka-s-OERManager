@@ -79,6 +79,8 @@
 
 - **Container harnesses are CLI-only (2026-11-17, security review of TASK-067).** The development stack mounts the working tree under `modules/OERManager` and nginx runs any `.php`, so all 27 `test/container/*.php` answered over HTTP on port 8080 (published on every interface); some bootstrap Omeka and write. Each now starts with `if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }`; every new harness must too. Release packages exclude `/test` (`composer.json` archive), so production was not exposed.
 
+- **TASK-011 batch AI proposal: done (2026-11-26, owner decisions of 2026-11-25).** Pending proposals live in the REA as one private `curation:data` value with the marker `OERManager/ai-proposal/1` and a versioned JSON (ADR-0007 addendum 1): in the database, in backups, and exactly filterable. Durable private files, the Job record and Omeka settings were rejected (settings load whole on every request). A batch takes only REA in the queue without a proposal, one batch at a time; the Job writes the entity directly, so imported REA that fail the template still get their proposal and `o:modified` does not move. The panel pre-fills it only for curators. The development catalogue has no `rea_curador`: `batch-ai-check.php --disposable-curator` creates and deletes a throwaway one. The real batch waits for TASK-068 (a) and the owner's budget.
+
 - **TASK-067 owner decisions (2026-11-17).** `rea_curador` also proposes; curators regularise out-of-flow REA directly; the 69 development REA without status keep the warning; the ADR-0002 audit annotations become private (TASK-074, milestone 1). Personal data rule: workflow and audit values that name people are written private.
 
 ## Decisiones ya tomadas (no reabrir sin motivo)

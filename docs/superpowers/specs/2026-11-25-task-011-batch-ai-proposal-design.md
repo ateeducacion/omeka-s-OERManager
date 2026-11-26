@@ -62,7 +62,9 @@ For each id, in order:
 4. Write the proposal value **directly on the entity** and flush, as the TASK-076 resync does. The
    API is not used: imported REA usually fail the template's required fields (ADR-0023,
    consequences), and a refused API update would lose the proposal. `o:modified` does not move.
-5. Clear the entity manager every 50 REA so memory stays flat over 3 000.
+5. No `EntityManager::clear()`: it would detach the Job's owner and the next flush would fail, as
+   `GovernanceBatchJob` records; memory stays small per REA. (Planning ruling; the first draft said to
+   clear every 50 REA.)
 
 Errors:
 
@@ -152,8 +154,8 @@ marker values only.
 | `Controller\Admin\AiBatchController` | `form`, `preview`, `launch`, `status`, `cancel`; POST and CSRF guarded as `GovernanceBatchController`; selection through `BatchSelection`; Job ownership through `BatchJobLookup`. Progress through `ProposalStore` keyed by Job id (as the governance batch). |
 | `ReaAcl` | the five actions granted to `rea_curador` (and `global_admin`). |
 | `MasterViewQuery` | the `ai_proposal` filter (`ready` / `none`) and its chip. |
-| `ItemPanelData` | adds `aiProposal: {created, changed, alignment (with titles), justifications}` or `null`. |
-| Removal hooks | `RecatalogService::apply`, `WorkflowService::publish` and `::discard`, and a new `ai-proposal-discard` action, call `StoredProposalWriter::remove`. |
+| `IndexController::recatalogPanel()` | adds `aiProposal: {created, changed, alignment (with titles), justifications}` or `null` to the panel's `data-recatalog`, only for users allowed `ai-propose`. (Planning ruling: not `ItemPanelData`.) |
+| Removal hooks | the `IndexController` actions `recatalog-apply`, `publish-proposal`, `discard` and the new `ai-proposal-discard` call `StoredProposals::remove` after they succeed; a failed removal is logged and never breaks the action. (Planning ruling: not in the services.) |
 | JS `ui/aiBatch.js`, `core/aiBatchState.js` | the sidebar (preview, launch, progress, cancel, re-attach); pure state decisions in `core/` for `node --test`. |
 | JS `ui/aiPropose.js` | on panel open, pre-fill from `aiProposal` and render the notice. |
 
@@ -204,8 +206,14 @@ marker values only.
   - Removal on apply, publish and discard; kept on reject.
   - JS: the batch state machine and the panel notice and pre-fill.
 - Container: `test/container/batch-ai-check.php --write` on the development catalogue with a fake
-  LLM provider (no cost): preview buckets, a batch over a few REA including a template-invalid one,
+  `ProposeRunner` injected into the real `perform()` (no cost; planning ruling): preview buckets, a batch over a few REA including a template-invalid one,
   the stored value is private and `o:modified` unchanged, the queue filter counts match, removal on
   apply and publish, one batch at a time, cancel. Run as a real `rea_curador` (ADR-0023,
   consequences).
 - The real batch with the production model waits for TASK-068 (a) and the owner's budget.
+
+## Implementation notes (2026-11-26)
+
+- The development catalogue has no `rea_curador`, so the harness has `--disposable-curator`: an
+  inactive throwaway curator that owns the fixture REA and is deleted at the end. Its six checks pass.
+- The fixture writes `curation:status` inside `StatusGuard::run()`, which refuses a manual status write.
