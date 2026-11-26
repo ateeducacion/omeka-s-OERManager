@@ -108,7 +108,7 @@ const licenceOptions = (fieldOf(LICENCE_TERM) || {}).options || [];
 let state = cfg ? fromItem(cfg.item) : emptyState();
 const ui = {
   step: 1, sub: 1, maxStep: 1, busy: false, error: null, uploadError: null, uploading: null,
-  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '',
+  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', userBlocks: {},
   duplicates: null, focus: true,
 };
 
@@ -573,25 +573,41 @@ function subTerms(dimension) {
     return h('div', { class: 'oer-wz-field' }, head, help, loadingOrRetry('trees:' + ids.join(',')));
   }
   const listBox = h('div', { class: 'oer-wz-panel' });
+  const blockCount = (group) => {
+    const ticked = group.items.filter((item) => state[key].some((x) => x.id === item.id)).length;
+    return t(group.items.length === 1 ? '%d término' : '%d términos', group.items.length)
+      + (ticked ? ' · ' + t(ticked === 1 ? '%d marcado' : '%d marcados', ticked) : '');
+  };
   const paint = () => {
     const groups = treeGroups(trees, dimension, ui.q);
     const all = treeGroups(trees, dimension);
+    // Owner's review of PR #100: each block folds; blockOpen() decides which open on their own.
     listBox.replaceChildren(...(all.length === 0
       ? [h('p', { class: 'oer-wz-help' }, t('Esta materia no tiene términos vigentes en el currículo.'))]
       : groups.length === 0
         ? [h('p', { class: 'oer-wz-help' }, t('Nada coincide con «%s». Prueba con otra palabra.', ui.q))]
-        : groups.map((group) => h('fieldset', { class: 'oer-wz-field' },
-          h('legend', { class: 'oer-wz-cap oer-wz-block' }, group.block),
-          group.items.map((item) => h('label', { class: 'oer-wz-choice is-term' },
+        : groups.map((group) => {
+          const userKey = dimension + '|' + group.block;
+          const counter = h('span', { class: 'oer-wz-block-count' }, blockCount(group));
+          const details = h('details', { class: 'oer-wz-fold', open: blockOpen(group, {
+            checked: state[key].map((x) => x.id), query: ui.q, single: all.length === 1, user: ui.userBlocks[userKey],
+          }) },
+          h('summary', { onclick: (e) => { ui.userBlocks[userKey] = !e.currentTarget.parentElement.open; } },
+            h('span', { class: 'oer-wz-cap oer-wz-block' }, group.block), counter),
+          h('div', { class: 'oer-wz-fold-body', role: 'group', 'aria-label': group.block }, group.items.map((item) => h('label', { class: 'oer-wz-choice is-term' },
             h('input', { type: 'checkbox', checked: state[key].some((x) => x.id === item.id), onchange: (e) => {
               state[key] = e.target.checked
                 ? [...state[key], { id: item.id, title: item.title, code: item.code }]
                 : state[key].filter((x) => x.id !== item.id);
               changed();
+              // No repaint: only the counters change, so an open block stays open.
+              counter.textContent = blockCount(group);
               head.querySelector('.oer-wz-count').textContent = t(state[key].length === 1 ? '%d marcado' : '%d marcados', state[key].length);
               root.querySelector('[data-wz-summary]').textContent = summary(state);
             } }),
-            h('span', { class: 'oer-wz-choice-text' }, h('span', {}, item.title), item.code ? h('span', { class: 'oer-wz-code' }, item.code) : null)))))));
+            h('span', { class: 'oer-wz-choice-text' }, h('span', {}, item.title), item.code ? h('span', { class: 'oer-wz-code' }, item.code) : null)))));
+          return details;
+        })));
   };
   paint();
   const searchId = nextId('wz-q');

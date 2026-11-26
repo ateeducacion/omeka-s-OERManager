@@ -764,6 +764,57 @@ body.oer-wizard-page {
     gap: 8px;
 }
 
+/* Step ③: blocks of knowledge and criteria fold (owner's review of PR #100). */
+.oer-wizard .oer-wz-fold {
+    border: 1.5px solid var(--wz-hairline);
+    border-radius: 12px;
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-fold > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 12px;
+    min-height: 48px;
+    padding: 12px 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-fold > summary::-webkit-details-marker {
+    display: none;
+}
+
+.oer-wizard .oer-wz-fold > summary::before {
+    content: "▸";
+    color: var(--wz-blue);
+    margin-right: 4px;
+}
+
+.oer-wizard .oer-wz-fold[open] > summary::before {
+    content: "▾";
+}
+
+.oer-wizard .oer-wz-fold > summary .oer-wz-block {
+    flex: 1 1 260px;
+    margin: 0;
+}
+
+.oer-wizard .oer-wz-block-count {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-fold-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px 16px;
+}
+
 /* Step ④. */
 .oer-wizard .oer-wz-record {
     display: flex;
