@@ -92,3 +92,17 @@ No hay REA en producción enlazados al grafo de ADR-0009: se puede cambiar el mo
   repositorio.
 - Decisiones del propietario (chat 2026-11-09): modelo del repositorio en Omeka (opción 2),
   módulo de sincronización aparte, `schema:about` → materia en un curso, carga de cero.
+
+## Addendum 1 (2026-11-24, TASK-076): the stage subject is derived for search
+
+Owner decision on 2026-11-24. Point 2 is refined: stage, stage subject and competences are not
+*catalogued* on the REA. The stage subject is *derived*: on every REA save, OERManager writes into
+`lrmi:educationalAlignment` the `cur:Materia` reached through `cur:materia` from each
+`schema:about` value, so property-based search (AdvancedSearch facets, REST API) can filter by
+subject. It is not a curation dimension: nobody edits it, and it carries no annotations and no
+curation event. The derived value is public, so it only follows links whose whole chain is public.
+LRMI expresses a subject as an alignment to a framework node (`alignmentType`
+«educationalSubject»); Omeka has no nested objects, so the value points straight at the node.
+Point 3 holds (`lrmi`). Rejected: `dcterms:subject` (the mediateca template uses it for free
+keywords) and a `cur:` property on the REA (point 3, ADR-0013). Spec:
+`docs/superpowers/specs/2026-11-24-task-076-subject-facet-design.md`.

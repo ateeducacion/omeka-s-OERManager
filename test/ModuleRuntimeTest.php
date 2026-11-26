@@ -46,7 +46,7 @@ class ModuleRuntimeTest extends TestCase
         $this->assertFalse($acl->isAllowed('rea_curador', $index, 'config'));
         $this->assertTrue($acl->isAllowed('global_admin', $index, 'config'));
         $events = $this->createMock(\Laminas\EventManager\SharedEventManagerInterface::class);
-        $events->expects($this->exactly(6))->method("attach");
+        $events->expects($this->exactly(7))->method("attach");
         $module->attachListeners($events);
         $module->install($module->getServiceLocator());
         $this->assertIsArray($module->getConfig());
@@ -518,6 +518,21 @@ class ModuleRuntimeTest extends TestCase
         $guard = new StatusGuardAlias();
         $errors = $guard->run(fn () => $run($this->entity(5, $lr, [$status('Publicado')]), $proposed, 'rea_curador', $guard));
         $this->assertSame([], $errors);
+    }
+
+    /** TASK-076: the hydrated entity goes to the writer; a non-entity is ignored. */
+    public function testDeriveSubjectListenerHandsTheHydratedEntityToTheWriter(): void
+    {
+        $writer = new \OERManager\Service\Curriculum\DerivedSubjectWriter(
+            static fn (): ?object => null,
+            static fn (): object => new \stdClass()
+        );
+        $module = $this->module([\OERManager\Service\Curriculum\DerivedSubjectWriter::class => $writer]);
+        $entity = $this->entity(5, 'lrmi:LearningResource', [$this->valueEntity('dcterms:title', 'REA')]);
+        // No schema:about and no stored value: nothing to change, and no error.
+        $module->deriveSubject((new Event())->setParam('entity', $entity));
+        $module->deriveSubject((new Event())->setParam('entity', 'not an entity'));
+        $this->assertCount(1, $entity->getValues());
     }
 
     /**

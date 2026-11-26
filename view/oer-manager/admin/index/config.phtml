@@ -7,6 +7,7 @@
  * formulario, cfr. ConfigForm::init).
  *
  * @var \OERManager\Form\ConfigForm $form
+ * @var string $resyncCsrf
  */
 $translate = $this->plugin('translate');
 $form->prepare();
@@ -24,3 +25,12 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager config');
     <?php echo $this->formCollection($form, false); ?>
 </div>
 <?php echo $this->form()->closeTag(); ?>
+
+<?php // TASK-076: a separate form, so it never mixes with the settings (ConfigPayload::write). ?>
+<form method="post" class="oer-resync-subjects"
+      action="<?php echo $this->escapeHtml($this->url('admin/oer-manager', ['action' => 'resync-subjects'])); ?>">
+    <input type="hidden" name="csrf" value="<?php echo $this->escapeHtml((string) ($resyncCsrf ?? '')); ?>">
+    <h3><?php echo $translate('Materia derivada de los REA'); ?></h3>
+    <p><?php echo $translate('Recalcula la materia de etapa que se guarda en cada REA para la búsqueda pública. Hazlo tras instalar esta versión y tras cargar una versión nueva del currículo.'); ?></p>
+    <button type="submit" class="button"><?php echo $translate('Recalcular la materia derivada de los REA'); ?></button>
+</form>
