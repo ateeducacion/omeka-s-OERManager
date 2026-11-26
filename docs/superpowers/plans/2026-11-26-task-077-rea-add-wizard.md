@@ -50,6 +50,16 @@ Prototype approved by the owner on 2026-11-26: <https://claude.ai/artifact/3jbXM
 5. **Axes browse:** `search-terms?dimension=dcterms:relation&browse=1` lists up to 100 axes (today it answers
    `parent_required`).
 6. **Default licence:** new setting `oermanager_default_licence` (a URI of the licence vocabulary), optional.
+7. **The REA template is set only when the REA meets it.** Omeka's `validateEntity()` refuses to create or
+   update an item whose resource template has a required property without a value, so a draft «with only a
+   title» cannot carry the template. `ReaWizardSave` creates the draft with the class only and, after the
+   governance and anchoring writes, sets the template once every required template property has a value
+   (and removes it on a resume that leaves one empty). Found by the spike on 2026-11-26.
+8. **Spike result (2026-11-26, development container, disposable `rea_proponente`):** an item created with
+   `o:media: [{o:ingester: 'oermanager_wizard', wizard_token}]` got its media with the original stored; a
+   token of another user was refused with the ingester's message. Omeka's validator still applies: the
+   deployment must allow the `elpx` extension (the development catalogue refused it until renamed `.zip`),
+   so the upload action checks Omeka's allow-lists before storing and says so in step ①.
 
 ## Review Focus
 

@@ -275,6 +275,16 @@ final class ModuleConfigTest extends TestCase
         }
     }
 
+    public function testWizardIngesterAndUploadStoreAreRegistered(): void
+    {
+        $config = (new \OERManager\Module())->getConfig();
+        $this->assertArrayHasKey('oermanager_wizard', $config['media_ingesters']['factories']);
+        $this->assertArrayHasKey(
+            \OERManager\Service\Wizard\WizardUploadStore::class,
+            $config['service_manager']['factories']
+        );
+    }
+
     public function testWizardRouteIsRegistered(): void
     {
         $config = (new \OERManager\Module())->getConfig();

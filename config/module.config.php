@@ -577,10 +577,30 @@ return [
                     $container->get(Service\Ai\StoredProposalWriter::class)
                 );
             },
+            // TASK-077: the wizard's uploads, private and by token (as ProposalStore).
+            Service\Wizard\WizardUploadStore::class => function ($container) {
+                return new Service\Wizard\WizardUploadStore(sys_get_temp_dir() . '/oer-manager-wizard');
+            },
             Service\Ai\BatchProposeEligibility::class => function ($container) {
                 return new Service\Ai\BatchProposeEligibility(
                     $container->get('Omeka\ApiManager'),
                     $container->get(Service\IdConstraintResolver::class)
+                );
+            },
+        ],
+    ],
+    // TASK-077: the wizard's file, stored in step ①, ingested at `save`.
+    'media_ingesters' => [
+        'factories' => [
+            Media\Ingester\WizardIngester::NAME => function ($container) {
+                $auth = $container->get('Omeka\AuthenticationService');
+                return new Media\Ingester\WizardIngester(
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    $container->get('Omeka\File\TempFileFactory'),
+                    static function () use ($auth): ?int {
+                        $identity = $auth->getIdentity();
+                        return $identity ? (int) $identity->getId() : null;
+                    }
                 );
             },
         ],
