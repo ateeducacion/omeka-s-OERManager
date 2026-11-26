@@ -371,6 +371,63 @@ export function typeGroups(options) {
 }
 
 /**
+ * The resource type the file or link suggests (second review of PR #100), as
+ * `{group, value, label}` of the first option whose text matches, or null. An
+ * eXeLearning project (.elpx) can be any kind of resource: no suggestion.
+ */
+export function suggestedType(resource, options) {
+  if (!resource) {
+    return null;
+  }
+  const name = String(resource.name || '').toLowerCase();
+  const media = String(resource.mediaType || '').toLowerCase();
+  let pattern = null;
+  if (resource.kind === 'url') {
+    pattern = /sitios? web/;
+  } else if (name.endsWith('.elpx')) {
+    return null;
+  } else if (media.startsWith('video/')) {
+    pattern = /v[ií]deo/;
+  } else if (media.startsWith('audio/')) {
+    pattern = /audio/;
+  } else if (media.startsWith('image/')) {
+    pattern = /fotograf/;
+  } else if (media === 'application/pdf') {
+    pattern = /pdf/;
+  } else if (/presentation|powerpoint/.test(media) || /\.(odp|pptx?)$/.test(name)) {
+    pattern = /presentaci/;
+  } else if (/zip|compressed/.test(media) || name.endsWith('.zip')) {
+    pattern = /comprimid/;
+  } else if (/wordprocessing|msword|opendocument\.text/.test(media) || /\.(odt|docx?)$/.test(name)) {
+    pattern = /documentos? de texto/;
+  }
+  if (!pattern) {
+    return null;
+  }
+  for (const group of typeGroups(options)) {
+    const item = group.items.find((i) => pattern.test(i.label.toLowerCase()));
+    if (item) {
+      return { group: group.group, value: item.value, label: item.label };
+    }
+  }
+  return null;
+}
+
+/**
+ * Resource types whose name or category contains `query`, ignoring case and
+ * accents, from every category, as `{group, value, label}`.
+ */
+export function typeMatches(options, query) {
+  const needle = normalise(query).trim();
+  if (!needle) {
+    return [];
+  }
+  return typeGroups(options).flatMap((group) => group.items
+    .filter((item) => normalise(group.group + ' ' + item.label).includes(needle))
+    .map((item) => ({ group: group.group, value: item.value, label: item.label })));
+}
+
+/**
  * Whether a block of knowledge or criteria is open: with a ticked term, with
  * matches of an active search, or when it is the subject's only block. What
  * the user did with it (`user`) wins, except that a search shows its matches.

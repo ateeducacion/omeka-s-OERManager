@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   missing, missingItems, firstIncomplete, summary, savePayload, recoverable, storageKey,
-  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList,
+  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList, suggestedType, typeMatches,
 } from '../../asset/js/core/wizardModel.js';
 
 const schema = { data: [
@@ -256,4 +256,48 @@ test('axes are filtered without accents, sorted and split by initial letter', ()
   assert.deepEqual(axisList(axes, 'ambito').map((g) => g.items.map((a) => a.id)), [[2]]);
   assert.deepEqual(axisList(axes, 'medio').map((g) => g.items.map((a) => a.id)), [[3]]);
   assert.deepEqual(axisList(axes, 'zzz'), []);
+});
+
+// Second review of PR #100: the type is chosen category first, with a suggestion from the file and a search.
+const TYPES = [
+  { value: 'Contenidos multimedia: Vídeos (tutoriales, lecciones, documentales)' },
+  { value: 'Contenidos multimedia: Audio (podcasts educativos, audiolibros, canciones)' },
+  { value: 'Documentos y textos: Documentos de texto y PDF' },
+  { value: 'Materiales visuales: Infografías' },
+  { value: 'Materiales visuales: Fotografías y galerías' },
+  { value: 'Contenidos didácticos estructurados: Presentaciones' },
+  { value: 'Recursos web: Sitios web recomendados' },
+  { value: 'Otros recursos: Archivos comprimidos (conjuntos de recursos)' },
+];
+
+test('suggestedType reads the uploaded file or the link', () => {
+  const s = (resource) => suggestedType(resource, TYPES)?.label;
+  assert.equal(s({ kind: 'upload', name: 'clase.mp4', mediaType: 'video/mp4' }), 'Vídeos (tutoriales, lecciones, documentales)');
+  assert.equal(s({ kind: 'upload', name: 'podcast.mp3', mediaType: 'audio/mpeg' }), 'Audio (podcasts educativos, audiolibros, canciones)');
+  assert.equal(s({ kind: 'upload', name: 'guia.pdf', mediaType: 'application/pdf' }), 'Documentos de texto y PDF');
+  assert.equal(s({ kind: 'upload', name: 'foto.jpg', mediaType: 'image/jpeg' }), 'Fotografías y galerías');
+  assert.equal(s({ kind: 'upload', name: 'tema.odp', mediaType: 'application/vnd.oasis.opendocument.presentation' }), 'Presentaciones');
+  assert.equal(s({ kind: 'upload', name: 'pack.zip', mediaType: 'application/zip' }), 'Archivos comprimidos (conjuntos de recursos)');
+  assert.equal(s({ kind: 'url', url: 'https://example.org' }), 'Sitios web recomendados');
+  const picked = suggestedType({ kind: 'upload', name: 'clase.mp4', mediaType: 'video/mp4' }, TYPES);
+  assert.deepEqual(picked, { group: 'Contenidos multimedia', value: TYPES[0].value, label: 'Vídeos (tutoriales, lecciones, documentales)' });
+});
+
+test('suggestedType suggests nothing it cannot tell', () => {
+  assert.equal(suggestedType(null, TYPES), null);
+  // An eXeLearning project can be any kind of resource.
+  assert.equal(suggestedType({ kind: 'upload', name: 'clase.elpx', mediaType: 'application/zip' }, TYPES), null);
+  assert.equal(suggestedType({ kind: 'keep', name: 'x.bin', mediaType: 'application/octet-stream' }, TYPES), null);
+  // A vocabulary without a matching option.
+  assert.equal(suggestedType({ kind: 'upload', name: 'a.mp4', mediaType: 'video/mp4' }, [{ value: 'Otros: Varios' }]), null);
+});
+
+test('typeMatches finds types in every category, ignoring case and accents', () => {
+  assert.deepEqual(typeMatches(TYPES, 'infografia').map((m) => m.label), ['Infografías']);
+  assert.deepEqual(typeMatches(TYPES, 'VIDEO').map((m) => [m.group, m.label]),
+    [['Contenidos multimedia', 'Vídeos (tutoriales, lecciones, documentales)']]);
+  // The category name also matches.
+  assert.equal(typeMatches(TYPES, 'visuales').length, 2);
+  assert.deepEqual(typeMatches(TYPES, '  '), []);
+  assert.deepEqual(typeMatches(TYPES, 'zzz'), []);
 });
