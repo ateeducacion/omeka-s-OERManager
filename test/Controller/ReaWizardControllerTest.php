@@ -169,6 +169,7 @@ final class ReaWizardControllerTest extends TestCase
         $item->method('owner')->willReturn($owner);
         $item->method('isPublic')->willReturn($public);
         $item->method('userIsAllowed')->willReturn(true);
+        $item->method('modified')->willReturn(new \DateTime('@1795000000'));
         $media = $this->createMock(MediaRepresentation::class);
         $media->method('source')->willReturn('clase.elpx');
         $media->method('size')->willReturn(4200);
@@ -229,6 +230,7 @@ final class ReaWizardControllerTest extends TestCase
         $this->assertSame(['Fracciones'], $item['values']['dcterms:title']);
         $this->assertSame([['id' => 11, 'title' => '2.º ESO']], $item['alignment']['lrmi:educationalLevel']);
         $this->assertSame(3, $item['stage']);
+        $this->assertSame(1795000000000, $item['modified']);
         $this->assertSame(['name' => 'clase.elpx', 'size' => 4200, 'mediaType' => 'application/zip'], $item['media']);
     }
 

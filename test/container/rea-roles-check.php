@@ -289,7 +289,9 @@ try {
     section('ACL over HTTP (allowed and denied)');
     $routes = [
         '/admin/oer-manager' => ['rea_curador'],
-        '/admin/oer-manager/my-proposals' => ['rea_proponente'],
+        // TASK-077: curators gain «Mis propuestas», and both roles the wizard.
+        '/admin/oer-manager/my-proposals' => ['rea_curador', 'rea_proponente'],
+        '/admin/oer-manager/wizard' => ['rea_curador', 'rea_proponente'],
         '/admin/oer-manager/stats' => ['rea_curador'],
         '/admin/oer-manager/batch' => ['rea_curador'],
         '/admin/oer-manager/config' => [],

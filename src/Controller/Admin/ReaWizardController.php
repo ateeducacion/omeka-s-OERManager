@@ -387,6 +387,8 @@ class ReaWizardController extends AbstractActionController
             : [];
         return [
             'id' => (int) $item->id(),
+            // Milliseconds, as the browser's autosave stamps its local copy.
+            'modified' => null === $item->modified() ? 0 : $item->modified()->getTimestamp() * 1000,
             'status' => $status ?? 'Borrador', // no status = Borrador (WorkflowStatus::normalize)
             'rejection' => implode(' — ', $notes),
             'values' => $values,
