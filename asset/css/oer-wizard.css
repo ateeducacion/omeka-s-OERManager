@@ -980,6 +980,22 @@ body.oer-wizard-page {
     font-size: 15px;
 }
 
+/* The compact navigation above every step (owner's review of PR #100). */
+.oer-wizard .oer-wz-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--wz-hairline);
+}
+
+.oer-wizard .oer-wz-btn.is-small {
+    min-height: 44px;
+    padding: 0 16px;
+    font-size: 14px;
+}
+
 /* Footer: blue with the theme's yellow rule. */
 .oer-wizard .oer-wz-foot {
     border-top: 4px solid var(--wz-yellow);

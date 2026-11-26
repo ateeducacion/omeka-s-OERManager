@@ -816,6 +816,25 @@ function navigation() {
   return nav;
 }
 
+/**
+ * Owner's review of PR #100: a compact «Atrás» / «Siguiente» bar above every step.
+ * It never offers «Guardar y proponer»: proposing happens below, after the review's
+ * warnings have been seen.
+ */
+function topBar() {
+  const canBack = ui.step > 1 || (ui.step === 3 && ui.sub > 1);
+  const forward = ui.step < 4
+    ? h('button', { type: 'button', class: 'oer-wz-btn is-primary is-small', disabled: ui.busy, onclick: next },
+      ui.step === 3 && ui.sub === 6 ? t('Revisar') : t('Siguiente'), icon('next'))
+    : null;
+  if (!canBack && !forward) {
+    return null;
+  }
+  return h('nav', { class: 'oer-wz-topbar', 'aria-label': t('Navegación entre pasos') },
+    h('div', {}, canBack ? h('button', { type: 'button', class: 'oer-wz-link', onclick: back }, icon('back'), t('Atrás')) : null),
+    h('div', {}, forward));
+}
+
 function errorBox() {
   if (!ui.error) {
     return null;
@@ -832,7 +851,7 @@ function render() {
   renderSteps();
   const body = [stepResource, stepData, stepAnchoring, stepReview][ui.step - 1]();
   const main = root.querySelector('[data-wz-main]');
-  main.replaceChildren(...banners(), h('div', { class: 'oer-wz-panel' }, ...body), errorBox() || '', ...navigation());
+  main.replaceChildren(...banners(), topBar() || '', h('div', { class: 'oer-wz-panel' }, ...body), errorBox() || '', ...navigation());
   if (ui.focus) {
     ui.focus = false;
     main.querySelector('[data-wz-heading]')?.focus();
