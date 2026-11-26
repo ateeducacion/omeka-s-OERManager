@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { contrastRatio, parseTokens } from '../../asset/js/core/contrast.js';
 
-// ADR-0025: the wizard's own palette (the public theme's), every text and
-// state pair the stylesheet paints measured against WCAG 2.2 AA.
+// ADR-0025 addendum 1: the wizard inside the admin, with the module's tokens
+// (ADR-0014), every text and state pair the stylesheet paints measured against
+// WCAG 2.2 AA.
 const css = readFileSync(fileURLToPath(new URL('../../asset/css/oer-wizard.css', import.meta.url)), 'utf8');
 const tokens = parseTokens(css);
 const TEXT = 4.5;
@@ -13,38 +14,27 @@ const UI = 3;
 
 const PAIRS = [
   // Body text on every light ground.
-  ...['--wz-ink', '--wz-body', '--wz-body-soft'].flatMap((fg) =>
-    ['--wz-canvas', '--wz-surface', '--wz-card', '--wz-surface-yellow'].map((bg) => [fg, bg, TEXT])),
-  // Help and optional marks: only on white and the light grey (on --wz-card it gives 4.4:1).
-  ['--wz-muted', '--wz-canvas', TEXT],
-  ['--wz-muted', '--wz-surface', TEXT],
+  ...['--wz-ink', '--wz-body', '--wz-body-soft', '--wz-muted'].flatMap((fg) =>
+    ['--wz-canvas', '--wz-surface', '--wz-card'].map((bg) => [fg, bg, TEXT])),
   // Disabled buttons: exempt in WCAG, measured anyway.
   ['--wz-body-soft', '--wz-disabled', TEXT],
-  // Links and the institutional blue.
-  ['--wz-atlantic', '--wz-canvas', TEXT],
-  ['--wz-atlantic', '--wz-card', TEXT],
-  ['--wz-blue', '--wz-canvas', TEXT],
-  ['--wz-blue', '--wz-card', TEXT],
-  ['--wz-blue', '--wz-surface', TEXT],
-  ['--wz-blue', '--wz-surface-yellow', TEXT],
-  ['--wz-blue', '--wz-yellow', TEXT],
-  ['--wz-blue', '--wz-yellow-hover', TEXT],
-  // The hero band and the footer.
-  ['--wz-on-dark', '--wz-blue', TEXT],
-  ['--wz-on-dark', '--wz-blue-hover', TEXT],
-  ['--wz-on-dark-soft', '--wz-blue', TEXT],
-  ['--wz-yellow', '--wz-blue', TEXT],
-  // Axis chips (owner's review of PR #100) and the hover ground of the axis checklist.
-  ['--wz-blue', '--wz-card', UI],
-  ['--wz-ink', '--wz-surface', TEXT],
+  // The admin's grey button (rgba(0,0,0,.08) on white ≈ #EBEBEB): measured on the disabled grey, darker still.
+  ['--wz-body', '--wz-disabled', TEXT],
+  // Filled buttons, the chosen category and the step badge.
+  ['--wz-on-dark', '--wz-strong', TEXT],
+  ['--wz-on-dark', '--wz-strong-hover', TEXT],
+  // The admin's red: focus, hover and what needs action.
+  ['--wz-accent', '--wz-canvas', TEXT],
+  ['--wz-mark', '--wz-surface-mark', TEXT],
   // States.
   ['--wz-error-ink', '--wz-error-soft', TEXT],
   ['--wz-ok-ink', '--wz-ok-soft', UI],
-  // Control borders and focus rings (UI boundaries).
+  ['--wz-ok-ink', '--wz-canvas', UI],
+  // Control borders, selected borders and focus rings (UI boundaries).
   ['--wz-control', '--wz-canvas', UI],
   ['--wz-control', '--wz-surface', UI],
-  ['--wz-atlantic', '--wz-surface', UI],
-  ['--wz-yellow', '--wz-blue', UI],
+  ['--wz-strong', '--wz-card', UI],
+  ['--wz-accent', '--wz-surface', UI],
 ];
 
 test('every token the pairs use is declared once on .oer-wizard', () => {
@@ -61,7 +51,7 @@ for (const [fg, bg, min] of PAIRS) {
   });
 }
 
-test('the stylesheet never loads a font from a third party', () => {
-  assert.doesNotMatch(css, /fonts\.(googleapis|gstatic)\.com|@import/);
-  assert.match(css, /url\("\.\.\/fonts\/inter-latin-wght-normal\.woff2"\)/);
+test('the stylesheet brings no typeface of its own: it inherits the admin\'s Lato', () => {
+  assert.doesNotMatch(css, /@font-face|@import|fonts\.(googleapis|gstatic)\.com/);
+  assert.match(css, /--wz-sans:\s*"Lato", sans-serif;/);
 });

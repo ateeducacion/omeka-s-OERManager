@@ -189,6 +189,12 @@ final class ReaWizardControllerTest extends TestCase
         }
     }
 
+    public function testThePageRendersInsideTheAdminLayoutLikeANewItem(): void
+    {
+        // ADR-0025 addendum 1 (second review of PR #100): the admin's work area, not a page of its own.
+        $this->assertFalse($this->controller->indexAction()->terminal());
+    }
+
     public function testThePageCarriesTheSchemaWithItsOptionsAndTheUrls(): void
     {
         $this->settings->set('oermanager_default_licence', 'https://creativecommons.org/licenses/by-sa/4.0/');

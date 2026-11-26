@@ -10,7 +10,7 @@
 import {
   emptyState, fromItem, missing, missingItems, firstIncomplete, summary, savePayload,
   storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes, isWebLink, withFirstValue,
-  typeGroups, blockOpen, axisList,
+  typeGroups, blockOpen, axisList, suggestedType, typeMatches,
   TITLE_TERM, LICENCE_TERM, TEACHES_TERM, ASSESSES_TERM,
 } from './core/wizardModel.js';
 
@@ -108,7 +108,7 @@ const licenceOptions = (fieldOf(LICENCE_TERM) || {}).options || [];
 let state = cfg ? fromItem(cfg.item) : emptyState();
 const ui = {
   step: 1, sub: 1, maxStep: 1, busy: false, error: null, uploadError: null, uploading: null,
-  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', axisQ: '', userBlocks: {},
+  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', axisQ: '', userBlocks: {}, typeOpen: false, typeCat: null, typeQ: '',
   duplicates: null, focus: true,
 };
 
@@ -226,6 +226,7 @@ function go(step, sub) {
   ui.maxStep = Math.max(ui.maxStep, step);
   ui.error = null;
   ui.q = '';
+  Object.assign(ui, { typeOpen: false, typeCat: null, typeQ: '' });
   ui.focus = true;
   if (ui.step === 4) {
     loadDuplicates();
@@ -257,7 +258,7 @@ function notice(kind, iconName, ...body) {
 
 function heading(text, lead) {
   return h('div', { class: 'oer-wz-field' },
-    h('p', { class: 'oer-wz-cap', style: 'color: var(--wz-atlantic)' }, t('Paso %d de 4', ui.step)),
+    h('p', { class: 'oer-wz-cap' }, t('Paso %d de 4', ui.step)),
     h('h2', { tabindex: '-1', 'data-wz-heading': '' }, text),
     lead ? h('p', { class: 'oer-wz-lead' }, lead) : null);
 }
@@ -441,16 +442,7 @@ function dataField(field) {
   const optionValue = (o) => o.uri || o.value;
   const optionLabel = (o) => o.label || o.value || o.uri;
   if (field.control === 'cards') {
-    return h('fieldset', { class: 'oer-wz-field' },
-      h('legend', { class: 'oer-wz-label', style: 'margin-bottom: 4px' }, field.label,
-        field.required ? h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio')) : null),
-      help,
-      // Owner's review of PR #100: «Categoría: tipo» options grouped by category, compact cards.
-      typeGroups(field.options).map((group) => h('div', { class: 'oer-wz-type-group' },
-        h('p', { class: 'oer-wz-cap oer-wz-block', id: id + '-' + group.group.replace(/\W+/g, '-') }, t(group.group)),
-        h('div', { class: 'oer-wz-grid is-compact', role: 'group', 'aria-label': t(group.group) }, group.items.map((item) =>
-          choice('radio', id, current === item.value, () => setValue(field.term, item.value),
-            item.label, null, typeIcon(group.group + ' ' + item.label), ' is-compact'))))));
+    return typePicker(field, id, help);
   }
   let control;
   if (field.control === 'textarea') {
@@ -468,6 +460,77 @@ function dataField(field) {
     control.value = current;
   }
   return h('div', { class: 'oer-wz-field' }, fieldHead(field, id), help, control);
+}
+
+/**
+ * The resource type, chosen category first (second review of PR #100): the
+ * file's suggestion, a search over every category, the categories as buttons
+ * and only the open category's types. Once chosen, it shrinks to one line.
+ */
+function typePicker(field, id, help) {
+  const current = (state.values[field.term] || [])[0] || '';
+  const groups = typeGroups(field.options);
+  const chosen = groups.flatMap((g) => g.items.map((item) => ({ group: g.group, ...item }))).find((item) => item.value === current);
+  const legend = h('legend', { class: 'oer-wz-label', style: 'margin-bottom: 4px' }, field.label,
+    field.required ? h('span', { class: 'oer-wz-optional' }, ' · ' + t('obligatorio')) : null);
+  const pick = (value) => {
+    setValue(field.term, value);
+    Object.assign(ui, { typeOpen: false, typeQ: '', typeCat: null, focus: false });
+    render();
+    root.querySelector('[data-wz-type-change]')?.focus();
+  };
+  if (chosen && !ui.typeOpen) {
+    return h('fieldset', { class: 'oer-wz-field' }, legend, help,
+      h('div', { class: 'oer-wz-type-chosen' }, icon(typeIcon(chosen.group + ' ' + chosen.label)),
+        h('p', { class: 'oer-wz-type-path' }, h('span', { class: 'oer-wz-type-group-name' }, t(chosen.group) + ' › '), h('strong', {}, chosen.label)),
+        h('button', { type: 'button', class: 'oer-wz-btn', 'data-wz-type-change': '', onclick: () => {
+          Object.assign(ui, { typeOpen: true, typeCat: chosen.group, focus: false });
+          render();
+          root.querySelector('[data-wz-type-search]')?.focus();
+        } }, t('Cambiar'))));
+  }
+  const suggestion = suggestedType(state.resource, field.options);
+  const body = h('div', { class: 'oer-wz-type-body' });
+  const paint = () => {
+    if (ui.typeQ.trim()) {
+      const matches = typeMatches(field.options, ui.typeQ);
+      body.replaceChildren(matches.length
+        ? h('div', { class: 'oer-wz-grid is-compact' }, matches.map((m) =>
+          choice('radio', id, current === m.value, () => pick(m.value), m.label, t(m.group), typeIcon(m.group + ' ' + m.label), ' is-compact')))
+        : h('p', { class: 'oer-wz-help' }, t('Nada coincide con «%s». Prueba con otra palabra.', ui.typeQ)));
+      return;
+    }
+    const open = ui.typeCat || chosen?.group || suggestion?.group || null;
+    const items = (groups.find((g) => g.group === open) || { items: [] }).items;
+    body.replaceChildren(
+      h('div', { class: 'oer-wz-cats', role: 'group', 'aria-label': t('Categorías') }, groups.map((g) =>
+        h('button', { type: 'button', class: 'oer-wz-cat', 'aria-pressed': g.group === open ? 'true' : 'false',
+          onclick: () => { ui.typeCat = g.group; paint(); } },
+        icon(typeIcon(g.group)), h('span', {}, t(g.group)), h('span', { class: 'oer-wz-cat-count' }, String(g.items.length))))),
+      open
+        ? h('div', { class: 'oer-wz-grid is-compact', role: 'group', 'aria-label': t(open) }, items.map((item) =>
+          choice('radio', id, current === item.value, () => pick(item.value), item.label, null, typeIcon(open + ' ' + item.label), ' is-compact')))
+        : h('p', { class: 'oer-wz-help' }, t('Elige primero una categoría.')));
+  };
+  paint();
+  const searchId = nextId('wz-type-q');
+  return h('fieldset', { class: 'oer-wz-field' }, legend, help,
+    suggestion && suggestion.value !== current
+      ? h('div', { class: 'oer-wz-suggest' }, icon(typeIcon(suggestion.group + ' ' + suggestion.label)),
+        h('p', {}, state.resource?.kind === 'url' ? t('Sugerido por tu enlace:') : t('Sugerido por tu fichero:'), ' ',
+          h('strong', {}, suggestion.label), h('span', { class: 'oer-wz-type-group-name' }, ' · ' + t(suggestion.group))),
+        h('button', { type: 'button', class: 'oer-wz-btn is-primary', onclick: () => pick(suggestion.value) }, t('Usar este tipo')))
+      : null,
+    h('div', { class: 'oer-wz-search' },
+      h('label', { for: searchId, class: 'oer-wz-visually-hidden' }, t('Buscar un tipo de recurso')),
+      icon('search'),
+      h('input', { id: searchId, class: 'oer-wz-input', type: 'search', 'data-wz-type-search': '', value: ui.typeQ,
+        placeholder: t('Buscar un tipo, por ejemplo: infografía'), oninput: (e) => { ui.typeQ = e.target.value; paint(); } })),
+    body,
+    chosen ? h('p', {}, h('button', { type: 'button', class: 'oer-wz-link', onclick: () => {
+      Object.assign(ui, { typeOpen: false, typeQ: '', typeCat: null, focus: false });
+      render();
+    } }, t('Mantener «%s»', chosen.label))) : null);
 }
 
 function stepData() {
@@ -815,9 +878,8 @@ function renderSteps() {
     const locked = n > ui.maxStep;
     const isDone = done(n);
     return h('li', {}, h('button', { type: 'button', class: 'oer-wz-step', disabled: locked, 'aria-current': current ? 'step' : 'false', onclick: () => go(n, 1) },
-      h('span', { style: 'display: flex; align-items: center; gap: 8px' }, h('span', { class: 'oer-wz-step-num' }, '0' + n),
+      h('span', { class: 'oer-wz-step-name' }, h('span', { class: 'oer-wz-step-num' }, n + '.'), h('span', {}, t(label)),
         isDone ? h('span', { class: 'oer-wz-done' }, icon('check')) : null),
-      h('span', {}, t(label)),
       h('span', { class: 'oer-wz-step-state' }, current ? t('Estás aquí') : isDone ? t('Hecho') : locked ? t('Más adelante') : t('Por completar'))));
   }));
 }
@@ -847,19 +909,29 @@ function banners() {
   return out;
 }
 
+const canGoBack = () => ui.step > 1 || (ui.step === 3 && ui.sub > 1);
+
+function backButton() {
+  return h('button', { type: 'button', class: 'oer-wz-btn', disabled: ui.busy, onclick: back }, icon('back'), t('Atrás'));
+}
+
+function nextButton() {
+  return h('button', { type: 'button', class: 'oer-wz-btn is-primary', disabled: ui.busy, onclick: next },
+    ui.step === 3 && ui.sub === 6 ? t('Revisar') : t('Siguiente'), icon('next'));
+}
+
 function navigation() {
   const codes = missing(state, cfg.requiredTerms);
   const helpId = nextId('wz-propose-help');
   const end = [h('button', { type: 'button', class: 'oer-wz-btn', disabled: ui.busy, onclick: () => save(false) }, t('Guardar borrador'))];
   if (ui.step < 4) {
-    end.push(h('button', { type: 'button', class: 'oer-wz-btn is-primary', disabled: ui.busy, onclick: next },
-      ui.step === 3 && ui.sub === 6 ? t('Revisar') : t('Siguiente'), icon('next')));
+    end.push(nextButton());
   } else {
-    end.push(h('button', { type: 'button', class: 'oer-wz-btn is-accent', disabled: ui.busy || codes.length > 0,
+    end.push(h('button', { type: 'button', class: 'oer-wz-btn is-primary', disabled: ui.busy || codes.length > 0,
       'aria-describedby': codes.length ? helpId : null, onclick: () => save(true) }, t('Guardar y proponer')));
   }
   const nav = [h('div', { class: 'oer-wz-nav' },
-    h('div', {}, ui.step > 1 || (ui.step === 3 && ui.sub > 1) ? h('button', { type: 'button', class: 'oer-wz-link', onclick: back }, icon('back'), t('Atrás')) : null),
+    h('div', {}, canGoBack() ? backButton() : null),
     h('div', { class: 'oer-wz-nav-end' }, ui.busy ? h('span', { class: 'oer-wz-busy', role: 'status' }, t('Guardando…')) : null, ...end))];
   if (ui.step === 4 && codes.length) {
     nav.push(h('p', { id: helpId, class: 'oer-wz-help oer-wz-nav-help' }, t('Completa lo que falta para poder proponerlo. El borrador solo necesita el título.')));
@@ -868,22 +940,16 @@ function navigation() {
 }
 
 /**
- * Owner's review of PR #100: a compact «Atrás» / «Siguiente» bar above every step.
- * It never offers «Guardar y proponer»: proposing happens below, after the review's
- * warnings have been seen.
+ * «Atrás» and «Siguiente» in the admin's fixed action bar (second review of
+ * PR #100), like «Añadir» on a new item. «Guardar y proponer» stays at the
+ * bottom of step ④, after the review's warnings.
  */
-function topBar() {
-  const canBack = ui.step > 1 || (ui.step === 3 && ui.sub > 1);
-  const forward = ui.step < 4
-    ? h('button', { type: 'button', class: 'oer-wz-btn is-primary is-small', disabled: ui.busy, onclick: next },
-      ui.step === 3 && ui.sub === 6 ? t('Revisar') : t('Siguiente'), icon('next'))
-    : null;
-  if (!canBack && !forward) {
-    return null;
+function renderActions() {
+  const bar = root.querySelector('[data-wz-actions]');
+  if (!bar) {
+    return;
   }
-  return h('nav', { class: 'oer-wz-topbar', 'aria-label': t('Navegación entre pasos') },
-    h('div', {}, canBack ? h('button', { type: 'button', class: 'oer-wz-link', onclick: back }, icon('back'), t('Atrás')) : null),
-    h('div', {}, forward));
+  bar.replaceChildren(...[canGoBack() ? backButton() : null, ui.step < 4 ? nextButton() : null].filter(Boolean));
 }
 
 function errorBox() {
@@ -902,7 +968,8 @@ function render() {
   renderSteps();
   const body = [stepResource, stepData, stepAnchoring, stepReview][ui.step - 1]();
   const main = root.querySelector('[data-wz-main]');
-  main.replaceChildren(...banners(), topBar() || '', h('div', { class: 'oer-wz-panel' }, ...body), errorBox() || '', ...navigation());
+  renderActions();
+  main.replaceChildren(...banners(), h('div', { class: 'oer-wz-panel' }, ...body), errorBox() || '', ...navigation());
   if (ui.focus) {
     ui.focus = false;
     main.querySelector('[data-wz-heading]')?.focus();

@@ -121,7 +121,7 @@ class ReaWizardController extends AbstractActionController
     {
         $view = new ViewModel();
         $view->setTemplate('oer-manager/admin/rea-wizard/index');
-        $view->setTerminal(true);
+        // ADR-0025 addendum 1: inside the admin's layout, like «Nuevo ítem».
         $view->setVariable(
             'myProposalsUrl',
             $this->url()->fromRoute('admin/oer-manager', ['action' => 'my-proposals'])

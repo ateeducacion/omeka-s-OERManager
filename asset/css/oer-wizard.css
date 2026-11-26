@@ -1,55 +1,40 @@
 /*
- * The wizard to add a REA (TASK-077, ADR-0025): its own page, with the public
- * theme's «Canarias Educativa» identity (omeka-s-theme-rea-ate): institutional
- * blue, Atlantic blue, sun yellow and Inter. Every rule hangs from
- * .oer-wizard; the tokens are declared once below and their contrast is pinned
- * by test/js/wizardContrast.test.js. Inter is bundled (asset/fonts/README.md).
+ * The wizard to add a REA (TASK-077): inside the admin's work area, like
+ * «Nuevo ítem» (ADR-0025 addendum 1). It inherits the admin's chrome and the
+ * module's tokens (ADR-0014 rule 1): Lato, the module's ink, the admin's
+ * hairlines, and the admin's red only for focus, hover and what needs action
+ * (rule 2). Every rule hangs from .oer-wizard; the tokens are declared once
+ * below and their contrast is pinned by test/js/wizardContrast.test.js.
  */
 
-@font-face {
-    font-family: "OER Inter";
-    src: url("../fonts/inter-latin-wght-normal.woff2") format("woff2");
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
-}
-
 .oer-wizard {
-    --wz-blue: #0C2C84;
-    --wz-blue-hover: #0E3599;
-    --wz-atlantic: #0768AC;
-    --wz-yellow: #FFB300;
-    --wz-yellow-hover: #FFCC00;
+    --wz-strong: #2B3240;
+    --wz-strong-hover: #3D4659;
+    --wz-accent: #A91919;
+    --wz-mark: #A91919;
+    --wz-surface-mark: #FDEFEF;
     --wz-canvas: #FFFFFF;
-    --wz-surface: #F5F7FA;
-    --wz-card: #EEF2F8;
-    --wz-surface-yellow: #FFF8E1;
-    --wz-ink: #0A0A0A;
-    --wz-body: #2C2C2C;
-    --wz-body-soft: #4A4A4A;
-    --wz-muted: #6B7280;
+    --wz-surface: #F6F7F9;
+    --wz-card: #EEF0F4;
+    --wz-ink: #2B3240;
+    --wz-body: #3D3D3D;
+    --wz-body-soft: #595959;
+    --wz-muted: #676767;
     --wz-on-dark: #FFFFFF;
-    --wz-on-dark-soft: #B8C8E8;
-    --wz-hairline: #DDE3EC;
-    --wz-control: #7C8695;
-    --wz-disabled: #EEF0F4;
-    --wz-error: #DC2626;
-    --wz-error-ink: #991B1B;
-    --wz-error-soft: #FDF0F0;
+    --wz-hairline: #DFDFDF;
+    --wz-control: #8A8A8A;
+    --wz-disabled: #EEEEEE;
+    --wz-error: #A91919;
+    --wz-error-ink: #8A1414;
+    --wz-error-soft: #FDEFEF;
     --wz-ok: #16A34A;
     --wz-ok-ink: #15803D;
     --wz-ok-soft: #EFF8F2;
-    --wz-sans: "OER Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --wz-sans: "Lato", sans-serif;
     --wz-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
-/* ---- Page --------------------------------------------------------------- */
-
-html,
-body.oer-wizard-page {
-    margin: 0;
-    background: #FFFFFF;
-}
+/* ---- Base: the admin's element rules reset inside the wizard ------------ */
 
 .oer-wizard,
 .oer-wizard * {
@@ -57,21 +42,16 @@ body.oer-wizard-page {
 }
 
 .oer-wizard {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-    background: var(--wz-canvas);
     color: var(--wz-body);
     font-family: var(--wz-sans);
     font-size: 16px;
-    line-height: 1.55;
+    line-height: 1.5;
 }
 
 .oer-wizard [hidden] {
     display: none !important;
 }
 
-.oer-wizard h1,
 .oer-wizard h2,
 .oer-wizard h3,
 .oer-wizard p,
@@ -89,26 +69,38 @@ body.oer-wizard-page {
     min-width: 0;
 }
 
+.oer-wizard legend {
+    padding: 0;
+}
+
+/* The admin gives every button a grey ground, an inset rule and a bottom margin. */
+.oer-wizard button {
+    min-height: 0;
+    margin: 0;
+    box-shadow: none;
+    font-family: var(--wz-sans);
+}
+
+.oer-wizard button:hover:not(.inactive) {
+    box-shadow: none;
+}
+
 .oer-wizard a {
-    color: var(--wz-atlantic);
+    color: var(--wz-strong);
 }
 
 .oer-wizard a:hover {
-    color: var(--wz-blue);
+    color: var(--wz-accent);
 }
 
 .oer-wizard :focus-visible {
-    outline: 3px solid var(--wz-atlantic);
+    outline: 2px solid var(--wz-accent);
     outline-offset: 2px;
 }
 
-.oer-wizard .oer-wz-dark :focus-visible {
-    outline-color: var(--wz-yellow);
-}
-
 .oer-wizard .oer-wz-icon {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     flex: none;
     fill: none;
     stroke: currentColor;
@@ -126,174 +118,103 @@ body.oer-wizard-page {
     white-space: nowrap;
 }
 
-/* Top bar: white with the theme's 3px yellow rule. */
-.oer-wizard .oer-wz-top {
-    border-bottom: 3px solid var(--wz-yellow);
-    background: var(--wz-canvas);
-}
-
-.oer-wizard .oer-wz-wrap {
-    width: 100%;
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 24px;
-}
-
-.oer-wizard .oer-wz-top .oer-wz-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 68px;
-    padding-top: 10px;
-    padding-bottom: 10px;
-}
-
-.oer-wizard .oer-wz-brand {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.oer-wizard .oer-wz-mark {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
-    background: var(--wz-blue);
-    color: var(--wz-yellow);
-}
-
-.oer-wizard .oer-wz-brand-name {
-    display: block;
-    color: var(--wz-blue);
-    font-size: 17px;
-    font-weight: 800;
-    line-height: 1.2;
-}
-
-.oer-wizard .oer-wz-brand-sub {
-    display: block;
-    color: var(--wz-body-soft);
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.oer-wizard .oer-wz-back {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 15px;
-    font-weight: 600;
-}
-
-/* Hero band: institutional blue with the steps. */
-.oer-wizard .oer-wz-hero {
-    background: var(--wz-blue);
-    color: var(--wz-on-dark);
-}
-
-.oer-wizard .oer-wz-hero .oer-wz-wrap {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-    padding-top: 36px;
-}
-
-.oer-wizard .oer-wz-hero-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-}
-
 .oer-wizard .oer-wz-cap {
+    color: var(--wz-muted);
     font-size: 12px;
     font-weight: 700;
-    letter-spacing: 1.5px;
+    letter-spacing: 1px;
     text-transform: uppercase;
 }
 
-.oer-wizard .oer-wz-hero .oer-wz-cap {
-    color: var(--wz-yellow);
-}
-
-.oer-wizard .oer-wz-hero h1 {
-    color: var(--wz-on-dark);
-    font-size: 40px;
-    font-weight: 500;
-    line-height: 1.1;
-    letter-spacing: -1px;
-}
-
 .oer-wizard .oer-wz-autosave {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--wz-on-dark-soft);
+    margin: 0 0 8px;
+    color: var(--wz-muted);
     font-size: 14px;
 }
 
+.oer-wizard .oer-wz-autosave .oer-wz-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* The four steps: the admin's section tabs, as on «Nuevo ítem». */
 .oer-wizard .oer-wz-steps {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0 0 16px;
+    padding: 0;
+    border-bottom: 1px solid var(--wz-hairline);
     list-style: none;
+}
+
+.oer-wizard .oer-wz-steps li {
+    margin: 0 0 -1px;
 }
 
 .oer-wizard .oer-wz-step {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    width: 100%;
-    padding: 12px 4px 14px;
-    border: 0;
-    border-bottom: 4px solid rgba(255, 255, 255, 0.18);
-    background: none;
-    color: var(--wz-on-dark);
-    font: 600 16px var(--wz-sans);
+    align-items: flex-start;
+    padding: 6px 16px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 3px 3px 0 0;
+    background: var(--wz-surface);
+    color: var(--wz-body-soft);
+    font-size: 15px;
+    line-height: 1.35;
     text-align: left;
     cursor: pointer;
 }
 
+.oer-wizard .oer-wz-step:hover:not(:disabled) {
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+}
+
 .oer-wizard .oer-wz-step:disabled {
+    color: var(--wz-muted);
     cursor: default;
-    color: var(--wz-on-dark-soft);
 }
 
 .oer-wizard .oer-wz-step[aria-current="step"] {
-    border-bottom-color: var(--wz-yellow);
+    border-bottom-color: var(--wz-canvas);
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    font-weight: 700;
 }
 
-.oer-wizard .oer-wz-step-num {
-    font-size: 30px;
-    font-weight: 500;
-    letter-spacing: -1px;
-    line-height: 1;
+.oer-wizard .oer-wz-step-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
-.oer-wizard .oer-wz-step[aria-current="step"] .oer-wz-step-num,
 .oer-wizard .oer-wz-step .oer-wz-done {
-    color: var(--wz-yellow);
+    display: inline-flex;
+    color: var(--wz-ok-ink);
+}
+
+.oer-wizard .oer-wz-step .oer-wz-done .oer-wz-icon {
+    width: 16px;
+    height: 16px;
 }
 
 .oer-wizard .oer-wz-step-state {
-    color: var(--wz-on-dark-soft);
+    color: var(--wz-muted);
     font-size: 12px;
-    font-weight: 500;
+    font-weight: 400;
 }
 
 /* Main column. */
 .oer-wizard .oer-wz-main {
     flex: 1;
     width: 100%;
-    max-width: 920px;
-    margin: 0 auto;
-    padding: 36px 24px 56px;
+    max-width: 960px;
+    padding: 12px 0 48px;
     display: flex;
     flex-direction: column;
     gap: 24px;
@@ -307,21 +228,22 @@ body.oer-wizard-page {
 
 .oer-wizard h2 {
     color: var(--wz-ink);
-    font-size: 28px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
     line-height: 1.2;
 }
 
 .oer-wizard h3 {
     color: var(--wz-ink);
-    font-size: 20px;
-    font-weight: 600;
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
 }
 
 .oer-wizard .oer-wz-lead {
     color: var(--wz-body-soft);
-    font-size: 17px;
+    font-size: 16px;
 }
 
 .oer-wizard .oer-wz-help {
@@ -357,8 +279,8 @@ body.oer-wizard-page {
     display: inline-block;
     padding: 2px 8px;
     border-radius: 4px;
-    background: var(--wz-surface-yellow);
-    color: var(--wz-blue);
+    background: var(--wz-card);
+    color: var(--wz-strong);
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;
@@ -367,10 +289,11 @@ body.oer-wizard-page {
 
 .oer-wizard .oer-wz-input {
     width: 100%;
-    min-height: 46px;
-    padding: 11px 14px;
-    border: 1.5px solid var(--wz-control);
-    border-radius: 10px;
+    min-height: 40px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
     background: var(--wz-canvas);
     color: var(--wz-ink);
     font: 16px var(--wz-sans);
@@ -381,8 +304,8 @@ body.oer-wizard-page {
 }
 
 .oer-wizard .oer-wz-input:focus {
-    border-color: var(--wz-atlantic);
-    outline: 2px solid var(--wz-atlantic);
+    border-color: var(--wz-accent);
+    outline: 2px solid var(--wz-accent);
     outline-offset: 0;
 }
 
@@ -402,25 +325,25 @@ body.oer-wizard-page {
     gap: 12px;
     align-items: center;
     padding: 16px;
-    border: 1.5px solid var(--wz-control);
-    border-radius: 14px;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
     background: var(--wz-canvas);
     color: var(--wz-ink);
     cursor: pointer;
 }
 
 .oer-wizard .oer-wz-choice:hover {
-    border-color: var(--wz-blue);
+    border-color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-choice:has(input:checked) {
-    padding: 15.5px;
-    border: 2px solid var(--wz-blue);
+    padding: 15px;
+    border: 2px solid var(--wz-strong);
     background: var(--wz-card);
 }
 
 .oer-wizard .oer-wz-choice:has(input:focus-visible) {
-    outline: 3px solid var(--wz-atlantic);
+    outline: 3px solid var(--wz-accent);
     outline-offset: 2px;
 }
 
@@ -429,17 +352,17 @@ body.oer-wizard-page {
     height: 20px;
     margin: 0;
     flex: none;
-    accent-color: var(--wz-blue);
+    accent-color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-choice.is-term {
     align-items: flex-start;
     padding: 13px 16px;
-    border-radius: 10px;
+    border-radius: 4px;
 }
 
 .oer-wizard .oer-wz-choice.is-term:has(input:checked) {
-    padding: 12.5px 15.5px;
+    padding: 12px 15px;
 }
 
 .oer-wizard .oer-wz-choice-text {
@@ -466,18 +389,108 @@ body.oer-wizard-page {
 
 .oer-wizard .oer-wz-block {
     margin-bottom: 8px;
-    color: var(--wz-blue);
+    color: var(--wz-strong);
 }
 
-/* Step ②: resource types grouped by category, compact cards (owner's review of PR #100). */
-.oer-wizard .oer-wz-type-group {
+/* Step ②: the resource type, category first (second review of PR #100). */
+.oer-wizard .oer-wz-suggest {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 12px 16px;
+    border: 1px solid var(--wz-hairline);
+    border-left: 4px solid var(--wz-strong);
+    border-radius: 4px;
+    background: var(--wz-surface);
+    color: var(--wz-ink);
 }
 
-.oer-wizard .oer-wz-type-group + .oer-wz-type-group {
-    margin-top: 12px;
+.oer-wizard .oer-wz-suggest p {
+    flex: 1 1 260px;
+}
+
+.oer-wizard .oer-wz-type-group-name {
+    color: var(--wz-muted);
+    font-weight: 400;
+}
+
+.oer-wizard .oer-wz-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 12px;
+}
+
+.oer-wizard .oer-wz-cat {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 4px 12px;
+    border: 1px solid var(--wz-control);
+    border-radius: 999px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-cat .oer-wz-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--wz-body-soft);
+}
+
+.oer-wizard .oer-wz-cat:hover {
+    border-color: var(--wz-strong);
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-cat[aria-pressed="true"] {
+    border-color: var(--wz-strong);
+    background: var(--wz-strong);
+    color: var(--wz-on-dark);
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-cat[aria-pressed="true"] .oer-wz-icon {
+    color: var(--wz-on-dark);
+}
+
+.oer-wizard .oer-wz-cat-count {
+    min-width: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--wz-card);
+    color: var(--wz-ink);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.oer-wizard .oer-wz-type-body {
+    margin-top: 4px;
+}
+
+.oer-wizard .oer-wz-type-chosen {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-surface);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-type-chosen .oer-wz-icon {
+    color: var(--wz-body-soft);
+}
+
+.oer-wizard .oer-wz-type-path {
+    flex: 1 1 240px;
 }
 
 .oer-wizard .oer-wz-grid.is-compact {
@@ -489,19 +502,19 @@ body.oer-wizard-page {
     gap: 8px;
     min-height: 44px;
     padding: 8px 12px;
-    border-radius: 10px;
+    border-radius: 4px;
     font-size: 15px;
     line-height: 1.3;
 }
 
 .oer-wizard .oer-wz-choice.is-compact:has(input:checked) {
-    padding: 7.5px 11.5px;
+    padding: 7px 11px;
 }
 
 .oer-wizard .oer-wz-choice.is-compact .oer-wz-icon {
     width: 18px;
     height: 18px;
-    color: var(--wz-atlantic);
+    color: var(--wz-body-soft);
 }
 
 .oer-wizard .oer-wz-choice.is-compact .oer-wz-choice-title {
@@ -521,8 +534,8 @@ body.oer-wizard-page {
     align-items: flex-start;
     gap: 12px;
     padding: 28px;
-    border: 1.5px solid var(--wz-hairline);
-    border-radius: 20px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
     background: var(--wz-canvas);
 }
 
@@ -532,7 +545,7 @@ body.oer-wizard-page {
 }
 
 .oer-wizard .oer-wz-drop.is-over {
-    border-color: var(--wz-blue);
+    border-color: var(--wz-strong);
     background: var(--wz-card);
 }
 
@@ -543,14 +556,14 @@ body.oer-wizard-page {
     width: 52px;
     height: 52px;
     flex: none;
-    border-radius: 14px;
-    background: var(--wz-blue);
-    color: var(--wz-yellow);
+    border-radius: 4px;
+    background: var(--wz-strong);
+    color: var(--wz-on-dark);
 }
 
 .oer-wizard .oer-wz-badge.is-soft {
     background: var(--wz-card);
-    color: var(--wz-atlantic);
+    color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-badge .oer-wz-icon {
@@ -570,8 +583,8 @@ body.oer-wizard-page {
     align-items: center;
     gap: 16px;
     padding: 18px 20px;
-    border: 1.5px solid var(--wz-hairline);
-    border-radius: 14px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
     background: var(--wz-surface);
 }
 
@@ -591,31 +604,31 @@ body.oer-wizard-page {
     font-size: 14px;
 }
 
-/* Notices: the theme's notice cards. */
+/* Notices: a 4px rule on the left; the admin's red only for what needs action (ADR-0014 rule 2). */
 .oer-wizard .oer-wz-notice {
     display: flex;
     gap: 12px;
     align-items: flex-start;
     padding: 16px 18px;
-    border-left: 4px solid var(--wz-atlantic);
-    border-radius: 10px;
+    border-left: 4px solid var(--wz-strong);
+    border-radius: 4px;
     background: var(--wz-card);
     color: var(--wz-ink);
 }
 
 .oer-wizard .oer-wz-notice > .oer-wz-icon {
-    color: var(--wz-atlantic);
+    color: var(--wz-strong);
     margin-top: 1px;
 }
 
 .oer-wizard .oer-wz-notice.is-important {
-    border-left-color: var(--wz-yellow);
-    background: var(--wz-surface-yellow);
+    border-left-color: var(--wz-mark);
+    background: var(--wz-surface-mark);
 }
 
 .oer-wizard .oer-wz-notice.is-important > .oer-wz-icon,
 .oer-wizard .oer-wz-notice.is-important .oer-wz-cap {
-    color: var(--wz-blue);
+    color: var(--wz-mark);
 }
 
 .oer-wizard .oer-wz-notice.is-error {
@@ -670,7 +683,7 @@ body.oer-wizard-page {
     gap: 4px 14px;
 }
 
-/* Step ③ sub-steps: tabs underlined in yellow. */
+/* Step ③ sub-steps: tabs underlined in ink. */
 .oer-wizard .oer-wz-tabs {
     overflow-x: auto;
     border-bottom: 1px solid var(--wz-hairline);
@@ -709,8 +722,8 @@ body.oer-wizard-page {
 }
 
 .oer-wizard .oer-wz-tab[aria-current="step"] {
-    border-bottom-color: var(--wz-yellow);
-    color: var(--wz-blue);
+    border-bottom-color: var(--wz-strong);
+    color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-tab-value {
@@ -744,7 +757,7 @@ body.oer-wizard-page {
     align-items: baseline;
     gap: 8px 12px;
     padding: 16px 20px;
-    border-radius: 14px;
+    border-radius: 4px;
     background: var(--wz-surface);
     color: var(--wz-ink);
     font-weight: 500;
@@ -752,7 +765,7 @@ body.oer-wizard-page {
 
 .oer-wizard .oer-wz-summary .oer-wz-cap,
 .oer-wizard .oer-wz-count {
-    color: var(--wz-blue);
+    color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-count {
@@ -770,8 +783,8 @@ body.oer-wizard-page {
 
 /* Step ③: blocks of knowledge and criteria fold (owner's review of PR #100). */
 .oer-wizard .oer-wz-fold {
-    border: 1.5px solid var(--wz-hairline);
-    border-radius: 12px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
     background: var(--wz-canvas);
 }
 
@@ -793,7 +806,7 @@ body.oer-wizard-page {
 
 .oer-wizard .oer-wz-fold > summary::before {
     content: "▸";
-    color: var(--wz-blue);
+    color: var(--wz-strong);
     margin-right: 4px;
 }
 
@@ -836,10 +849,10 @@ body.oer-wizard-page {
     align-items: center;
     gap: 4px;
     padding: 2px 4px 2px 12px;
-    border: 1.5px solid var(--wz-blue);
+    border: 1px solid var(--wz-strong);
     border-radius: 999px;
     background: var(--wz-card);
-    color: var(--wz-blue);
+    color: var(--wz-strong);
     font-size: 14px;
     font-weight: 600;
 }
@@ -853,7 +866,7 @@ body.oer-wizard-page {
     border: 0;
     border-radius: 50%;
     background: transparent;
-    color: var(--wz-blue);
+    color: var(--wz-strong);
     font: 700 14px var(--wz-sans);
     cursor: pointer;
 }
@@ -876,7 +889,7 @@ body.oer-wizard-page {
     margin: 0 0 4px;
     padding-bottom: 2px;
     border-bottom: 1px solid var(--wz-hairline);
-    color: var(--wz-blue);
+    color: var(--wz-strong);
     font-size: 14px;
     font-weight: 800;
 }
@@ -904,7 +917,7 @@ body.oer-wizard-page {
     height: 18px;
     margin: 1px 0 0;
     flex: none;
-    accent-color: var(--wz-blue);
+    accent-color: var(--wz-strong);
 }
 
 .oer-wizard .oer-wz-check-desc {
@@ -921,8 +934,8 @@ body.oer-wizard-page {
 .oer-wizard .oer-wz-record {
     display: flex;
     flex-direction: column;
-    border: 1.5px solid var(--wz-hairline);
-    border-radius: 14px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
     overflow: hidden;
 }
 
@@ -984,56 +997,65 @@ body.oer-wizard-page {
     font-size: 15px;
 }
 
-/* Buttons. */
+/* Buttons: the admin's (36px, 3px corners). «Atrás», «Guardar borrador» and
+   the rest are the admin's grey button; the action that moves forward is the
+   only filled one. The same pair sits in the admin's fixed #page-actions. */
 .oer-wizard .oer-wz-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    min-height: 46px;
+    gap: 4px;
+    height: 36px;
     margin: 0;
-    padding: 0 22px;
-    border: 2px solid var(--wz-blue);
-    border-radius: 10px;
-    background: var(--wz-canvas);
-    color: var(--wz-blue);
-    font: 600 15px var(--wz-sans);
+    padding: 0 14px;
+    border: 0;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
+    color: var(--wz-body);
+    font: 700 15px var(--wz-sans);
+    line-height: 1;
     text-decoration: none;
+    vertical-align: top;
     cursor: pointer;
 }
 
-.oer-wizard .oer-wz-btn:hover {
-    background: var(--wz-card);
-    color: var(--wz-blue);
+.oer-wizard .oer-wz-btn:hover:not(:disabled) {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+    color: var(--wz-ink);
 }
 
 .oer-wizard .oer-wz-btn.is-primary {
-    background: var(--wz-blue);
+    background: var(--wz-strong);
+    box-shadow: none;
     color: var(--wz-on-dark);
 }
 
-.oer-wizard .oer-wz-btn.is-primary:hover {
-    background: var(--wz-blue-hover);
+.oer-wizard .oer-wz-btn.is-primary:hover:not(:disabled) {
+    background: var(--wz-strong-hover);
+    box-shadow: none;
     color: var(--wz-on-dark);
-}
-
-.oer-wizard .oer-wz-btn.is-accent {
-    border-color: var(--wz-yellow);
-    background: var(--wz-yellow);
-    color: var(--wz-blue);
-    font-weight: 700;
-}
-
-.oer-wizard .oer-wz-btn.is-accent:hover {
-    border-color: var(--wz-yellow-hover);
-    background: var(--wz-yellow-hover);
 }
 
 .oer-wizard .oer-wz-btn:disabled {
-    border-color: var(--wz-hairline);
     background: var(--wz-disabled);
+    box-shadow: none;
     color: var(--wz-body-soft);
     cursor: not-allowed;
+}
+
+.oer-wizard .oer-wz-btn .oer-wz-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.oer-wizard #page-actions .oer-wz-btn {
+    display: inline-flex;
+    padding: 0 14px;
+}
+
+.oer-wizard #page-actions .oer-wz-btn + .oer-wz-btn {
+    margin-left: 6px;
 }
 
 .oer-wizard .oer-wz-link {
@@ -1044,15 +1066,16 @@ body.oer-wizard-page {
     padding: 6px 0;
     border: 0;
     background: none;
-    color: var(--wz-atlantic);
-    font: 600 15px var(--wz-sans);
+    color: var(--wz-strong);
+    font: 700 15px var(--wz-sans);
     text-decoration: underline;
     text-underline-offset: 3px;
     cursor: pointer;
 }
 
 .oer-wizard .oer-wz-link:hover {
-    color: var(--wz-blue);
+    background: none;
+    color: var(--wz-accent);
 }
 
 .oer-wizard .oer-wz-nav {
@@ -1082,45 +1105,8 @@ body.oer-wizard-page {
     font-size: 15px;
 }
 
-/* The compact navigation above every step (owner's review of PR #100). */
-.oer-wizard .oer-wz-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--wz-hairline);
-}
-
-.oer-wizard .oer-wz-btn.is-small {
-    min-height: 44px;
-    padding: 0 16px;
-    font-size: 14px;
-}
-
-/* Footer: blue with the theme's yellow rule. */
-.oer-wizard .oer-wz-foot {
-    border-top: 4px solid var(--wz-yellow);
-    background: var(--wz-blue);
-    color: var(--wz-on-dark-soft);
-    font-size: 14px;
-}
-
-.oer-wizard .oer-wz-foot .oer-wz-wrap {
-    padding-top: 28px;
-    padding-bottom: 28px;
-}
-
-/* Narrow screens: the steps stack two by two, the record one column. */
+/* Narrow screens: the record in one column. */
 @media (max-width: 720px) {
-    .oer-wizard .oer-wz-hero h1 {
-        font-size: 30px;
-    }
-
-    .oer-wizard .oer-wz-steps {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
     .oer-wizard .oer-wz-record dl {
         grid-template-columns: minmax(0, 1fr);
     }
