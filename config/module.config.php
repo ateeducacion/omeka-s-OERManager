@@ -88,7 +88,59 @@ return [
             },
             // TASK-077: the guided wizard to add a REA.
             Controller\Admin\ReaWizardController::class => function ($container) {
-                return new Controller\Admin\ReaWizardController();
+                $api = $container->get('Omeka\ApiManager');
+                $settings = $container->get('Omeka\Settings');
+                return new Controller\Admin\ReaWizardController(
+                    $container->get(Service\Wizard\ReaWizardSave::class),
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    new Service\Wizard\MediaMetadataReader(),
+                    $container->get(Service\Wizard\DuplicateFinder::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $settings,
+                    $container->get('Omeka\Logger'),
+                    // The REA template's properties, or null without a readable one.
+                    static function () use ($api, $settings): ?array {
+                        $id = Service\GovernanceSettings::parseId(
+                            $settings->get(Service\GovernanceSettings::REA_TEMPLATE_ID)
+                        );
+                        if (null === $id) {
+                            return null;
+                        }
+                        try {
+                            $template = $api->read('resource_templates', $id)->getContent();
+                        } catch (\Exception $e) {
+                            return null;
+                        }
+                        $properties = [];
+                        foreach ($template->resourceTemplateProperties() as $templateProperty) {
+                            $property = $templateProperty->property();
+                            $properties[] = [
+                                'term' => (string) $property->term(),
+                                'label' => (string) $property->label(),
+                                'alternateLabel' => $templateProperty->alternateLabel(),
+                                'required' => (bool) $templateProperty->isRequired(),
+                                'dataTypes' => array_values((array) $templateProperty->dataTypes()),
+                            ];
+                        }
+                        return $properties;
+                    },
+                    // Entries of a CustomVocab, by id: `{value}` or `{uri, label}`.
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        $entries = [];
+                        if ('uri' === $vocab->type()) {
+                            foreach (($vocab->listUriLabels() ?? []) as $uri => $label) {
+                                $entries[] = ['uri' => (string) $uri, 'label' => (string) ($label ?? '')];
+                            }
+                            return $entries;
+                        }
+                        foreach (($vocab->listTerms() ?? []) as $term) {
+                            $entries[] = ['value' => (string) $term];
+                        }
+                        return $entries;
+                    }
+                );
             },
             // TASK-011: batch AI proposal.
             Controller\Admin\AiBatchController::class => function ($container) {
@@ -575,6 +627,36 @@ return [
                 return new Service\Ai\StoredProposals(
                     $container->get('Omeka\EntityManager'),
                     $container->get(Service\Ai\StoredProposalWriter::class)
+                );
+            },
+            Service\Wizard\ReaWizardSave::class => function ($container) {
+                return new Service\Wizard\ReaWizardSave(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\RecatalogService::class),
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    $container->get(Service\ReaTemplateFields::class),
+                    $container->get(Service\ReaSite::class),
+                    $container->get('Omeka\Settings')
+                );
+            },
+            // Media names are looked up id-only (the media API has no `source`
+            // filter); DuplicateFinder reads each item through the API, so ACL applies.
+            Service\Wizard\DuplicateFinder::class => function ($container) {
+                $api = $container->get('Omeka\ApiManager');
+                $entityManager = $container->get('Omeka\EntityManager');
+                $classes = $api->search('resource_classes', ['term' => 'lrmi:LearningResource'])->getContent();
+                return new Service\Wizard\DuplicateFinder(
+                    $api,
+                    static function (string $name) use ($entityManager): array {
+                        $rows = $entityManager->createQuery(
+                            'SELECT IDENTITY(m.item) AS item FROM Omeka\Entity\Media m WHERE m.source = :name'
+                        )->setParameter('name', $name)->setMaxResults(20)->getScalarResult();
+                        return array_values(array_unique(array_map(static fn (array $r) => (int) $r['item'], $rows)));
+                    },
+                    $classes ? (int) $classes[0]->id() : null
                 );
             },
             // TASK-077: the wizard's uploads, private and by token (as ProposalStore).
