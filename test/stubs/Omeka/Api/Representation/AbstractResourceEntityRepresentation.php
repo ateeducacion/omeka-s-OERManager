@@ -16,6 +16,10 @@ abstract class AbstractResourceEntityRepresentation extends AbstractEntityRepres
     {
         return null;
     }
+    public function modified()
+    {
+        return null;
+    }
     public function resourceClass()
     {
         return null;

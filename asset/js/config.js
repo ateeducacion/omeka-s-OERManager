@@ -27,6 +27,9 @@ export function readConfig() {
         recatalogCsrf: d.recatalogCsrf,
         drawerHistoryUrl: d.drawerHistoryUrl,
         totalResults: Number(d.totalResults || 0),
-        canBatchGovernance: flag(d.canBatchGovernance)
+        canBatchGovernance: flag(d.canBatchGovernance),
+        aiProposalDiscardUrl: d.aiProposalDiscardUrl,
+        aiBatchFormUrl: d.aiBatchFormUrl,
+        canBatchAi: flag(d.canBatchAi)
     });
 }

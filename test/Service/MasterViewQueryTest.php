@@ -47,6 +47,17 @@ final class MasterViewQueryTest extends TestCase
         $this->assertArrayNotHasKey('property', $query->buildSearchParams(['status' => ['x']]));
     }
 
+    /** TASK-011: «Propuesta IA» lista / sin propuesta, on the stored marker. */
+    public function testAiProposalFilter(): void
+    {
+        $query = new MasterViewQuery($this->apiResolvingClass());
+        $row = static fn (string $type): array => ['property' => 'curation:data', 'type' => $type, 'text' => 'OERManager/ai-proposal/1'];
+        $this->assertSame([$row('sw')], $query->buildSearchParams(['ai_proposal' => 'ready'])['property']);
+        $this->assertSame([$row('nsw')], $query->buildSearchParams(['ai_proposal' => 'none'])['property']);
+        $this->assertArrayNotHasKey('property', $query->buildSearchParams(['ai_proposal' => 'bogus']));
+        $this->assertArrayNotHasKey('property', $query->buildSearchParams(['ai_proposal' => ['ready']]));
+    }
+
     public function testOnlyItemSetsWithLearningResourcesAreOffered(): void
     {
         $api = $this->createMock(ApiManager::class);

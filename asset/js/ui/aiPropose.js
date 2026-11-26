@@ -5,6 +5,8 @@ import { messageFor } from '../core/messages.js';
 import { RELATION } from '../core/alignmentTree.js';
 import { addChip, chipIdsByTerm } from './termPicker.js';
 import { proposeIntoEditor } from './alignmentEditor.js';
+import { proposalNotice } from '../core/anchorData.js';
+import { reopenDrawer } from './drawer.js';
 
 /**
  * Pre-relleno con IA del panel de re-catalogación (TASK-010/020), extraído de
@@ -84,7 +86,7 @@ function buildAiDebugPanel(debug, content) {
  * thematic axis into its chips, as before. Nothing is written until
  * «Confirmar».
  */
-function applyAiProposal(ctx, alignment, justifications) {
+export function applyAiProposal(ctx, alignment, justifications) {
     let added = proposeIntoEditor(ctx.config, ctx.$panel, alignment, justifications);
     const axis = pendingChips({ [RELATION]: (alignment || {})[RELATION] || [] }, chipIdsByTerm(ctx.$panel), {});
     const $dim = ctx.$panel.find(`.oer-recatalog-dim[data-term="${RELATION}"]`);
@@ -210,4 +212,35 @@ export function initAiPropose(config) {
         }
         startProposal(ctx);
     });
+}
+
+/**
+ * TASK-011: a proposal stored by the batch enters the editor as pending
+ * chips when the panel opens, through the same path as «Proponer con IA»,
+ * with a notice and «Descartar propuesta» in the anchor bar.
+ */
+export function prefillStoredProposal(config, $panel, $bar, itemId, aiProposal) {
+    applyAiProposal({ config, $panel }, aiProposal.alignment, aiProposal.justifications);
+    const $notice = $('<p>').addClass('oer-ai-stored').attr('role', 'status')
+        .text(proposalNotice(aiProposal, (text) => Omeka.jsTranslate(text)));
+    const $discard = $('<button>').attr('type', 'button').addClass('button oer-ai-stored-discard')
+        .text(Omeka.jsTranslate('Descartar propuesta'));
+    const failed = () => {
+        $notice.text(Omeka.jsTranslate('No se pudo descartar la propuesta.'));
+        $discard.prop('disabled', false);
+    };
+    $discard.on('click', () => {
+        $discard.prop('disabled', true);
+        $.post(config.aiProposalDiscardUrl, { id: itemId, csrf: config.recatalogCsrf })
+            .done((r) => {
+                // Reopen the panel: the editor is rebuilt without the proposal.
+                if (r && true === r.removed) {
+                    reopenDrawer(itemId);
+                    return;
+                }
+                failed();
+            })
+            .fail(failed);
+    });
+    $bar.prepend($('<div>').addClass('oer-ai-stored-box').append($notice, $discard));
 }

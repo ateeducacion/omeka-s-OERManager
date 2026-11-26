@@ -79,6 +79,17 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
             <option value="<?php echo $escape($value); ?>" <?php echo $value === $currentStatus ? 'selected' : ''; ?>><?php echo $escape($label); ?></option>
             <?php endforeach; ?>
         </select>
+        <?php
+        $aiProposalOptions = ['ready' => $translate('Propuesta IA: lista'), 'none' => $translate('Propuesta IA: sin propuesta')];
+        $currentAiProposal = is_scalar($query['ai_proposal'] ?? '') ? (string) ($query['ai_proposal'] ?? '') : '';
+        ?>
+        <label class="oer-visually-hidden" for="oer-filter-ai-proposal"><?php echo $translate('Propuesta IA'); ?></label>
+        <select id="oer-filter-ai-proposal" name="ai_proposal">
+            <option value=""><?php echo $translate('Propuesta IA: todas'); ?></option>
+            <?php foreach ($aiProposalOptions as $value => $label): ?>
+            <option value="<?php echo $escape($value); ?>" <?php echo $value === $currentAiProposal ? 'selected' : ''; ?>><?php echo $escape($label); ?></option>
+            <?php endforeach; ?>
+        </select>
         <button type="submit" class="button oer-button-primary"><?php echo $translate('Filtrar'); ?></button>
         <?php echo $this->hyperlink(
             $translate('Búsqueda avanzada'),
@@ -139,13 +150,18 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
        data-sidebar-selector="#oer-batch-sidebar"
        data-sidebar-content-url="<?php echo $escape($this->url('admin/oer-manager-batch', ['action' => 'form'])); ?>"><?php echo $translate('Licencia y autoría…'); /* @translate */ ?></a>
     <?php endif; ?>
+    <?php if (!empty($canBatchAi)): ?>
+    <a href="#" class="button oer-ai-batch-open sidebar-content"
+       data-sidebar-selector="#oer-batch-sidebar"
+       data-sidebar-content-url="<?php echo $escape($this->url('admin/oer-manager-ai-batch', ['action' => 'form'])); ?>"><?php echo $translate('Proponer con IA (lote)…'); /* @translate */ ?></a>
+    <?php endif; ?>
     <button type="button" class="oer-selection-clear"><?php echo $translate('Deseleccionar'); /* @translate */ ?></button>
 </div>
 
 <p class="oer-select-matching-strip" hidden
    data-page-all="<?php echo $escape($translate('Los %1$s REA de esta página están seleccionados.')); /* @translate */ ?>"
-   data-select-matching="<?php echo $escape($translate('Seleccionar los %1$s que coinciden con el filtro para licencia y autoría')); /* @translate */ ?>"
-   data-matching-all="<?php echo $escape($translate('Los %1$s REA que coinciden con el filtro están seleccionados para licencia y autoría; la visibilidad sigue actuando solo sobre las filas marcadas.')); /* @translate */ ?>"
+   data-select-matching="<?php echo $escape($translate('Seleccionar los %1$s que coinciden con el filtro para las acciones en lote')); /* @translate */ ?>"
+   data-matching-all="<?php echo $escape($translate('Los %1$s REA que coinciden con el filtro están seleccionados para las acciones en lote; la visibilidad sigue actuando solo sobre las filas marcadas.')); /* @translate */ ?>"
    data-clear="<?php echo $escape($translate('Deshacer selección')); /* @translate */ ?>">
     <span class="oer-select-matching-text"></span>
     <button type="button" class="oer-select-matching-action"></button>
@@ -158,6 +174,7 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
     'aiEnabled' => !empty($aiEnabled),
     'totalResults' => (int) ($totalResults ?? 0),
     'canBatchGovernance' => !empty($canBatchGovernance),
+    'canBatchAi' => !empty($canBatchAi),
 ]); ?>>
     <thead>
         <tr>
@@ -204,6 +221,16 @@ $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'mo
                     <ul class="actions">
                         <?php if (null !== $workflowBadge): ?>
                         <li><?php echo $this->partial('oer-manager/common/workflow-badge', ['badge' => $workflowBadge]); ?></li>
+                        <?php endif; ?>
+                        <?php
+                        // TASK-011: the stored AI proposal, from the values the row already holds.
+                        $proposalTexts = array_map(
+                            static fn ($value): string => (string) $value->value(),
+                            $item->value(\OERManager\Service\Ai\StoredProposal::TERM, ['all' => true, 'default' => []])
+                        );
+                        ?>
+                        <?php if (\OERManager\Service\Ai\StoredProposal::anyMarked($proposalTexts)): ?>
+                        <li><span class="oer-ai-badge" title="<?php echo $escape($translate('Tiene una propuesta de IA pendiente de revisar')); ?>"><?php echo $translate('IA'); ?></span></li>
                         <?php endif; ?>
                         <li><?php echo $item->link('', 'edit', ['class' => 'o-icon-edit', 'title' => $translate('Editar')]); ?></li>
                     </ul>

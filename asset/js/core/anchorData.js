@@ -11,7 +11,7 @@
  * Núcleo puro. Ante datos ausentes o rotos, cerrado: sin editor y sin motivo.
  */
 function closed() {
-    return { allowed: false, reason: '', current: {} };
+    return { allowed: false, reason: '', current: {}, aiProposal: null };
 }
 
 function cleanValues(values) {
@@ -50,11 +50,42 @@ export function parseRecatalog(raw) {
     return {
         allowed: true === data.allowed,
         reason: 'string' === typeof data.reason ? data.reason : '',
-        current
+        current,
+        aiProposal: parseAiProposal(data.aiProposal)
     };
 }
 
 /** Valores ya elegidos de un término, o lista vacía. */
 export function valuesFor(recatalog, term) {
     return (recatalog && recatalog.current && recatalog.current[term]) || [];
+}
+
+/** TASK-011: the stored AI proposal of the panel, or null when absent or malformed. */
+function parseAiProposal(raw) {
+    if (!raw || 'object' !== typeof raw || Array.isArray(raw) || 'string' !== typeof raw.created) {
+        return null;
+    }
+    const alignment = {};
+    const source = raw.alignment && 'object' === typeof raw.alignment ? raw.alignment : {};
+    Object.keys(source).forEach((term) => {
+        const chips = (Array.isArray(source[term]) ? source[term] : [])
+            .filter((chip) => chip && Number.isInteger(chip.id) && chip.id > 0 && 'string' === typeof chip.title);
+        if (chips.length) {
+            alignment[term] = chips.map((chip) => ({ id: chip.id, title: chip.title }));
+        }
+    });
+    const justifications = raw.justifications && 'object' === typeof raw.justifications && !Array.isArray(raw.justifications)
+        ? raw.justifications
+        : {};
+    return { created: raw.created, changed: true === raw.changed, alignment, justifications };
+}
+
+/** «Propuesta IA del dd/mm/aaaa.», plus the warning when the REA changed since. */
+export function proposalNotice(aiProposal, translate = (text) => text) {
+    const [year, month, day] = aiProposal.created.slice(0, 10).split('-');
+    let text = translate('Propuesta IA del %s.').replace('%s', `${day}/${month}/${year}`);
+    if (aiProposal.changed) {
+        text += ' ' + translate('El REA ha cambiado desde la propuesta.');
+    }
+    return text;
 }

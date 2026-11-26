@@ -50,6 +50,32 @@ final class ProposeRunnerTest extends TestCase
         $this->assertSame([], $result['justifications']);
     }
 
+    /** Final review of TASK-011: a stored proposal is machine data, never text for the LLM. */
+    public function testTheStoredProposalIsNotSentToTheLlm(): void
+    {
+        $api = $this->createMock(Manager::class);
+        $stored = \OERManager\Service\Ai\StoredProposal::MARKER . ' {"v":1,"created":"x","alignment":{}}';
+        $item = $this->item(1, 'Title', [
+            'dcterms:description' => [$this->value('Description')],
+            'curation:data' => [$this->value($stored), $this->value('Otro uso')],
+        ]);
+        $api->method('read')->willReturn($this->response($item));
+        $media = $this->createMock(MediaSourceInterface::class);
+        $media->method('filesFor')->willReturn([]);
+        $media->method('imagesFor')->willReturn([]);
+        $classifier = new FakeClassifier([]);
+        $cataloguer = new AiCataloguer(
+            new ContentExtractor(),
+            new MediaVisionExtractor(new FakeLlmClient(), new PromptBuilder(), false),
+            new ContextDistiller(new FakeLlmClient(['Summary']), new PromptBuilder()),
+            $classifier,
+            new FakeClassifier([])
+        );
+        (new ProposeRunner($api, $cataloguer, $media))->run(1);
+        $this->assertStringNotContainsString('OERManager/ai-proposal', $classifier->received[0]);
+        $this->assertStringContainsString('Otro uso', $classifier->received[0]);
+    }
+
     public function testResolverUsesBoundedSearchForEveryDimension(): void
     {
         $search = $this->createMock(CurriculumSearch::class);
