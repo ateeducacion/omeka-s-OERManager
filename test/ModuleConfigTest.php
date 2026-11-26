@@ -261,6 +261,28 @@ final class ModuleConfigTest extends TestCase
         );
     }
 
+    /**
+     * Omeka adds one ACL resource per registered controller: granting a
+     * controller that is not registered breaks every request at bootstrap
+     * (found in the container while building TASK-077).
+     */
+    public function testEveryGrantedControllerIsRegistered(): void
+    {
+        $config = (new \OERManager\Module())->getConfig();
+        $grants = array_keys(\OERManager\Permissions\ReaAcl::GRANTS + \OERManager\Permissions\ReaAcl::ADMIN_ONLY);
+        foreach ($grants as $controller) {
+            $this->assertArrayHasKey($controller, $config['controllers']['factories'], $controller);
+        }
+    }
+
+    public function testWizardRouteIsRegistered(): void
+    {
+        $config = (new \OERManager\Module())->getConfig();
+        $route = $config['router']['routes']['admin']['child_routes']['oer-manager-wizard']['options'];
+        $this->assertSame('/oer-manager/wizard[/:action]', $route['route']);
+        $this->assertSame(\OERManager\Controller\Admin\ReaWizardController::class, $route['defaults']['controller']);
+    }
+
     public function testModuleIniDeclaresOmeka42Constraint(): void
     {
         $ini = parse_ini_file(self::MODULE_ROOT . '/config/module.ini', true);

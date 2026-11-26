@@ -86,6 +86,10 @@ return [
                     $container->get('Omeka\Acl')
                 );
             },
+            // TASK-077: the guided wizard to add a REA.
+            Controller\Admin\ReaWizardController::class => function ($container) {
+                return new Controller\Admin\ReaWizardController();
+            },
             // TASK-011: batch AI proposal.
             Controller\Admin\AiBatchController::class => function ($container) {
                 return new Controller\Admin\AiBatchController(
@@ -631,6 +635,21 @@ return [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\GovernanceBatchController::class,
                                 'action' => 'form',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-wizard' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/wizard[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\ReaWizardController::class,
+                                'action' => 'index',
                             ],
                         ],
                         'may_terminate' => true,
