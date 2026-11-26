@@ -492,7 +492,13 @@ function subTabs() {
   const locked = [false, !state.stage, !state.courses.length, !state.subject, !state.subject, false];
   return h('nav', { class: 'oer-wz-tabs', 'aria-label': t('Curso y materia') }, h('ol', {}, SUB_NAMES.map((name, i) =>
     h('li', {}, h('button', { type: 'button', class: 'oer-wz-tab', disabled: locked[i], 'aria-current': ui.sub === i + 1 ? 'step' : 'false',
-      onclick: () => go(3, i + 1) }, h('span', {}, t(name)), h('span', { class: 'oer-wz-tab-value' }, subValue(i)))))));
+      onclick: () => go(3, i + 1) }, h('span', {}, t(name)), h('span', { class: 'oer-wz-tab-value', 'data-wz-sub': String(i) }, subValue(i)))))));
+}
+
+/** After a tick that does not repaint: the sub-step tabs and «Hasta ahora» follow. */
+function refreshCounts() {
+  root.querySelectorAll('[data-wz-sub]').forEach((el) => { el.textContent = subValue(Number(el.dataset.wzSub)); });
+  root.querySelector('[data-wz-summary]').textContent = summary(state);
 }
 
 function subStage() {
@@ -605,7 +611,7 @@ function subTerms(dimension) {
               // No repaint: only the counters change, so an open block stays open.
               counter.textContent = blockCount(group);
               head.querySelector('.oer-wz-count').textContent = t(state[key].length === 1 ? '%d marcado' : '%d marcados', state[key].length);
-              root.querySelector('[data-wz-summary]').textContent = summary(state);
+              refreshCounts();
             } }),
             h('span', { class: 'oer-wz-choice-text' }, h('span', {}, item.title), item.code ? h('span', { class: 'oer-wz-code' }, item.code) : null)))));
           return details;
@@ -637,7 +643,7 @@ function subAxes() {
     state.axes = on ? [...state.axes, { id: axis.id, title: axis.title }] : state.axes.filter((a) => a.id !== axis.id);
     changed();
     paintChips();
-    root.querySelector('[data-wz-summary]').textContent = summary(state);
+    refreshCounts();
   };
   const paintChips = () => {
     chips.replaceChildren(...(state.axes.length

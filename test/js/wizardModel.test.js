@@ -126,13 +126,13 @@ test('curriculum trees flatten into blocks of selectable terms', () => {
     ] },
   ] }];
   assert.deepEqual(treeGroups(trees, 'lrmi:teaches'), [
-    { block: 'A. Sentido numérico', items: [
+    { block: 'A · Sentido numérico', items: [
       { id: 31, code: 'MAT.1.A.1', title: 'Fracciones' },
       { id: 35, code: 'MAT.1.A.1.1', title: 'Equivalencia' },
     ] },
   ]);
   assert.deepEqual(treeGroups(trees, 'lrmi:teaches', 'equiv'), [
-    { block: 'A. Sentido numérico', items: [{ id: 35, code: 'MAT.1.A.1.1', title: 'Equivalencia' }] },
+    { block: 'A · Sentido numérico', items: [{ id: 35, code: 'MAT.1.A.1.1', title: 'Equivalencia' }] },
   ]);
 });
 

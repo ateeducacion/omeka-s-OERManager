@@ -476,6 +476,10 @@ body.oer-wizard-page {
     gap: 6px;
 }
 
+.oer-wizard .oer-wz-type-group + .oer-wz-type-group {
+    margin-top: 12px;
+}
+
 .oer-wizard .oer-wz-grid.is-compact {
     grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: 8px;

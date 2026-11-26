@@ -240,7 +240,7 @@ export function treeGroups(trees, dimension, query = '') {
   };
   for (const tree of trees || []) {
     for (const root of tree[dimension] || []) {
-      const name = [root.notation, root.title].filter(Boolean).join('. ');
+      const name = [root.notation, root.title].filter(Boolean).join(' · ');
       if (!blocks.has(name)) {
         blocks.set(name, { block: name, items: [] });
       }
