@@ -115,7 +115,7 @@ final class ReaAclTest extends TestCase
             sort($actual);
             $this->assertSame($actual, $known, $controller . ': an action without a decision, or a grant without an action');
         }
-        $this->assertSame([IndexController::class => ['config'],
+        $this->assertSame([IndexController::class => ['config', 'resync-subjects'],
             GovernanceBatchController::class => [GovernanceBatchController::PRIVILEGE_UNDO_ANY]], ReaAcl::ADMIN_ONLY);
     }
 

@@ -243,6 +243,27 @@ return [
             },
             // Currículo con el modelo cur: (TASK-064, ADR-0022): conjunto del
             // currículo, retirados y clases, resueltos una vez por petición.
+            // TASK-076. The property id is looked up once; the entity is a
+            // fresh reference on each call, so it is always managed.
+            Service\Curriculum\DerivedSubjectWriter::class => function ($container) {
+                $propertyId = null;
+                return new Service\Curriculum\DerivedSubjectWriter(
+                    static function () use ($container, &$propertyId): ?object {
+                        if (null === $propertyId) {
+                            $found = $container->get('Omeka\ApiManager')->search('properties', [
+                                'term' => Service\Curriculum\DerivedSubjectWriter::TERM,
+                            ])->getContent();
+                            $propertyId = $found ? (int) reset($found)->id() : 0;
+                        }
+                        if ($propertyId <= 0) {
+                            return null;
+                        }
+                        return $container->get('Omeka\EntityManager')
+                            ->getReference(\Omeka\Entity\Property::class, $propertyId);
+                    },
+                    static fn (): object => new \Omeka\Entity\Value()
+                );
+            },
             Service\Curriculum\CurriculumTerms::class => function ($container) {
                 return new Service\Curriculum\ApiCurriculumTerms(
                     $container->get('Omeka\ApiManager'),

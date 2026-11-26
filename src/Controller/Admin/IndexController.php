@@ -661,7 +661,37 @@ class IndexController extends AbstractActionController
 
         $view = new ViewModel();
         $view->setVariable('form', $form);
+        // TASK-076: the separate «Recalcular» form posts to resync-subjects.
+        $view->setVariable('resyncCsrf', $this->csrfValidator()->getHash());
         return $view;
+    }
+
+    /**
+     * TASK-076: dispatches ResyncDerivedSubjects. Global administrator only
+     * (ReaAcl::ADMIN_ONLY), POST with the CSRF token of the configuration page.
+     */
+    public function resyncSubjectsAction()
+    {
+        $back = ['admin/oer-manager', ['action' => 'config']];
+        if (!$this->getRequest()->isPost()) {
+            return $this->redirect()->toRoute(...$back);
+        }
+        if (!$this->csrfValidator()->isValid((string) $this->params()->fromPost('csrf'))) {
+            $this->messenger()->addError('El formulario ha caducado; vuelve a intentarlo.'); // @translate
+            return $this->redirect()->toRoute(...$back);
+        }
+        try {
+            $job = $this->jobDispatcher->dispatch(\OERManager\Job\ResyncDerivedSubjects::class);
+        } catch (\Exception $e) {
+            $this->logger->err('OERManager resync derived subjects dispatch: ' . $e->getMessage());
+            $this->messenger()->addError('No se pudo lanzar el recálculo de la materia derivada.'); // @translate
+            return $this->redirect()->toRoute(...$back);
+        }
+        $this->messenger()->addSuccess(new Message(
+            'Recálculo de la materia derivada lanzado (trabajo %d). El resultado queda en su registro.', // @translate
+            (int) $job->getId()
+        ));
+        return $this->redirect()->toRoute(...$back);
     }
 
     /**

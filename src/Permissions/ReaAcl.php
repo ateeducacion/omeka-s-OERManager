@@ -132,7 +132,8 @@ final class ReaAcl
      * undoing someone else's batch is for when its author is away.
      */
     public const ADMIN_ONLY = [
-        IndexController::class => ['config'],
+        // TASK-076: the resync of derived subjects writes every REA.
+        IndexController::class => ['config', 'resync-subjects'],
         GovernanceBatchController::class => [GovernanceBatchController::PRIVILEGE_UNDO_ANY],
     ];
 
