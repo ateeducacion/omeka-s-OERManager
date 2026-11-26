@@ -204,3 +204,13 @@ holds either way.
 - **PEND-012:** which template fields are required. The wizard reads them from the template, so it works
   before the decision; the decision changes what «Le falta» lists.
 - **The default licence**, if any (a module setting).
+
+## Addendum (2026-11-26, after the prototype review)
+
+- **Identity.** The owner reviewed the first prototype (alignment editor's palette) and asked for the public
+  theme's look instead («Canarias Educativa», `omeka-s-theme-rea-ate`). The wizard follows ADR-0025, not
+  ADR-0024's palette; «same visual language as that editor» above is superseded by it.
+- **Template and drafts.** Omeka refuses an item whose template has an empty required property, so a draft
+  carries the REA template only once it meets it (plan, decision 7).
+- **Media ingestion (spike settled).** A module ingester ingests the file stored in step ① at `save`; the file
+  is not sent again (plan, decision 2 and 8).
