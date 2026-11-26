@@ -5,6 +5,7 @@ import { disableApply } from './termPicker.js';
 import { buildAlignmentEditor, openAlignmentEditor, editorPairs, editorState, showReview } from './alignmentEditor.js';
 import { reopenDrawer } from './drawer.js';
 import { ANCHOR_SLOT } from './drawerDetails.js';
+import { prefillStoredProposal } from './aiPropose.js';
 
 /**
  * Panel de re-catalogación (TASK-004), extraído de oer-master-view.js en
@@ -170,10 +171,14 @@ export function initRecatalog(config) {
             }
             return;
         }
-        $(slot).append(buildRecatalogPanel(config, itemId, recatalog));
+        const $panel = buildRecatalogPanel(config, itemId, recatalog);
+        $(slot).append($panel);
         const $bar = $(bar);
         fillAnchorBar($bar, itemId);
         renderUndo(config, $bar, itemId);
+        if (recatalog.aiProposal) {
+            prefillStoredProposal(config, $panel, $bar, itemId, recatalog.aiProposal);
+        }
     });
 
     // Opening the editor is the first moment the trees are needed.
