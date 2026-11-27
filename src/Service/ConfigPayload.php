@@ -61,6 +61,8 @@ class ConfigPayload
             $data[$setting] = $get($setting);
         }
         $data[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = $get(GovernanceSettings::DEFAULT_RIGHTS_HOLDER);
+        // TASK-077: the wizard's default licence.
+        $data[GovernanceSettings::DEFAULT_LICENCE] = $get(GovernanceSettings::DEFAULT_LICENCE);
         // TASK-067: the REA site (ADR-0023 §1.4).
         $data[ReaSite::SETTING] = $get(ReaSite::SETTING);
 
@@ -132,6 +134,9 @@ class ConfigPayload
         }
         $settings[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] = GovernanceSettings::parseRightsHolder(
             $post[GovernanceSettings::DEFAULT_RIGHTS_HOLDER] ?? null
+        );
+        $settings[GovernanceSettings::DEFAULT_LICENCE] = GovernanceSettings::parseDefaultLicence(
+            $post[GovernanceSettings::DEFAULT_LICENCE] ?? null
         );
         // TASK-067: null = not configured, «REA sin sitio REA» not evaluated.
         // The controller checks that the site exists before saving it.

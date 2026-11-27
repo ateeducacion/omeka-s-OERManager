@@ -1,0 +1,1400 @@
+/*
+ * The wizard to add a REA (TASK-077): inside the admin's work area, like
+ * «Nuevo ítem» (ADR-0025 addendum 1). It inherits the admin's chrome and the
+ * module's tokens (ADR-0014 rule 1): Lato, the module's ink, the admin's
+ * hairlines, and the admin's red only for focus, hover and what needs action
+ * (rule 2). The queue's tints, rails and state colours enrich it (owner's
+ * review of PR #100): they ground and edge, the text stays ink. Every rule hangs from .oer-wizard; the tokens are declared once
+ * below and their contrast is pinned by test/js/wizardContrast.test.js.
+ */
+
+.oer-wizard {
+    --wz-strong: #2B3240;
+    --wz-strong-hover: #3D4659;
+    --wz-accent: #A91919;
+    --wz-mark: #A91919;
+    --wz-surface-mark: #FDEFEF;
+    --wz-canvas: #FFFFFF;
+    --wz-surface: #F6F7F9;
+    --wz-card: #EEF2F7;
+    /* The queue's tints (oer-master-view.css, ADR-0014 addendum): grounds and edges only, ink on top. */
+    --wz-tint-blue: #D2E3F4;
+    --wz-tint-blue-edge: #97B8D8;
+    --wz-tint-teal: #D2F4EF;
+    --wz-tint-teal-edge: #97D8CF;
+    --wz-rail-ok: #A9CDBC;
+    --wz-rail-warn: #E8B25F;
+    --wz-rail-bad: #D47B7B;
+    --wz-warn: #955C0D;
+    --wz-warn-soft: #FDF5E6;
+    --wz-ink: #2B3240;
+    --wz-body: #3D3D3D;
+    --wz-body-soft: #595959;
+    --wz-muted: #676767;
+    --wz-on-dark: #FFFFFF;
+    --wz-hairline: #DFDFDF;
+    --wz-control: #8A8A8A;
+    --wz-disabled: #EEEEEE;
+    --wz-error: #A91919;
+    --wz-error-ink: #8A1414;
+    --wz-error-soft: #FDEFEF;
+    --wz-ok: #1D7A5F;
+    --wz-ok-ink: #1D7A5F;
+    --wz-ok-soft: #EAF5F0;
+    --wz-sans: "Lato", sans-serif;
+    --wz-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+/* ---- Base: the admin's element rules reset inside the wizard ------------ */
+
+.oer-wizard,
+.oer-wizard * {
+    box-sizing: border-box;
+}
+
+.oer-wizard {
+    color: var(--wz-body);
+    font-family: var(--wz-sans);
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+.oer-wizard [hidden] {
+    display: none !important;
+}
+
+.oer-wizard h2,
+.oer-wizard h3,
+.oer-wizard p,
+.oer-wizard ol,
+.oer-wizard ul,
+.oer-wizard dl,
+.oer-wizard dd,
+.oer-wizard fieldset {
+    margin: 0;
+    padding: 0;
+}
+
+.oer-wizard fieldset {
+    border: 0;
+    min-width: 0;
+}
+
+.oer-wizard legend {
+    padding: 0;
+}
+
+/* The admin gives every button a grey ground, an inset rule and a bottom margin. */
+.oer-wizard button {
+    min-height: 0;
+    margin: 0;
+    box-shadow: none;
+    font-family: var(--wz-sans);
+}
+
+.oer-wizard button:hover:not(.inactive) {
+    box-shadow: none;
+}
+
+.oer-wizard a {
+    color: var(--wz-strong);
+}
+
+.oer-wizard a:hover {
+    color: var(--wz-accent);
+}
+
+.oer-wizard :focus-visible {
+    outline: 2px solid var(--wz-accent);
+    outline-offset: 2px;
+}
+
+/* The step heading takes the focus on every step change, for screen readers: it is not a control. */
+.oer-wizard [data-wz-heading]:focus {
+    outline: none;
+}
+
+.oer-wizard .oer-wz-icon {
+    width: 20px;
+    height: 20px;
+    flex: none;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.oer-wizard .oer-wz-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.oer-wizard .oer-wz-cap {
+    color: var(--wz-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.oer-wizard .oer-wz-autosave {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 8px;
+    color: var(--wz-muted);
+    font-size: 14px;
+}
+
+.oer-wizard .oer-wz-autosave .oer-wz-icon {
+    width: 16px;
+    height: 16px;
+}
+
+/* The four steps: the admin's section tabs, as on «Nuevo ítem». */
+.oer-wizard .oer-wz-steps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 0 0 16px;
+    padding: 0;
+    border-bottom: 1px solid var(--wz-hairline);
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-steps li {
+    margin: 0 0 -1px;
+}
+
+.oer-wizard .oer-wz-step {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 6px 16px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 3px 3px 0 0;
+    background: var(--wz-surface);
+    color: var(--wz-body-soft);
+    font-size: 15px;
+    line-height: 1.35;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-step:hover:not(:disabled) {
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-step:disabled {
+    color: var(--wz-muted);
+    cursor: default;
+}
+
+.oer-wizard .oer-wz-step[aria-current="step"] {
+    border-bottom-color: var(--wz-canvas);
+    background: var(--wz-canvas);
+    box-shadow: inset 0 3px 0 var(--wz-strong);
+    color: var(--wz-ink);
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-step-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.oer-wizard .oer-wz-step .oer-wz-done {
+    display: inline-flex;
+    color: var(--wz-ok);
+}
+
+.oer-wizard .oer-wz-step .oer-wz-done .oer-wz-icon {
+    width: 16px;
+    height: 16px;
+}
+
+.oer-wizard .oer-wz-step-state {
+    color: var(--wz-muted);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+/* Main column. */
+.oer-wizard .oer-wz-main {
+    flex: 1;
+    width: 100%;
+    max-width: 960px;
+    padding: 12px 0 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.oer-wizard .oer-wz-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.oer-wizard h2 {
+    color: var(--wz-ink);
+    margin: 0;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.oer-wizard h3 {
+    color: var(--wz-ink);
+    margin: 0;
+    font-size: 19px;
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-lead {
+    color: var(--wz-body-soft);
+    font-size: 16px;
+}
+
+.oer-wizard .oer-wz-help {
+    color: var(--wz-muted);
+    font-size: 14px;
+}
+
+.oer-wizard .oer-wz-label {
+    color: var(--wz-ink);
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-optional {
+    color: var(--wz-muted);
+    font-weight: 500;
+}
+
+.oer-wizard .oer-wz-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.oer-wizard .oer-wz-field-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.oer-wizard .oer-wz-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: var(--wz-card);
+    color: var(--wz-strong);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.oer-wizard .oer-wz-input {
+    width: 100%;
+    min-height: 40px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    font: 16px var(--wz-sans);
+}
+
+.oer-wizard textarea.oer-wz-input {
+    resize: vertical;
+}
+
+.oer-wizard .oer-wz-input:focus {
+    border-color: var(--wz-strong);
+    outline: 2px solid var(--wz-strong);
+    outline-offset: 0;
+}
+
+.oer-wizard .oer-wz-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+}
+
+.oer-wizard .oer-wz-grid.is-wide {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+/* A real radio or checkbox inside its label, restyled as a card. */
+.oer-wizard .oer-wz-choice {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 16px;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-choice:hover {
+    border-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-choice:has(input:checked) {
+    padding: 15px;
+    border: 2px solid var(--wz-strong);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-choice:has(input:focus-visible) {
+    outline: 3px solid var(--wz-accent);
+    outline-offset: 2px;
+}
+
+.oer-wizard .oer-wz-choice input {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    flex: none;
+    accent-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-choice.is-term {
+    align-items: flex-start;
+    padding: 13px 16px;
+    border-radius: 4px;
+}
+
+.oer-wizard .oer-wz-choice.is-term:has(input:checked) {
+    padding: 12px 15px;
+}
+
+.oer-wizard .oer-wz-choice-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-choice-title {
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-choice-hint {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+}
+
+.oer-wizard .oer-wz-code {
+    color: var(--wz-body-soft);
+    font-family: var(--wz-mono);
+    font-size: 12.5px;
+}
+
+.oer-wizard .oer-wz-block {
+    margin-bottom: 8px;
+    color: var(--wz-strong);
+}
+
+/* Required fields: the admin's red asterisk, and «obligatorio» in words. */
+.oer-wizard .oer-wz-req {
+    color: var(--wz-mark);
+    font-weight: 700;
+}
+
+/* Step ②: the resource type (third review of PR #100): suggestion → search →
+   category menu beside its types; an accordion on narrow screens. */
+.oer-wizard .oer-wz-typefield {
+    gap: 16px;
+}
+
+.oer-wizard .oer-wz-typefield > .oer-wz-help {
+    margin-top: -12px;
+}
+
+.oer-wizard .oer-wz-typehead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.oer-wizard .oer-wz-suggest {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 12px 16px;
+    border: 1px solid var(--wz-tint-blue-edge);
+    border-left: 4px solid var(--wz-tint-blue-edge);
+    border-radius: 4px;
+    background: var(--wz-card);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-suggest > .oer-wz-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-suggest p {
+    flex: 1 1 260px;
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-type-group-name {
+    color: var(--wz-muted);
+    font-weight: 400;
+}
+
+.oer-wizard .oer-wz-search.is-clearable .oer-wz-input {
+    min-height: 44px;
+    padding-right: 48px;
+    border-radius: 22px;
+}
+
+.oer-wizard .oer-wz-search-clear {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wz-body-soft);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-search-clear:hover {
+    background: var(--wz-card);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-search-clear .oer-wz-icon {
+    position: static;
+    width: 18px;
+    height: 18px;
+    color: inherit;
+}
+
+/* The menu: categories in column 1, the open category's types in column 2. */
+.oer-wizard .oer-wz-typemenu {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    grid-auto-rows: min-content;
+    column-gap: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-typemenu > li {
+    display: contents;
+}
+
+.oer-wizard .oer-wz-typemenu-cat {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 0;
+    border-left: 4px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--wz-body);
+    font-size: 15px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-typemenu-cat:hover {
+    background: var(--wz-surface);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-typemenu-cat[aria-expanded="true"] {
+    border-left-color: var(--wz-strong);
+    background: var(--wz-surface);
+    color: var(--wz-ink);
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-cat-count {
+    flex: none;
+    min-width: 26px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.oer-wizard .oer-wz-typemenu .oer-wz-typecards {
+    grid-column: 2;
+    grid-row: 1 / span 20;
+    align-self: start;
+}
+
+.oer-wizard .oer-wz-typecards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+/* A type: the whole card is the click target (a real radio inside its label). */
+.oer-wizard .oer-wz-typecard {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 10px 40px 10px 14px;
+    border: 1px solid var(--wz-control);
+    border-radius: 6px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-typecard:hover {
+    border-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-typecard:has(input:checked) {
+    padding: 9px 39px 9px 13px;
+    border: 2px solid var(--wz-strong);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-typecard:has(input:focus-visible) {
+    outline: 2px solid var(--wz-strong);
+    outline-offset: 2px;
+}
+
+.oer-wizard .oer-wz-typecard input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    flex: none;
+    accent-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-typecard-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-typecard-title {
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-typecard-hint {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+}
+
+.oer-wizard .oer-wz-typecard-check {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    display: inline-flex;
+    color: var(--wz-strong);
+    transform: translateY(-50%);
+}
+
+.oer-wizard .oer-wz-type-chosen {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    border: 2px solid var(--wz-strong);
+    border-radius: 6px;
+    background: var(--wz-card);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-type-chosen > .oer-wz-icon {
+    color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-type-path {
+    flex: 1 1 240px;
+}
+
+@media (max-width: 720px) {
+    .oer-wizard .oer-wz-typemenu {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .oer-wizard .oer-wz-typemenu > li {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .oer-wizard .oer-wz-typemenu .oer-wz-typecards {
+        padding: 4px 0 12px 16px;
+    }
+}
+
+.oer-wizard .oer-wz-grid.is-compact {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 8px;
+}
+
+.oer-wizard .oer-wz-choice.is-compact {
+    gap: 8px;
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 15px;
+    line-height: 1.3;
+}
+
+.oer-wizard .oer-wz-choice.is-compact:has(input:checked) {
+    padding: 7px 11px;
+}
+
+.oer-wizard .oer-wz-choice.is-compact .oer-wz-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--wz-body-soft);
+}
+
+.oer-wizard .oer-wz-choice.is-compact .oer-wz-choice-title {
+    font-weight: 600;
+}
+
+/* Step ①. */
+.oer-wizard .oer-wz-sources {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+}
+
+.oer-wizard .oer-wz-source {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 28px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-drop {
+    border: 2px dashed var(--wz-tint-blue-edge);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-drop.is-over {
+    border-color: var(--wz-strong);
+    background: var(--wz-tint-blue);
+}
+
+.oer-wizard .oer-wz-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    flex: none;
+    border: 1px solid var(--wz-tint-blue-edge);
+    border-radius: 8px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-badge.is-soft {
+    border-color: var(--wz-tint-teal-edge);
+    background: var(--wz-tint-teal);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-badge .oer-wz-icon {
+    width: 28px;
+    height: 28px;
+}
+
+.oer-wizard .oer-wz-source-title {
+    color: var(--wz-ink);
+    font-size: 19px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-file {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-surface);
+}
+
+.oer-wizard .oer-wz-file-text {
+    flex: 1 1 240px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-file-name {
+    color: var(--wz-ink);
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.oer-wizard .oer-wz-file-meta {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+}
+
+/* Step ①: the REA's files and links, in order (owner's review of PR #100). */
+.oer-wizard .oer-wz-reslist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-res {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--wz-hairline);
+    border-left: 4px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-res.is-main {
+    border-left-color: var(--wz-tint-blue-edge);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-res.is-error {
+    border-left-color: var(--wz-rail-bad);
+    background: var(--wz-error-soft);
+}
+
+.oer-wizard .oer-wz-main-tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
+    font-size: 12px;
+    font-weight: 700;
+    vertical-align: 2px;
+}
+
+.oer-wizard .oer-wz-res-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--wz-error-ink);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-res-error .oer-wz-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.oer-wizard .oer-wz-res-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.oer-wizard .oer-wz-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-icon-btn:hover:not(:disabled) {
+    border-color: var(--wz-strong);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-icon-btn:disabled {
+    border-color: var(--wz-hairline);
+    color: var(--wz-muted);
+    cursor: default;
+}
+
+.oer-wizard .oer-wz-source.is-compact {
+    padding: 18px 20px;
+}
+
+.oer-wizard .oer-wz-review-res {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding-left: 20px;
+    color: var(--wz-ink);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+/* Notices: a 4px rule on the left; the admin's red only for what needs action (ADR-0014 rule 2). */
+.oer-wizard .oer-wz-notice {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border-left: 4px solid var(--wz-tint-blue-edge);
+    border-radius: 4px;
+    background: var(--wz-card);
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-notice > .oer-wz-icon {
+    color: var(--wz-strong);
+    margin-top: 1px;
+}
+
+.oer-wizard .oer-wz-notice.is-important {
+    border-left-color: var(--wz-rail-warn);
+    background: var(--wz-warn-soft);
+}
+
+.oer-wizard .oer-wz-notice.is-important > .oer-wz-icon,
+.oer-wizard .oer-wz-notice.is-important .oer-wz-cap {
+    color: var(--wz-warn);
+}
+
+.oer-wizard .oer-wz-notice.is-error {
+    border-left-color: var(--wz-rail-bad);
+    background: var(--wz-error-soft);
+}
+
+.oer-wizard .oer-wz-notice.is-error > .oer-wz-icon,
+.oer-wizard .oer-wz-notice.is-error .oer-wz-notice-title {
+    color: var(--wz-error-ink);
+}
+
+.oer-wizard .oer-wz-notice.is-ok {
+    border-left-color: var(--wz-rail-ok);
+    background: var(--wz-ok-soft);
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-notice.is-ok > .oer-wz-icon {
+    color: var(--wz-ok-ink);
+}
+
+.oer-wizard .oer-wz-notice-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-notice-title {
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.oer-wizard .oer-wz-notice ul {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-notice li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 14px;
+}
+
+/* Step ③ sub-steps: tabs underlined in ink. */
+.oer-wizard .oer-wz-tabs {
+    overflow-x: auto;
+    border-bottom: 1px solid var(--wz-hairline);
+}
+
+.oer-wizard .oer-wz-tabs ol {
+    display: flex;
+    gap: 4px;
+    min-width: max-content;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-height: 52px;
+    padding: 8px 14px 10px;
+    border: 0;
+    border-bottom: 4px solid transparent;
+    background: none;
+    color: var(--wz-ink);
+    font: 600 15px var(--wz-sans);
+    text-align: left;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-tab:hover {
+    border-bottom-color: var(--wz-hairline);
+}
+
+.oer-wizard .oer-wz-tab:disabled {
+    color: var(--wz-muted);
+    border-bottom-color: transparent;
+    cursor: default;
+}
+
+.oer-wizard .oer-wz-tab[aria-current="step"] {
+    border-bottom-color: var(--wz-strong);
+    color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-tab-value {
+    color: var(--wz-body-soft);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.oer-wizard .oer-wz-tab:disabled .oer-wz-tab-value {
+    color: var(--wz-muted);
+}
+
+.oer-wizard .oer-wz-search {
+    position: relative;
+}
+
+.oer-wizard .oer-wz-search .oer-wz-icon {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    color: var(--wz-muted);
+}
+
+.oer-wizard .oer-wz-search .oer-wz-input {
+    padding-left: 46px;
+}
+
+.oer-wizard .oer-wz-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 12px;
+    padding: 14px 18px;
+    border-left: 4px solid var(--wz-tint-blue-edge);
+    border-radius: 4px;
+    background: var(--wz-card);
+    color: var(--wz-ink);
+    font-weight: 500;
+}
+
+.oer-wizard .oer-wz-summary .oer-wz-cap,
+.oer-wizard .oer-wz-count {
+    color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-count {
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.oer-wizard .oer-wz-list-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* Step ③: blocks of knowledge and criteria fold (owner's review of PR #100). */
+.oer-wizard .oer-wz-fold {
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-fold > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 12px;
+    min-height: 48px;
+    padding: 12px 16px;
+    cursor: pointer;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-fold > summary::-webkit-details-marker {
+    display: none;
+}
+
+.oer-wizard .oer-wz-fold > summary::before {
+    content: "▸";
+    color: var(--wz-strong);
+    margin-right: 4px;
+}
+
+.oer-wizard .oer-wz-fold[open] > summary::before {
+    content: "▾";
+}
+
+.oer-wizard .oer-wz-fold > summary .oer-wz-block {
+    flex: 1 1 260px;
+    margin: 0;
+}
+
+.oer-wizard .oer-wz-block-count {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-fold-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px 16px;
+}
+
+/* Step ③: thematic axes, a search, chips and an alphabetical checklist (owner's review of PR #100). */
+.oer-wizard .oer-wz-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.oer-wizard .oer-wz-chips .oer-wz-block {
+    margin: 0 4px 0 0;
+}
+
+.oer-wizard .oer-wz-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 12px;
+    border: 1px solid var(--wz-tint-blue-edge);
+    border-radius: 999px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-chip-x {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--wz-strong);
+    font: 700 14px var(--wz-sans);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-chip-x:hover {
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-axes {
+    columns: 3 240px;
+    column-gap: 24px;
+}
+
+.oer-wizard .oer-wz-axes-letter {
+    break-inside: avoid-column;
+    margin-bottom: 10px;
+}
+
+.oer-wizard .oer-wz-letter {
+    margin: 0 0 4px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid var(--wz-hairline);
+    color: var(--wz-strong);
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.oer-wizard .oer-wz-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 32px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    color: var(--wz-ink);
+    font-size: 15px;
+    line-height: 1.35;
+    cursor: pointer;
+    break-inside: avoid;
+}
+
+.oer-wizard .oer-wz-check:hover {
+    background: var(--wz-surface);
+}
+
+.oer-wizard .oer-wz-check input {
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    flex: none;
+    accent-color: var(--wz-strong);
+}
+
+.oer-wizard .oer-wz-check-desc {
+    display: none;
+    color: var(--wz-body-soft);
+    font-size: 13px;
+}
+
+.oer-wizard .oer-wz-check:focus-within .oer-wz-check-desc {
+    display: block;
+}
+
+/* Step ④. */
+.oer-wizard .oer-wz-record {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--wz-hairline);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.oer-wizard .oer-wz-record section {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 20px;
+}
+
+.oer-wizard .oer-wz-record section + section {
+    border-top: 1px solid var(--wz-hairline);
+}
+
+.oer-wizard .oer-wz-record-body {
+    display: flex;
+    flex: 1 1 520px;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.oer-wizard .oer-wz-record h3 {
+    color: var(--wz-muted);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+}
+
+.oer-wizard .oer-wz-record dl {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 8px 16px;
+}
+
+.oer-wizard .oer-wz-record dt {
+    color: var(--wz-body-soft);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-record dd {
+    color: var(--wz-ink);
+    overflow-wrap: anywhere;
+}
+
+.oer-wizard .oer-wz-record ul {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-record li {
+    display: flex;
+    gap: 10px;
+    font-size: 15px;
+}
+
+/* Buttons: the admin's (36px, 3px corners). «Atrás», «Guardar borrador» and
+   the rest are the admin's grey button; the action that moves forward is the
+   only filled one. The same pair sits in the admin's fixed #page-actions. */
+.oer-wizard .oer-wz-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 36px;
+    margin: 0;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15) inset;
+    color: var(--wz-body);
+    font: 700 15px var(--wz-sans);
+    line-height: 1;
+    text-decoration: none;
+    vertical-align: top;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-btn:hover:not(:disabled) {
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset;
+    color: var(--wz-ink);
+}
+
+.oer-wizard .oer-wz-btn.is-primary {
+    background: var(--wz-strong);
+    box-shadow: none;
+    color: var(--wz-on-dark);
+}
+
+.oer-wizard .oer-wz-btn.is-primary:hover:not(:disabled) {
+    background: var(--wz-strong-hover);
+    box-shadow: none;
+    color: var(--wz-on-dark);
+}
+
+.oer-wizard .oer-wz-btn:disabled {
+    background: var(--wz-disabled);
+    box-shadow: none;
+    color: var(--wz-body-soft);
+    cursor: not-allowed;
+}
+
+.oer-wizard .oer-wz-btn .oer-wz-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.oer-wizard #page-actions .oer-wz-btn {
+    display: inline-flex;
+    padding: 0 14px;
+}
+
+.oer-wizard #page-actions .oer-wz-btn + .oer-wz-btn {
+    margin-left: 6px;
+}
+
+.oer-wizard .oer-wz-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0;
+    padding: 6px 0;
+    border: 0;
+    background: none;
+    color: var(--wz-strong);
+    font: 700 15px var(--wz-sans);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-link:hover {
+    background: none;
+    color: var(--wz-accent);
+}
+
+.oer-wizard .oer-wz-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 22px;
+    border-top: 1px solid var(--wz-hairline);
+}
+
+.oer-wizard .oer-wz-nav-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+.oer-wizard .oer-wz-nav-help {
+    margin-top: -14px;
+    text-align: right;
+}
+
+.oer-wizard .oer-wz-busy {
+    color: var(--wz-body-soft);
+    font-size: 15px;
+}
+
+/* Narrow screens: the record in one column. */
+@media (max-width: 720px) {
+    .oer-wizard .oer-wz-record dl {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .oer-wizard .oer-wz-nav-help {
+        margin-top: 0;
+        text-align: left;
+    }
+}

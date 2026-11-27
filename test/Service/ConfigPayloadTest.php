@@ -100,6 +100,7 @@ final class ConfigPayloadTest extends TestCase
                 GovernanceSettings::DISCARD_REASON_VOCAB_ID,
                 GovernanceSettings::REA_TEMPLATE_ID,
                 GovernanceSettings::DEFAULT_RIGHTS_HOLDER,
+                GovernanceSettings::DEFAULT_LICENCE,
                 LlmSettings::ENABLED,
                 LlmSettings::PROVIDER,
                 LlmSettings::BASE_URL,

@@ -227,6 +227,22 @@ class ConfigForm extends Form implements InputFilterProviderInterface
                 'maxlength' => GovernanceSettings::MAX_RIGHTS_HOLDER_LEN,
             ],
         ]);
+
+        // TASK-077: the licence the wizard proposes when the file declares none.
+        $this->add([
+            'name' => GovernanceSettings::DEFAULT_LICENCE,
+            'type' => 'Url',
+            'options' => [
+                'label' => 'Licencia por defecto del asistente (URI)', // @translate
+                'info' => 'URI de una licencia del vocabulario de licencias. El asistente para '
+                    . 'añadir REA la propone cuando el fichero no declara ninguna. '
+                    . 'Vacío: sin licencia por defecto.', // @translate
+            ],
+            'attributes' => [
+                'id' => GovernanceSettings::DEFAULT_LICENCE,
+                'maxlength' => 500,
+            ],
+        ]);
     }
 
     /**

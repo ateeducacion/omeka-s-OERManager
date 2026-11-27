@@ -7,6 +7,7 @@ namespace OERManager\Test\Permissions;
 use OERManager\Controller\Admin\AiBatchController;
 use OERManager\Controller\Admin\GovernanceBatchController;
 use OERManager\Controller\Admin\IndexController;
+use OERManager\Controller\Admin\ReaWizardController;
 use OERManager\Controller\Admin\StatsController;
 use OERManager\Permissions\ReaAcl;
 use Omeka\Permissions\Acl;
@@ -24,6 +25,7 @@ final class ReaAclTest extends TestCase
         StatsController::class,
         GovernanceBatchController::class,
         AiBatchController::class,
+        ReaWizardController::class,
     ];
 
     /** Expected privileges per role and controller. Anything not listed is denied. */
@@ -38,6 +40,8 @@ final class ReaAclTest extends TestCase
                 'drawer-details', 'drawer-history', 'search-terms', 'curriculum-tree',
                 'recatalog-preview', 'recatalog-apply', 'recatalog-last-event', 'recatalog-undo',
             ],
+            // TASK-077: the wizard to add a REA.
+            ReaWizardController::class => ['index', 'upload', 'duplicates', 'save'],
         ],
         'rea_curador' => [
             IndexController::class => [
@@ -46,10 +50,13 @@ final class ReaAclTest extends TestCase
                 'drawer-details', 'drawer-history', 'recatalog-undo',
                 'ai-propose', 'ai-propose-status', 'ai-propose-cancel', 'ai-evaluate', 'ai-proposal-discard',
                 'propose', 'reject-proposal', 'publish-proposal', 'discard', 'unpublish', 'reopen',
+                // TASK-077: curators gain «Mis propuestas».
+                'my-proposals',
             ],
             StatsController::class => ['index', 'export', 'layout'],
             GovernanceBatchController::class => ['form', 'preview', 'apply', 'status', 'cancel', 'recent', 'undo'],
             AiBatchController::class => ['form', 'preview', 'launch', 'status', 'cancel'],
+            ReaWizardController::class => ['index', 'upload', 'duplicates', 'save'],
         ],
     ];
 

@@ -204,3 +204,19 @@ holds either way.
 - **PEND-012:** which template fields are required. The wizard reads them from the template, so it works
   before the decision; the decision changes what «Le falta» lists.
 - **The default licence**, if any (a module setting).
+
+## Addendum (2026-11-26, after the prototype review)
+
+- **Identity.** The owner reviewed the first prototype (alignment editor's palette) and asked for the public
+  theme's look instead («Canarias Educativa», `omeka-s-theme-rea-ate`). The wizard follows ADR-0025, not
+  ADR-0024's palette; «same visual language as that editor» above is superseded by it.
+- **Template and drafts.** Omeka refuses an item whose template has an empty required property, so a draft
+  carries the REA template only once it meets it (plan, decision 7).
+- **Media ingestion (spike settled).** A module ingester ingests the file stored in step ① at `save`; the file
+  is not sent again (plan, decision 2 and 8).
+- **A link is a value, not media (code review of PR #100).** Omeka's `url` ingester downloads its target and
+  runs it through the file validator, so a link to a web page (the usual case: an eXeLearning site published
+  elsewhere) was refused and nothing saved. «Pegar un enlace» writes a `schema:url` URI value instead; the
+  minimum rule counts it as the resource, and a new file or link replaces the other. For the owner to confirm.
+- **Resource-valued template properties** (the project, `schema:isPartOf`) are not shown or cleared by the
+  wizard: they cannot be edited as text. A resume rewrites only the data terms that changed.

@@ -25,9 +25,19 @@ $this->headLink()->appendStylesheet($this->assetUrl('css/oer-alignment-editor.cs
 $this->headLink()->appendStylesheet($this->assetUrl('css/oer-workflow-badge.css', 'OERManager'));
 $this->headScript()->appendFile($this->assetUrl('js/main.js', 'OERManager'), 'module');
 $drawerDetailsUrl = $this->url('admin/oer-manager', ['action' => 'drawer-details']);
+// TASK-077: the wizard to add a REA, and the REA it has just saved.
+$wizardUrl = $this->url(\OERManager\Controller\Admin\ReaWizardController::ROUTE);
+$canWizard = $this->userIsAllowed(\OERManager\Controller\Admin\ReaWizardController::class, 'index');
+$highlight = (int) ($this->params()->fromQuery('highlight') ?? 0);
 $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals');
 ?>
 <?php echo $this->pageTitle($translate('Mis propuestas'), 1, $translate('OER Manager')); ?>
+
+<?php if ($canWizard): ?>
+<div id="page-actions">
+    <a class="button oer-wizard-add" href="<?php echo $escape($wizardUrl); ?>"><?php echo $escape($translate('Añadir REA')); ?></a>
+</div>
+<?php endif; ?>
 
 <div class="browse-controls">
     <?php echo $this->pagination(); ?>
@@ -61,7 +71,12 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
         );
         $badge = WorkflowStatus::badge($status);
         ?>
-        <tr data-resource-id="<?php echo (int) $item->id(); ?>">
+        <?php
+        // «Continuar»: the wizard resumes a private Borrador or Rechazado REA (ReaWizardController::resumable()).
+        $canContinue = $canWizard && WorkflowStatus::canPropose($status, (bool) $item->isPublic())
+            && $item->userIsAllowed('update');
+        ?>
+        <tr data-resource-id="<?php echo (int) $item->id(); ?>"<?php echo $highlight === (int) $item->id() ? ' class="oer-just-saved"' : ''; ?>>
             <td><?php echo $item->link($item->displayTitle()); ?></td>
             <td>
                 <?php if (null !== $badge): ?>
@@ -79,6 +94,10 @@ $this->htmlElement('body')->appendAttribute('class', 'oer-manager my-proposals')
                    data-sidebar-selector="#oer-detail-sidebar"
                    data-sidebar-content-url="<?php echo $escape($drawerDetailsUrl . '?id=' . (int) $item->id()); ?>"
                    aria-label="<?php echo $escape(sprintf($translate('Catalogar «%s»'), $item->displayTitle())); ?>"><?php echo $escape($translate('Catalogar')); ?></a>
+                <?php if ($canContinue): ?>
+                · <a class="oer-wizard-continue" href="<?php echo $escape($wizardUrl . '?id=' . (int) $item->id()); ?>"
+                   aria-label="<?php echo $escape(sprintf($translate('Continuar «%s» en el asistente'), $item->displayTitle())); ?>"><?php echo $escape($translate('Continuar')); ?></a>
+                <?php endif; ?>
             </td>
         </tr>
     <?php endforeach; ?>
