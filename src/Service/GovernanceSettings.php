@@ -55,6 +55,12 @@ final class GovernanceSettings
     /** Titular de derechos por defecto al rellenar la ficha (RF-015). */
     public const DEFAULT_RIGHTS_HOLDER = 'oermanager_default_rights_holder';
 
+    /**
+     * Licence the wizard proposes when the file declares none (TASK-077):
+     * a URI of the licence vocabulary, or empty for no default.
+     */
+    public const DEFAULT_LICENCE = 'oermanager_default_licence';
+
     /** Tope del titular por defecto: es una etiqueta, no un texto libre. */
     public const MAX_RIGHTS_HOLDER_LEN = 200;
 
@@ -82,5 +88,17 @@ final class GovernanceSettings
             return '';
         }
         return mb_substr(trim((string) $raw), 0, self::MAX_RIGHTS_HOLDER_LEN);
+    }
+
+    /** Default licence: an http(s) URI of at most 500 characters, or '' (none). */
+    public static function parseDefaultLicence(mixed $raw): string
+    {
+        if (!is_string($raw)) {
+            return '';
+        }
+        $uri = trim($raw);
+        $scheme = strtolower((string) parse_url($uri, PHP_URL_SCHEME));
+        $isWeb = false !== filter_var($uri, FILTER_VALIDATE_URL) && in_array($scheme, ['http', 'https'], true);
+        return $isWeb && mb_strlen($uri) <= 500 ? $uri : '';
     }
 }

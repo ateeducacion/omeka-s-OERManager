@@ -2100,3 +2100,8 @@ body.oer-master-view.sidebar-open footer {
 .oer-queue-next {
     margin-block-start: 1rem;
 }
+
+/* TASK-077: the REA the wizard has just saved, highlighted in «Mis propuestas». */
+#oer-master-view-table tr.oer-just-saved > td {
+    background: var(--oer-select);
+}

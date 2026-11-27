@@ -1,0 +1,221 @@
+<?php
+/**
+ * The wizard to add a REA (TASK-077): inside the admin's work area, like
+ * «Nuevo ítem» (ADR-0025 addendum 1). The page title, the admin's fixed
+ * #page-actions bar («Atrás», «Siguiente») and the steps as section tabs; the
+ * steps are drawn by `asset/js/wizard.js` from the configuration below, with
+ * the copy translated here (NFR-005).
+ *
+ * @var \Laminas\View\Renderer\PhpRenderer $this
+ * @var array<string,mixed>|null $config
+ * @var string|null $notice
+ * @var string $myProposalsUrl
+ * @var string|null $configUrl
+ */
+
+$translate = $this->plugin('translate');
+$escape = $this->plugin('escapeHtml');
+$escapeAttr = $this->plugin('escapeHtmlAttr');
+$config = $config ?? null;
+
+// Every fixed string the script shows, keyed by its msgid so that `t()` in
+// asset/js/wizard.js finds the translation (NFR-005). The server's messages
+// and the fields' help come translated too.
+$msgids = [
+    'Tu recurso', // @translate
+    'Datos', // @translate
+    'Curso y materia', // @translate
+    'Revisar y proponer', // @translate
+    'Estás aquí', // @translate
+    'Hecho', // @translate
+    'Por completar', // @translate
+    'Más adelante', // @translate
+    'Paso %d de 4', // @translate
+    'Sube el fichero de tu recurso o pega el enlace donde ya está publicado. Solo uno por REA.', // @translate
+    'Sube un fichero', // @translate
+    'Arrástralo hasta aquí o búscalo en tu equipo.', // @translate
+    'Elegir fichero', // @translate
+    'Hasta %s · eXeLearning (.elpx), .zip, PDF, imagen, audio, vídeo u ofimática', // @translate
+    'O pega un enlace', // @translate
+    'Si tu recurso ya está en otra web, copia aquí su dirección.', // @translate
+    'Usar este enlace', // @translate
+    'Subiendo «%s»…', // @translate
+    'Cambiar el fichero', // @translate
+    'Cambiar el enlace', // @translate
+    'Sustituir el recurso', // @translate
+    'Mantener el actual', // @translate
+    'Enlace a otra web', // @translate
+    'Fichero actual del REA', // @translate
+    'subido', // @translate
+    'Hemos rellenado algunos datos a partir del fichero. Revísalos en el paso siguiente.', // @translate
+    'No podemos usar «%s»', // @translate
+    'Escribe un enlace que empiece por http:// o https://.', // @translate
+    'Datos del recurso', // @translate
+    'Cuéntanos qué es. Lo marcado como obligatorio hace falta para proponerlo.', // @translate
+    'obligatorio', // @translate
+    'opcional', // @translate
+    'Del fichero', // @translate
+    'Elige una opción…', // @translate
+    'Elige una licencia…', // @translate
+    '¿Para qué curso y materia?', // @translate
+    'Así lo encontrará el profesorado que busca recursos para su clase.', // @translate
+    'Etapa', // @translate
+    'Curso', // @translate
+    'Materia', // @translate
+    'Saberes', // @translate
+    'Criterios', // @translate
+    'Ejes', // @translate
+    'Sin elegir', // @translate
+    'Ninguno', // @translate
+    'Opcional', // @translate
+    '%d marcados', // @translate
+    '%d marcado', // @translate
+    '¿En qué etapa se usa?', // @translate
+    '¿En qué curso o cursos?', // @translate
+    'Puedes marcar más de uno si sirve para varios.', // @translate
+    '¿De qué materia?', // @translate
+    'Materias de %s.', // @translate
+    '¿Qué saberes trabaja?', // @translate
+    'Criterios de evaluación', // @translate
+    'Marca los saberes de %s que el alumnado trabaja con tu recurso. Debajo de cada uno, su código en el currículo.', // @translate
+    'Opcional. Marca los criterios con los que se puede evaluar lo que hace el alumnado. Puedes saltar esta parte.', // @translate
+    'Ejes temáticos', // @translate
+    'Marca los ejes que trabaja tu recurso. Puedes dejarlo en blanco.', // @translate
+    'Buscar en la lista', // @translate
+    'Buscar, por ejemplo: fracciones', // @translate
+    'Nada coincide con «%s». Prueba con otra palabra.', // @translate
+    'Esta materia no tiene términos vigentes en el currículo.', // @translate
+    'No hay nada que elegir aquí todavía.', // @translate
+    'Cargando…', // @translate
+    'No hay currículo disponible para anclar el recurso.', // @translate
+    'Puedes guardar el borrador y continuar más tarde. Si el problema sigue, avisa al equipo de la Mediateca.', // @translate
+    'No se pudo cargar el currículo. Vuelve a intentarlo.', // @translate
+    'Volver a intentarlo', // @translate
+    'Hasta ahora', // @translate
+    'Comprueba que todo está bien. Al proponerlo, el equipo de curación lo revisará antes de publicarlo.', // @translate
+    'Le falta', // @translate
+    'Está todo lo necesario para proponerlo.', // @translate
+    'Completar', // @translate
+    'Puede que ya esté en la Mediateca', // @translate
+    'Hay otro REA con el mismo título o con un fichero del mismo nombre. Ábrelo para comprobarlo. Si es distinto, puedes proponer el tuyo igualmente.', // @translate
+    'mismo título', // @translate
+    'mismo nombre de fichero', // @translate
+    'Cambiar', // @translate
+    'Título', // @translate
+    'Todavía no has añadido ningún fichero ni enlace.', // @translate
+    'Atrás', // @translate
+    'Siguiente', // @translate
+    'Revisar', // @translate
+    'Guardar borrador', // @translate
+    'Guardar y proponer', // @translate
+    'Guardando…', // @translate
+    'Completa lo que falta para poder proponerlo. El borrador solo necesita el título.', // @translate
+    'Para guardar un borrador basta con el título. Escríbelo en el paso «Datos».', // @translate
+    '¿Recuperar lo que no guardaste?', // @translate
+    'En este equipo hay cambios que no llegaste a guardar.', // @translate
+    'Recuperar', // @translate
+    'Empezar de cero', // @translate
+    'Devuelto para revisar', // @translate
+    'Corrige lo que se pide y vuelve a proponerlo.', // @translate
+    'No se pudo guardar', // @translate
+    'Lo que escribes se guarda en este equipo', // @translate
+    'El recurso: un fichero o un enlace', // @translate
+    'La licencia', // @translate
+    'El curso', // @translate
+    'La materia', // @translate
+    'Los saberes que trabaja', // @translate
+    'Los criterios de evaluación', // @translate
+    'Los ejes temáticos', // @translate
+    'El fichero es demasiado grande para el catálogo.', // @translate
+    'No se pudo subir el fichero. Vuelve a intentarlo.', // @translate
+    'Se conserva %d valor más de este campo.', // @translate
+    'Se conservan %d valores más de este campo.', // @translate
+    '%d término', // @translate
+    '%d términos', // @translate
+    'Otros', // @translate
+    'Cambiar', // @translate
+    'Por tu fichero, parece «%s».', // @translate
+    'Por tu enlace, parece «%s».', // @translate
+    'Usar este', // @translate
+    'Borrar la búsqueda', // @translate
+    'Resultados', // @translate
+    'Cancelar', // @translate
+    'Buscar un tipo de recurso', // @translate
+    'Buscar un tipo, por ejemplo: infografía', // @translate
+    'Marcados', // @translate
+    'Quitar «%s»', // @translate
+    'Buscar un eje temático', // @translate
+    'Buscar, por ejemplo: sostenibilidad', // @translate
+];
+$msgids = array_merge($msgids, array_values(\OERManager\Controller\Admin\ReaWizardController::MESSAGES));
+$strings = [];
+foreach ($msgids as $msgid) {
+    $strings[$msgid] = $translate($msgid);
+}
+if (null !== $config) {
+    foreach ($config['schema']['data'] as &$field) {
+        $field['label'] = $translate((string) $field['label']);
+        if ('' !== (string) $field['help']) {
+            // An empty msgid would translate to the catalogue's header.
+            $strings[(string) $field['help']] = $translate((string) $field['help']);
+        }
+    }
+    unset($field);
+}
+$json = static fn ($value): string => (string) json_encode(
+    $value,
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE
+);
+$resumed = null !== $config && null !== ($config['item'] ?? null);
+$pageTitle = $resumed
+    ? (string) ($config['item']['values']['dcterms:title'][0] ?? $translate('Tu REA'))
+    : $translate('Añadir REA');
+$icon = static fn (string $paths): string =>
+    '<svg class="oer-wz-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' . $paths . '</svg>';
+
+$this->htmlElement('body')->appendAttribute('class', 'oer-wizard-page');
+$this->headLink()->appendStylesheet($this->assetUrl('css/oer-wizard.css', 'OERManager'));
+if (null !== $config) {
+    $this->headScript()->appendFile($this->assetUrl('js/wizard.js', 'OERManager'), 'module');
+}
+?>
+<?php echo $this->pageTitle($pageTitle, 1, $translate('Mis propuestas'), $resumed ? $translate('Continuar') : null); ?>
+
+<div class="oer-wizard" id="oer-wizard">
+    <div id="page-actions">
+        <?php if (null === $config): ?>
+        <a class="button" href="<?php echo $escapeAttr($myProposalsUrl); ?>"><?php echo $escape($translate('Volver a Mis propuestas')); ?></a>
+        <?php else: ?>
+        <span data-wz-actions></span>
+        <?php endif; ?>
+    </div>
+
+    <?php if (null !== $config): ?>
+    <p class="oer-wz-autosave">
+        <?php echo $icon('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'); ?>
+        <?php echo $escape($translate('Lo que escribes se guarda en este equipo')); ?>
+    </p>
+    <nav aria-label="<?php echo $escapeAttr($translate('Pasos para añadir el REA')); ?>">
+        <ol class="oer-wz-steps" data-wz-steps></ol>
+    </nav>
+    <?php endif; ?>
+
+    <div class="oer-wz-main" data-wz-main>
+        <?php if (null === $config): ?>
+        <div class="oer-wz-notice is-important" role="alert">
+            <?php echo $icon('<circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/>'); ?>
+            <div class="oer-wz-notice-body">
+                <p class="oer-wz-notice-title"><?php echo $escape($notice ?? ''); ?></p>
+                <?php if (!empty($configUrl) && $this->userIsAllowed(\OERManager\Controller\Admin\IndexController::class, 'config')): ?>
+                <p><a href="<?php echo $escapeAttr($configUrl); ?>"><?php echo $escape($translate('Ir a la configuración del módulo')); ?></a></p>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php else: ?>
+        <noscript><p><?php echo $escape($translate('El asistente necesita JavaScript.')); ?></p></noscript>
+        <?php endif; ?>
+    </div>
+</div>
+<?php if (null !== $config): ?>
+<script type="application/json" id="oer-wizard-config"><?php echo $json($config + ['strings' => $strings]); ?></script>
+<?php endif; ?>

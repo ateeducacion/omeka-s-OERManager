@@ -19,4 +19,7 @@ class Manager
     public function delete($resource, $id, $options = [])
     {
     }
+    public function batchDelete($resource, $ids, $data = [], $options = [])
+    {
+    }
 }

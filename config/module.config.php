@@ -86,6 +86,52 @@ return [
                     $container->get('Omeka\Acl')
                 );
             },
+            // TASK-077: the guided wizard to add a REA.
+            Controller\Admin\ReaWizardController::class => function ($container) {
+                $api = $container->get('Omeka\ApiManager');
+                $settings = $container->get('Omeka\Settings');
+                return new Controller\Admin\ReaWizardController(
+                    $container->get(Service\Wizard\ReaWizardSave::class),
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    new Service\Wizard\MediaMetadataReader(),
+                    $container->get(Service\Wizard\DuplicateFinder::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $settings,
+                    $container->get('Omeka\Logger'),
+                    // The REA template's properties, or null without a readable one.
+                    static function () use ($api, $settings): ?array {
+                        $id = Service\GovernanceSettings::parseId(
+                            $settings->get(Service\GovernanceSettings::REA_TEMPLATE_ID)
+                        );
+                        if (null === $id) {
+                            return null;
+                        }
+                        try {
+                            $template = $api->read('resource_templates', $id)->getContent();
+                        } catch (\Exception $e) {
+                            return null;
+                        }
+                        $properties = [];
+                        foreach ($template->resourceTemplateProperties() as $templateProperty) {
+                            $property = $templateProperty->property();
+                            $properties[] = [
+                                'term' => (string) $property->term(),
+                                'label' => (string) $property->label(),
+                                'alternateLabel' => $templateProperty->alternateLabel(),
+                                'required' => (bool) $templateProperty->isRequired(),
+                                'dataTypes' => array_values((array) $templateProperty->dataTypes()),
+                            ];
+                        }
+                        return $properties;
+                    },
+                    // Entries of a CustomVocab, by id: terms, URIs or the items of an item set.
+                    static function (int $id) use ($api): array {
+                        $vocab = $api->read('custom_vocabs', $id)->getContent();
+                        return Service\Wizard\ReaWizardSchema::vocabOptions($vocab->type(), $vocab->listValues());
+                    }
+                );
+            },
             // TASK-011: batch AI proposal.
             Controller\Admin\AiBatchController::class => function ($container) {
                 return new Controller\Admin\AiBatchController(
@@ -573,10 +619,73 @@ return [
                     $container->get(Service\Ai\StoredProposalWriter::class)
                 );
             },
+            Service\Wizard\ReaWizardSave::class => function ($container) {
+                return new Service\Wizard\ReaWizardSave(
+                    $container->get('Omeka\ApiManager'),
+                    $container->get(Service\Curation\CurationWriter::class),
+                    $container->get(Service\GovernanceService::class),
+                    $container->get(Service\RecatalogService::class),
+                    $container->get(Service\Workflow\WorkflowService::class),
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    $container->get(Service\ReaTemplateFields::class),
+                    $container->get(Service\ReaSite::class),
+                    $container->get('Omeka\Settings'),
+                    // Omeka's oEmbed providers, to pick a link's ingester (owner's review of PR #100).
+                    array_values((array) ($container->get('Config')['oembed']['whitelist'] ?? [])),
+                    null,
+                    // A media created on its own joins its item's media in memory (indexed by id,
+                    // as Item::$media is): Omeka's MediaAdapter only sets the media's item.
+                    static function (int $itemId, int $mediaId) use ($container): void {
+                        $entityManager = $container->get('Omeka\EntityManager');
+                        $item = $entityManager->find(\Omeka\Entity\Item::class, $itemId);
+                        $media = $entityManager->find(\Omeka\Entity\Media::class, $mediaId);
+                        if (null !== $item && null !== $media) {
+                            $item->getMedia()->set($mediaId, $media);
+                        }
+                    }
+                );
+            },
+            // Media names are looked up id-only (the media API has no `source`
+            // filter); DuplicateFinder reads each item through the API, so ACL applies.
+            Service\Wizard\DuplicateFinder::class => function ($container) {
+                $api = $container->get('Omeka\ApiManager');
+                $entityManager = $container->get('Omeka\EntityManager');
+                $classes = $api->search('resource_classes', ['term' => 'lrmi:LearningResource'])->getContent();
+                return new Service\Wizard\DuplicateFinder(
+                    $api,
+                    static function (string $name) use ($entityManager): array {
+                        $rows = $entityManager->createQuery(
+                            'SELECT IDENTITY(m.item) AS item FROM Omeka\Entity\Media m WHERE m.source = :name'
+                        )->setParameter('name', $name)->setMaxResults(20)->getScalarResult();
+                        return array_values(array_unique(array_map(static fn (array $r) => (int) $r['item'], $rows)));
+                    },
+                    $classes ? (int) $classes[0]->id() : null
+                );
+            },
+            // TASK-077: the wizard's uploads, private and by token (as ProposalStore).
+            Service\Wizard\WizardUploadStore::class => function ($container) {
+                return new Service\Wizard\WizardUploadStore(sys_get_temp_dir() . '/oer-manager-wizard');
+            },
             Service\Ai\BatchProposeEligibility::class => function ($container) {
                 return new Service\Ai\BatchProposeEligibility(
                     $container->get('Omeka\ApiManager'),
                     $container->get(Service\IdConstraintResolver::class)
+                );
+            },
+        ],
+    ],
+    // TASK-077: the wizard's file, stored in step ①, ingested at `save`.
+    'media_ingesters' => [
+        'factories' => [
+            Media\Ingester\WizardIngester::NAME => function ($container) {
+                $auth = $container->get('Omeka\AuthenticationService');
+                return new Media\Ingester\WizardIngester(
+                    $container->get(Service\Wizard\WizardUploadStore::class),
+                    $container->get('Omeka\File\TempFileFactory'),
+                    static function () use ($auth): ?int {
+                        $identity = $auth->getIdentity();
+                        return $identity ? (int) $identity->getId() : null;
+                    }
                 );
             },
         ],
@@ -631,6 +740,21 @@ return [
                                 '__NAMESPACE__' => 'OERManager\Controller\Admin',
                                 'controller' => Controller\Admin\GovernanceBatchController::class,
                                 'action' => 'form',
+                            ],
+                        ],
+                        'may_terminate' => true,
+                    ],
+                    'oer-manager-wizard' => [
+                        'type' => Segment::class,
+                        'options' => [
+                            'route' => '/oer-manager/wizard[/:action]',
+                            'constraints' => [
+                                'action' => '[a-zA-Z][a-zA-Z0-9_-]*',
+                            ],
+                            'defaults' => [
+                                '__NAMESPACE__' => 'OERManager\Controller\Admin',
+                                'controller' => Controller\Admin\ReaWizardController::class,
+                                'action' => 'index',
                             ],
                         ],
                         'may_terminate' => true,

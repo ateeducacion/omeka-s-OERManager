@@ -5,9 +5,15 @@ namespace Laminas\View\Model;
 class ViewModel
 {
     private array $variables;
+    private bool $terminal = false;
     public function setTerminal($terminal)
     {
+        $this->terminal = (bool) $terminal;
         return $this;
+    }
+    public function terminal()
+    {
+        return $this->terminal;
     }
     public function setVariables($variables)
     {
