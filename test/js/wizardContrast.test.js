@@ -28,7 +28,17 @@ const PAIRS = [
   ['--wz-mark', '--wz-surface-mark', TEXT],
   // The required asterisk.
   ['--wz-mark', '--wz-canvas', TEXT],
+  // The queue's tints under ink text: badges, counts, chips, «Principal».
+  ['--wz-ink', '--wz-tint-blue', TEXT],
+  ['--wz-ink', '--wz-tint-teal', TEXT],
+  ['--wz-ink', '--wz-warn-soft', TEXT],
+  ['--wz-ink', '--wz-error-soft', TEXT],
+  ['--wz-ink', '--wz-ok-soft', TEXT],
   // States.
+  ['--wz-warn', '--wz-warn-soft', TEXT],
+  ['--wz-ok', '--wz-canvas', UI],
+  ['--wz-ok', '--wz-surface', UI],
+  ['--wz-error-ink', '--wz-canvas', TEXT],
   ['--wz-error-ink', '--wz-error-soft', TEXT],
   ['--wz-ok-ink', '--wz-ok-soft', UI],
   ['--wz-ok-ink', '--wz-canvas', UI],

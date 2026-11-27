@@ -3,7 +3,8 @@
  * «Nuevo ítem» (ADR-0025 addendum 1). It inherits the admin's chrome and the
  * module's tokens (ADR-0014 rule 1): Lato, the module's ink, the admin's
  * hairlines, and the admin's red only for focus, hover and what needs action
- * (rule 2). Every rule hangs from .oer-wizard; the tokens are declared once
+ * (rule 2). The queue's tints, rails and state colours enrich it (owner's
+ * review of PR #100): they ground and edge, the text stays ink. Every rule hangs from .oer-wizard; the tokens are declared once
  * below and their contrast is pinned by test/js/wizardContrast.test.js.
  */
 
@@ -15,7 +16,17 @@
     --wz-surface-mark: #FDEFEF;
     --wz-canvas: #FFFFFF;
     --wz-surface: #F6F7F9;
-    --wz-card: #EEF0F4;
+    --wz-card: #EEF2F7;
+    /* The queue's tints (oer-master-view.css, ADR-0014 addendum): grounds and edges only, ink on top. */
+    --wz-tint-blue: #D2E3F4;
+    --wz-tint-blue-edge: #97B8D8;
+    --wz-tint-teal: #D2F4EF;
+    --wz-tint-teal-edge: #97D8CF;
+    --wz-rail-ok: #A9CDBC;
+    --wz-rail-warn: #E8B25F;
+    --wz-rail-bad: #D47B7B;
+    --wz-warn: #955C0D;
+    --wz-warn-soft: #FDF5E6;
     --wz-ink: #2B3240;
     --wz-body: #3D3D3D;
     --wz-body-soft: #595959;
@@ -27,9 +38,9 @@
     --wz-error: #A91919;
     --wz-error-ink: #8A1414;
     --wz-error-soft: #FDEFEF;
-    --wz-ok: #16A34A;
-    --wz-ok-ink: #15803D;
-    --wz-ok-soft: #EFF8F2;
+    --wz-ok: #1D7A5F;
+    --wz-ok-ink: #1D7A5F;
+    --wz-ok-soft: #EAF5F0;
     --wz-sans: "Lato", sans-serif;
     --wz-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 }
@@ -96,6 +107,11 @@
 .oer-wizard :focus-visible {
     outline: 2px solid var(--wz-accent);
     outline-offset: 2px;
+}
+
+/* The step heading takes the focus on every step change, for screen readers: it is not a control. */
+.oer-wizard [data-wz-heading]:focus {
+    outline: none;
 }
 
 .oer-wizard .oer-wz-icon {
@@ -183,6 +199,7 @@
 .oer-wizard .oer-wz-step[aria-current="step"] {
     border-bottom-color: var(--wz-canvas);
     background: var(--wz-canvas);
+    box-shadow: inset 0 3px 0 var(--wz-strong);
     color: var(--wz-ink);
     font-weight: 700;
 }
@@ -195,7 +212,7 @@
 
 .oer-wizard .oer-wz-step .oer-wz-done {
     display: inline-flex;
-    color: var(--wz-ok-ink);
+    color: var(--wz-ok);
 }
 
 .oer-wizard .oer-wz-step .oer-wz-done .oer-wz-icon {
@@ -421,7 +438,8 @@
     align-items: center;
     gap: 10px 14px;
     padding: 12px 16px;
-    border-left: 4px solid var(--wz-strong);
+    border: 1px solid var(--wz-tint-blue-edge);
+    border-left: 4px solid var(--wz-tint-blue-edge);
     border-radius: 4px;
     background: var(--wz-card);
     color: var(--wz-ink);
@@ -528,8 +546,8 @@
     min-width: 26px;
     padding: 1px 8px;
     border-radius: 999px;
-    background: var(--wz-card);
-    color: var(--wz-body-soft);
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
     font-size: 12px;
     font-weight: 700;
     text-align: center;
@@ -696,30 +714,32 @@
 }
 
 .oer-wizard .oer-wz-drop {
-    border: 2px dashed var(--wz-control);
-    background: var(--wz-surface);
+    border: 2px dashed var(--wz-tint-blue-edge);
+    background: var(--wz-card);
 }
 
 .oer-wizard .oer-wz-drop.is-over {
     border-color: var(--wz-strong);
-    background: var(--wz-card);
+    background: var(--wz-tint-blue);
 }
 
 .oer-wizard .oer-wz-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
-    height: 52px;
+    width: 48px;
+    height: 48px;
     flex: none;
-    border-radius: 4px;
-    background: var(--wz-strong);
-    color: var(--wz-on-dark);
+    border: 1px solid var(--wz-tint-blue-edge);
+    border-radius: 8px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
 }
 
 .oer-wizard .oer-wz-badge.is-soft {
-    background: var(--wz-card);
-    color: var(--wz-strong);
+    border-color: var(--wz-tint-teal-edge);
+    background: var(--wz-tint-teal);
+    color: var(--wz-ink);
 }
 
 .oer-wizard .oer-wz-badge .oer-wz-icon {
@@ -760,13 +780,118 @@
     font-size: 14px;
 }
 
+/* Step ①: the REA's files and links, in order (owner's review of PR #100). */
+.oer-wizard .oer-wz-reslist {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.oer-wizard .oer-wz-res {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--wz-hairline);
+    border-left: 4px solid var(--wz-hairline);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+}
+
+.oer-wizard .oer-wz-res.is-main {
+    border-left-color: var(--wz-tint-blue-edge);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-res.is-error {
+    border-left-color: var(--wz-rail-bad);
+    background: var(--wz-error-soft);
+}
+
+.oer-wizard .oer-wz-main-tag {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
+    font-size: 12px;
+    font-weight: 700;
+    vertical-align: 2px;
+}
+
+.oer-wizard .oer-wz-res-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 4px;
+    color: var(--wz-error-ink);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.oer-wizard .oer-wz-res-error .oer-wz-icon {
+    width: 18px;
+    height: 18px;
+}
+
+.oer-wizard .oer-wz-res-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.oer-wizard .oer-wz-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--wz-control);
+    border-radius: 4px;
+    background: var(--wz-canvas);
+    color: var(--wz-ink);
+    cursor: pointer;
+}
+
+.oer-wizard .oer-wz-icon-btn:hover:not(:disabled) {
+    border-color: var(--wz-strong);
+    background: var(--wz-card);
+}
+
+.oer-wizard .oer-wz-icon-btn:disabled {
+    border-color: var(--wz-hairline);
+    color: var(--wz-muted);
+    cursor: default;
+}
+
+.oer-wizard .oer-wz-source.is-compact {
+    padding: 18px 20px;
+}
+
+.oer-wizard .oer-wz-review-res {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding-left: 20px;
+    color: var(--wz-ink);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
 /* Notices: a 4px rule on the left; the admin's red only for what needs action (ADR-0014 rule 2). */
 .oer-wizard .oer-wz-notice {
     display: flex;
     gap: 12px;
     align-items: flex-start;
-    padding: 16px 18px;
-    border-left: 4px solid var(--wz-strong);
+    padding: 14px 16px;
+    border-left: 4px solid var(--wz-tint-blue-edge);
     border-radius: 4px;
     background: var(--wz-card);
     color: var(--wz-ink);
@@ -778,17 +903,17 @@
 }
 
 .oer-wizard .oer-wz-notice.is-important {
-    border-left-color: var(--wz-mark);
-    background: var(--wz-surface-mark);
+    border-left-color: var(--wz-rail-warn);
+    background: var(--wz-warn-soft);
 }
 
 .oer-wizard .oer-wz-notice.is-important > .oer-wz-icon,
 .oer-wizard .oer-wz-notice.is-important .oer-wz-cap {
-    color: var(--wz-mark);
+    color: var(--wz-warn);
 }
 
 .oer-wizard .oer-wz-notice.is-error {
-    border-left-color: var(--wz-error);
+    border-left-color: var(--wz-rail-bad);
     background: var(--wz-error-soft);
 }
 
@@ -798,7 +923,7 @@
 }
 
 .oer-wizard .oer-wz-notice.is-ok {
-    border-left-color: var(--wz-ok);
+    border-left-color: var(--wz-rail-ok);
     background: var(--wz-ok-soft);
     font-weight: 600;
 }
@@ -912,9 +1037,10 @@
     flex-wrap: wrap;
     align-items: baseline;
     gap: 8px 12px;
-    padding: 16px 20px;
+    padding: 14px 18px;
+    border-left: 4px solid var(--wz-tint-blue-edge);
     border-radius: 4px;
-    background: var(--wz-surface);
+    background: var(--wz-card);
     color: var(--wz-ink);
     font-weight: 500;
 }
@@ -1005,10 +1131,10 @@
     align-items: center;
     gap: 4px;
     padding: 2px 4px 2px 12px;
-    border: 1px solid var(--wz-strong);
+    border: 1px solid var(--wz-tint-blue-edge);
     border-radius: 999px;
-    background: var(--wz-card);
-    color: var(--wz-strong);
+    background: var(--wz-tint-blue);
+    color: var(--wz-ink);
     font-size: 14px;
     font-weight: 600;
 }
