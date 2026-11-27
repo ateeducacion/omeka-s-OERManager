@@ -38,7 +38,11 @@ final class MinimumRule
         if (!($state['resource'] ?? false)) {
             $missing[] = self::RESOURCE;
         }
-        $special = [GovernanceFields::LICENCE, self::COURSE_TERM, self::SUBJECT_TERM];
+        // The title is required to save at all, whatever the template says (owner's report on PR #100).
+        if (!self::has($state, ReaWizardSchema::TITLE_TERM)) {
+            $missing[] = self::FIELD_PREFIX . ReaWizardSchema::TITLE_TERM;
+        }
+        $special = [ReaWizardSchema::TITLE_TERM, GovernanceFields::LICENCE, self::COURSE_TERM, self::SUBJECT_TERM];
         $anchoring = [];
         foreach ($requiredTerms as $term) {
             if (in_array($term, $special, true) || self::has($state, $term)) {

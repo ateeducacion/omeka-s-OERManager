@@ -371,3 +371,12 @@ test('a link whose host could be read two ways is refused', () => {
   assert.equal(isWebLink('https://ejemplo.es/perfil/@ana?mail=a@b.es'), true);
   assert.equal(isWebLink('https://[2001:4860::8888]/x'), true);
 });
+
+// Owner's report on PR #100: «listo para proponer» must agree with the server, which never saves without a title.
+test('the title is always required to propose, even if the template does not require it', () => {
+  const s = complete();
+  s.values['dcterms:title'] = ['  '];
+  assert.deepEqual(missing(s, ['lrmi:learningResourceType']), ['field:dcterms:title']);
+  assert.deepEqual(missing(s, ['dcterms:title']), ['field:dcterms:title']);
+  assert.deepEqual(missingItems(['field:dcterms:title'], schema)[0], { code: 'field:dcterms:title', label: 'Título', step: 2, sub: null });
+});

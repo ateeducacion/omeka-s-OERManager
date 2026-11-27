@@ -631,7 +631,18 @@ return [
                     $container->get(Service\ReaSite::class),
                     $container->get('Omeka\Settings'),
                     // Omeka's oEmbed providers, to pick a link's ingester (owner's review of PR #100).
-                    array_values((array) ($container->get('Config')['oembed']['whitelist'] ?? []))
+                    array_values((array) ($container->get('Config')['oembed']['whitelist'] ?? [])),
+                    null,
+                    // A media created on its own joins its item's media in memory (indexed by id,
+                    // as Item::$media is): Omeka's MediaAdapter only sets the media's item.
+                    static function (int $itemId, int $mediaId) use ($container): void {
+                        $entityManager = $container->get('Omeka\EntityManager');
+                        $item = $entityManager->find(\Omeka\Entity\Item::class, $itemId);
+                        $media = $entityManager->find(\Omeka\Entity\Media::class, $mediaId);
+                        if (null !== $item && null !== $media) {
+                            $item->getMedia()->set($mediaId, $media);
+                        }
+                    }
                 );
             },
             // Media names are looked up id-only (the media API has no `source`

@@ -46,6 +46,8 @@ final class ReaWizardSaveTest extends TestCase
     private array $commits = [];
     private array $required = ['dcterms:title'];
     private ?ItemRepresentation $created = null;
+    /** @var list<array{int,int}> media attached to their item in memory */
+    private array $attached = [];
     /** @var list<string> media sources whose creation fails */
     private array $failMedia = [];
 
@@ -114,7 +116,10 @@ final class ReaWizardSaveTest extends TestCase
             $this->settings,
             [],
             // No DNS in the tests: one internal host, every other one public.
-            static fn (string $host): array => 'intranet.local' === $host ? ['10.0.0.8'] : ['93.184.216.34']
+            static fn (string $host): array => 'intranet.local' === $host ? ['10.0.0.8'] : ['93.184.216.34'],
+            function (int $itemId, int $mediaId): void {
+                $this->attached[] = [$itemId, $mediaId];
+            }
         );
     }
 
@@ -195,6 +200,9 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame(['media', ['o:item' => ['o:id' => 100], 'o:ingester' => 'oermanager_wizard', 'wizard_token' => $token]],
             $this->creates[1]);
         $this->assertSame([], $this->updates, 'a new REA\'s media keep the order they were created in');
+        // Owner's report on PR #100: Omeka does not add a media created on its own to its item in
+        // memory, so the item read again for «Guardar y proponer» had none.
+        $this->assertSame([[100, 202]], $this->attached);
         $this->assertSame([['type' => 'literal', 'property_id' => 1, '@value' => 'Fracciones']], $data['dcterms:title']);
         $this->assertSame([['type' => 'customvocab:7', 'property_id' => 50, '@value' => 'Vídeo']], $data['lrmi:learningResourceType']);
         $this->assertSame([['type' => 'uri', 'property_id' => 61, '@id' => 'https://example.org/x']], $data['dcterms:references']);

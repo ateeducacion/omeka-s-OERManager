@@ -63,7 +63,13 @@ class ReaWizardSave
         /** Omeka's `oembed.whitelist`, to pick a link's ingester (LinkMedia). */
         private readonly array $oembedPatterns = [],
         /** host => addresses, for LinkMedia::isPublicHost (DNS when null; a fake in the tests). */
-        private readonly ?\Closure $resolve = null
+        private readonly ?\Closure $resolve = null,
+        /**
+         * (itemId, mediaId): puts a media created on its own into its item's media in memory.
+         * Omeka does not (MediaAdapter sets only the media's item), so without it the item read
+         * again has no media and a later `o:media` update answers «Media must belong to this item».
+         */
+        private readonly ?\Closure $attachMedia = null
     ) {
     }
 
@@ -318,6 +324,9 @@ class ReaWizardSave
             }
             $order[] = (int) $created->id();
             $media['created'][] = ['key' => $entry['key'], 'id' => (int) $created->id()];
+            if (null !== $this->attachMedia) {
+                ($this->attachMedia)($id, (int) $created->id());
+            }
             if (null !== $entry['token']) {
                 $this->uploads->forget($entry['token']);
             }

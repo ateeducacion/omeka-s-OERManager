@@ -74,8 +74,12 @@ export function missing(state, requiredTerms) {
   if (!(state.resources || []).length) {
     out.push('resource');
   }
+  // The title is required to save at all, whatever the template says (owner's report on PR #100).
+  if (!hasTerm(state, TITLE_TERM)) {
+    out.push('field:' + TITLE_TERM);
+  }
   for (const term of requiredTerms || []) {
-    if ([LICENCE_TERM, COURSE_TERM, SUBJECT_TERM].includes(term) || hasTerm(state, term)) {
+    if ([TITLE_TERM, LICENCE_TERM, COURSE_TERM, SUBJECT_TERM].includes(term) || hasTerm(state, term)) {
       continue;
     }
     (ANCHORING[term] ? anchoring : out).push('field:' + term);

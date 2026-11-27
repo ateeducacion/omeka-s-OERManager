@@ -49,6 +49,15 @@ final class MinimumRuleTest extends TestCase
         );
     }
 
+    /** Owner's report on PR #100: a template that does not require the title still cannot propose without one. */
+    public function testTheTitleIsAlwaysRequiredAndListedOnce(): void
+    {
+        $state = self::complete();
+        $state['values']['dcterms:title'] = [' '];
+        $this->assertSame(['field:dcterms:title'], MinimumRule::missing($state, ['lrmi:learningResourceType']));
+        $this->assertSame(['field:dcterms:title'], MinimumRule::missing($state, ['dcterms:title']));
+    }
+
     public function testTheLicenceIsAlwaysRequiredAndListedOnce(): void
     {
         $state = self::complete();
