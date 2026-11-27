@@ -43,4 +43,32 @@ class LinkMediaTest extends TestCase
         // A malformed pattern never breaks the save.
         $this->assertSame('url', LinkMedia::spec('https://a.es/x', [['not a regex', 'x'], 'junk'])['o:ingester']);
     }
+
+    /** Security review: the `url` ingester makes the server download the link (SSRF). */
+    public function testALinkToAnInternalAddressIsNotDownloaded(): void
+    {
+        $dns = static fn (string $host): array => [
+            'ejemplo.es' => ['93.184.216.34'],
+            'intranet.local' => ['10.0.0.8'],
+            'mixto.es' => ['93.184.216.34', '192.168.1.4'],
+            'v6.es' => ['2001:db8::1'],
+            'publico6.es' => ['2a00:1450:4003:80f::200e'],
+        ][$host] ?? [];
+        foreach ([
+            'https://ejemplo.es/guía.pdf' => true,
+            'https://EJEMPLO.es./a.pdf' => true,
+            'https://publico6.es/a.pdf' => true,
+            'http://localhost/x' => false,
+            'http://127.0.0.1:8080/x' => false,
+            'http://169.254.169.254/latest/meta-data/' => false,
+            'http://[::1]/x' => false,
+            'http://intranet.local/x' => false,
+            'http://mixto.es/x' => false,
+            'http://v6.es/x' => false,
+            'http://no-resuelve.es/x' => false,
+            'http://0x7f000001/x' => false,
+        ] as $url => $public) {
+            $this->assertSame($public, LinkMedia::isPublicHost($url, $dns), $url);
+        }
+    }
 }

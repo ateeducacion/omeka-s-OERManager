@@ -64,6 +64,8 @@ class ReaWizardController extends AbstractActionController
         'url_invalid' => 'El enlace no es válido: revisa que esté completo y empiece por http:// o https://.', // @translate
         'invalid' => 'El catálogo no ha aceptado el REA.', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
+        'url_private' => 'Ese enlace apunta a una dirección interna y no se puede descargar. Usa un enlace público.', // @translate
+        // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
         'media' => 'El REA se ha guardado como borrador, pero el catálogo no ha aceptado algún fichero o enlace. Lo verás marcado en el paso «Tu recurso».', // @translate
         'denied' => 'No tienes permiso para guardar este REA.', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue

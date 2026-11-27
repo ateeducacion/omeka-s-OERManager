@@ -61,7 +61,9 @@ class ReaWizardSave
         private readonly ReaSite $reaSite,
         private readonly Settings $settings,
         /** Omeka's `oembed.whitelist`, to pick a link's ingester (LinkMedia). */
-        private readonly array $oembedPatterns = []
+        private readonly array $oembedPatterns = [],
+        /** host => addresses, for LinkMedia::isPublicHost (DNS when null; a fake in the tests). */
+        private readonly ?\Closure $resolve = null
     ) {
     }
 
@@ -278,7 +280,12 @@ class ReaWizardSave
                 if (!self::isWebLink($url)) {
                     return ['error' => 'url_invalid', 'key' => $key];
                 }
-                $entries[] = ['key' => $key, 'token' => null, 'new' => LinkMedia::spec($url, $this->oembedPatterns)];
+                $spec = LinkMedia::spec($url, $this->oembedPatterns);
+                // Security review (SSRF): the `url` ingester makes the server download the link.
+                if ('url' === $spec['o:ingester'] && !LinkMedia::isPublicHost($url, $this->resolve)) {
+                    return ['error' => 'url_private', 'key' => $key];
+                }
+                $entries[] = ['key' => $key, 'token' => null, 'new' => $spec];
             } elseif ('media' === $kind && isset($owned[(int) ($resource['id'] ?? 0)])) {
                 $entries[] = ['key' => $key, 'id' => (int) $resource['id']];
             }

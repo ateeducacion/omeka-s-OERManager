@@ -911,7 +911,7 @@ async function save(propose) {
   // The media the save created are the REA's now: a retry keeps them instead of adding them again.
   const created = new Map((result.created || []).map((c) => [c.key, c.id]));
   const failed = new Map((result.failed || []).map((f) => [f.key, (f.messages || []).join(' ') || t('El catálogo no lo ha aceptado.')]));
-  if (result.key && (result.error === 'upload_expired' || result.error === 'url_invalid')) {
+  if (result.key && ['upload_expired', 'url_invalid', 'url_private'].includes(result.error)) {
     failed.set(result.key, t(result.message || 'No se pudo guardar'));
   }
   state.resources = state.resources.map((r) => {

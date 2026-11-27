@@ -111,7 +111,10 @@ final class ReaWizardSaveTest extends TestCase
             $this->uploads,
             $this->template,
             $site,
-            $this->settings
+            $this->settings,
+            [],
+            // No DNS in the tests: one internal host, every other one public.
+            static fn (string $host): array => 'intranet.local' === $host ? ['10.0.0.8'] : ['93.184.216.34']
         );
     }
 
@@ -249,6 +252,20 @@ final class ReaWizardSaveTest extends TestCase
                 $bad
             );
         }
+    }
+
+    /** Security review (SSRF): the server never downloads a link to an internal address. */
+    public function testALinkToAnInternalAddressIsRefusedBeforeAnythingIsWritten(): void
+    {
+        foreach (['http://127.0.0.1/x', 'http://169.254.169.254/latest/', 'http://intranet.local/doc.pdf'] as $url) {
+            $this->assertSame(
+                ['ok' => false, 'error' => 'url_private', 'key' => 'l1'],
+                $this->save()->save($this->state(['resources' => [['key' => 'l1', 'kind' => 'url', 'url' => $url]]]),
+                    self::schema(), null, 7, 'Ana P'),
+                $url
+            );
+        }
+        $this->assertSame([], $this->creates);
     }
 
     public function testAMediaOmekaRefusesLeavesADraftWithTheOthersAndNamesIt(): void
