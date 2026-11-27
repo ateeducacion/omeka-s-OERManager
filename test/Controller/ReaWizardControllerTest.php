@@ -171,10 +171,16 @@ final class ReaWizardControllerTest extends TestCase
         $item->method('userIsAllowed')->willReturn(true);
         $item->method('modified')->willReturn(new \DateTime('@1795000000'));
         $media = $this->createMock(MediaRepresentation::class);
+        $media->method('id')->willReturn(55);
         $media->method('source')->willReturn('clase.elpx');
         $media->method('size')->willReturn(4200);
         $media->method('mediaType')->willReturn('application/zip');
-        $item->method('media')->willReturn([$media]);
+        $media->method('ingester')->willReturn('oermanager_wizard');
+        $video = $this->createMock(MediaRepresentation::class);
+        $video->method('id')->willReturn(56);
+        $video->method('source')->willReturn('https://youtu.be/abc123');
+        $video->method('ingester')->willReturn('youtube');
+        $item->method('media')->willReturn([$media, $video]);
         return $item;
     }
 
@@ -258,7 +264,11 @@ final class ReaWizardControllerTest extends TestCase
         $this->assertSame([['id' => 11, 'title' => '2.º ESO']], $item['alignment']['lrmi:educationalLevel']);
         $this->assertSame(3, $item['stage']);
         $this->assertSame(1795000000000, $item['modified']);
-        $this->assertSame(['name' => 'clase.elpx', 'size' => 4200, 'mediaType' => 'application/zip'], $item['media']);
+        // Owner's review of PR #100: every media, in order; a link's source is its URL.
+        $this->assertSame([
+            ['id' => 55, 'name' => 'clase.elpx', 'size' => 4200, 'mediaType' => 'application/zip', 'link' => false],
+            ['id' => 56, 'name' => 'https://youtu.be/abc123', 'size' => 0, 'mediaType' => '', 'link' => true],
+        ], $item['media']);
     }
 
     public function testSomeoneElsesOrAProposedOrAMissingReaIsAnsweredAlike(): void
@@ -325,7 +335,7 @@ final class ReaWizardControllerTest extends TestCase
     }
 
     /** Code review of PR #100: an empty map must reach the browser as an object, not as []. */
-    public function testAResumedReaWithoutDataSendsObjectsAndItsLink(): void
+    public function testAResumedReaWithoutDataSendsObjects(): void
     {
         $item = $this->item(100, '', ['schema:url' => [$this->value('', null, 'uri', 'https://example.org/r')]]);
         $owner = $this->createMock(UserRepresentation::class);
@@ -337,8 +347,8 @@ final class ReaWizardControllerTest extends TestCase
         $state = $this->controller->indexAction()->getVariable('config')['item'];
         $this->assertSame('{}', json_encode($state['values']));
         $this->assertSame('{}', json_encode($state['alignment']));
-        $this->assertSame('https://example.org/r', $state['link']);
-        $this->assertNull($state['media']);
+        $this->assertSame([], $state['media']);
+        $this->assertArrayNotHasKey('link', $state, 'the wizard no longer manages schema:url');
     }
 
     public function testAnUnreadableOrOversizedStateIsRefused(): void

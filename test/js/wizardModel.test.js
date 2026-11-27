@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   missing, missingItems, firstIncomplete, summary, savePayload, recoverable, storageKey,
-  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts,
+  subjectGroups, treeGroups, licenceFor, formatBytes, emptyState, fromItem, isWebLink, withFirstValue, typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts, moveResource, withResources, mainFileName,
 } from '../../asset/js/core/wizardModel.js';
 
 const schema = { data: [
@@ -14,7 +14,7 @@ const required = ['dcterms:title', 'lrmi:learningResourceType'];
 
 function complete() {
   const state = emptyState();
-  state.resource = { kind: 'upload', token: 'a'.repeat(32), name: 'clase.elpx' };
+  state.resources = [{ key: 'r1', kind: 'upload', token: 'a'.repeat(32), name: 'clase.elpx' }];
   state.values = { 'dcterms:title': ['Fracciones'], 'lrmi:learningResourceType': ['Vídeo'],
     'dcterms:license': ['https://creativecommons.org/licenses/by-sa/4.0/'] };
   state.stage = { id: 3, title: 'ESO' };
@@ -68,27 +68,32 @@ test('the summary reads like the prototype', () => {
   assert.equal(summary(s), 'ESO · 1 eje temático');
 });
 
-test('the save payload carries values, resource and every anchoring term', () => {
+test('the save payload carries values, the resources in order and every anchoring term', () => {
   const s = complete();
   s.id = 100;
   s.axes = [{ id: 70, title: 'x' }];
   assert.deepEqual(savePayload(s, true), {
     id: 100,
     values: s.values,
-    resource: { kind: 'upload', token: 'a'.repeat(32) },
+    resources: [{ key: 'r1', kind: 'upload', token: 'a'.repeat(32) }],
     alignment: {
       'lrmi:educationalLevel': [11, 12], 'schema:about': [21, 22], 'lrmi:teaches': [31, 32, 33],
       'lrmi:assesses': [41], 'dcterms:relation': [70],
     },
     propose: true,
   });
-  const kept = complete();
-  kept.resource = { kind: 'keep', name: 'old.pdf' };
-  assert.deepEqual(savePayload(kept, false).resource, { kind: 'keep' });
-  const url = complete();
-  url.resource = { kind: 'url', url: ' https://example.org/r ' };
-  assert.deepEqual(savePayload(url, false).resource, { kind: 'url', url: 'https://example.org/r' });
-  assert.equal(savePayload(emptyState(), false).resource, null);
+  const many = complete();
+  many.resources = [
+    { key: 'm55', kind: 'media', id: 55, name: 'old.pdf' },
+    { key: 'l1', kind: 'url', url: ' https://example.org/r ', error: 'x' },
+    many.resources[0],
+  ];
+  assert.deepEqual(savePayload(many, false).resources, [
+    { key: 'm55', kind: 'media', id: 55 },
+    { key: 'l1', kind: 'url', url: 'https://example.org/r' },
+    { key: 'r1', kind: 'upload', token: 'a'.repeat(32) },
+  ]);
+  assert.deepEqual(savePayload(emptyState(), false).resources, []);
 });
 
 test('a newer local state is offered, an older or identical one is not', () => {
@@ -163,7 +168,10 @@ test('a resumed REA becomes the wizard state', () => {
   const state = fromItem({
     id: 100, status: 'Rechazado', rejection: 'Anclaje incompleto', stage: 3,
     values: { 'dcterms:title': ['Fracciones'] },
-    media: { name: 'clase.elpx', size: 4200, mediaType: 'application/zip' },
+    media: [
+      { id: 55, name: 'clase.elpx', size: 4200, mediaType: 'application/zip', link: false },
+      { id: 56, name: 'https://youtu.be/abc', size: 0, mediaType: '', link: true },
+    ],
     alignment: {
       'lrmi:educationalLevel': [{ id: 11, title: '2.º ESO' }],
       'schema:about': [{ id: 21, title: 'Matemáticas · 2.º ESO' }],
@@ -173,7 +181,10 @@ test('a resumed REA becomes the wizard state', () => {
   });
   assert.equal(state.id, 100);
   assert.equal(state.rejection, 'Anclaje incompleto');
-  assert.deepEqual(state.resource, { kind: 'keep', name: 'clase.elpx', size: 4200, mediaType: 'application/zip' });
+  assert.deepEqual(state.resources, [
+    { key: 'm55', kind: 'media', id: 55, name: 'clase.elpx', size: 4200, mediaType: 'application/zip', link: false },
+    { key: 'm56', kind: 'media', id: 56, name: 'https://youtu.be/abc', size: 0, mediaType: '', link: true },
+  ]);
   assert.deepEqual(state.stage, { id: 3, title: '' });
   assert.deepEqual(state.courses, [{ id: 11, title: '2.º ESO' }]);
   assert.deepEqual(state.subject, { name: 'Matemáticas', ids: [21] });
@@ -188,12 +199,13 @@ test('a licence is only read from Creative Commons or public-domain wording', ()
   assert.equal(licenceFor('Reconocimiento 4.0', options), options[0].uri);
 });
 
-test('a resumed REA without data or with a link keeps a usable state', () => {
-  const state = fromItem({ id: 5, values: [], alignment: [], link: 'https://example.org/r', media: null });
+test('a resumed REA without data or media keeps a usable state', () => {
+  const state = fromItem({ id: 5, values: [], alignment: [], media: [] });
   assert.deepEqual(state.values, {});
   state.values['dcterms:title'] = ['Nuevo'];
   assert.match(JSON.stringify(savePayload(state, false)), /"dcterms:title":\["Nuevo"\]/);
-  assert.deepEqual(state.resource, { kind: 'url', url: 'https://example.org/r' });
+  assert.deepEqual(state.resources, []);
+  assert.deepEqual(missing(state, []).slice(0, 1), ['resource']);
 });
 
 test('links are checked as the server checks them', () => {
@@ -309,4 +321,41 @@ test('typeLabelParts moves the text in brackets to a second line', () => {
   assert.deepEqual(typeLabelParts('Infografías'), { title: 'Infografías', hint: '' });
   // Brackets in the middle stay in the title.
   assert.deepEqual(typeLabelParts('Mapas (conceptuales) y esquemas'), { title: 'Mapas (conceptuales) y esquemas', hint: '' });
+});
+
+// Owner's review of PR #100: several files and links per REA, the first one the main one.
+test('moveResource moves one entry up or down and never out of the list', () => {
+  const list = [{ key: 'a' }, { key: 'b' }, { key: 'c' }];
+  assert.deepEqual(moveResource(list, 1, -1).map((r) => r.key), ['b', 'a', 'c']);
+  assert.deepEqual(moveResource(list, 1, 1).map((r) => r.key), ['a', 'c', 'b']);
+  assert.deepEqual(moveResource(list, 0, -1).map((r) => r.key), ['a', 'b', 'c']);
+  assert.deepEqual(moveResource(list, 2, 1).map((r) => r.key), ['a', 'b', 'c']);
+  assert.deepEqual(list.map((r) => r.key), ['a', 'b', 'c'], 'the list itself is not changed');
+});
+
+test('withResources upgrades a state kept by an earlier version of the wizard', () => {
+  const old = { ...emptyState(), resource: { kind: 'upload', token: 't', name: 'a.pdf' } };
+  delete old.resources;
+  const upgraded = withResources(old);
+  assert.deepEqual(upgraded.resources, [{ key: 'r0', kind: 'upload', token: 't', name: 'a.pdf' }]);
+  assert.equal('resource' in upgraded, false);
+  const keep = { ...emptyState(), resource: { kind: 'keep', name: 'x' } };
+  delete keep.resources;
+  assert.deepEqual(withResources(keep).resources, [], 'a kept media comes back from the server, by id');
+  const current = complete();
+  assert.equal(withResources(current), current);
+});
+
+test('mainFileName is the first file, for the duplicate warning', () => {
+  const s = emptyState();
+  assert.equal(mainFileName(s), '');
+  s.resources = [{ kind: 'url', url: 'https://a.es' }, { kind: 'upload', name: 'b.pdf' }, { kind: 'media', name: 'c.pdf' }];
+  assert.equal(mainFileName(s), 'b.pdf');
+  s.resources = [{ kind: 'media', name: 'https://youtu.be/x', link: true }];
+  assert.equal(mainFileName(s), '');
+});
+
+test('suggestedType reads a link kept as a media like a link', () => {
+  assert.equal(suggestedType({ kind: 'media', name: 'https://ejemplo.es', link: true }, TYPES)?.label, 'Sitios web recomendados');
+  assert.equal(suggestedType({ kind: 'media', name: 'foto.jpg', mediaType: 'image/jpeg' }, TYPES)?.label, 'Fotografías y galerías');
 });

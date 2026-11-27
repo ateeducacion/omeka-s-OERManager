@@ -10,7 +10,8 @@ if (PHP_SAPI !== 'cli') {
  * TASK-077: the wizard to add a REA, end to end over HTTP, as REAL
  * NON-ADMINISTRATOR users. Throwaway `rea_proponente` (two) and `rea_curador`
  * accounts log in and use the wizard's endpoints: the upload stored by token
- * and ingested at `save` (the plan's spike), a draft with only a title, the
+ * and ingested at `save` (the plan's spike), several media in order, a link
+ * as a media (a web page refused by Omeka and named), a draft with only a title, the
  * template set only once the REA meets it, resuming, someone else's REA
  * refused, an expired upload, the minimum rule to propose and the duplicate
  * warning filtered by the API's ACL.
@@ -262,7 +263,7 @@ try {
     $title = $marker . ' Fracciones';
     $draft = $a->save([
         'values' => ['dcterms:title' => [$title]],
-        'resource' => ['kind' => 'upload', 'token' => $upload['token'] ?? ''],
+        'resources' => [['key' => 'r1', 'kind' => 'upload', 'token' => $upload['token'] ?? '']],
         'alignment' => [],
         'propose' => false,
     ]);
@@ -281,19 +282,21 @@ try {
     $check(null !== $item && ($meets ? null !== $item->resourceTemplate() : null === $item->resourceTemplate()),
         $meets ? 'the template is set: the draft meets it' : 'no template yet: a required field is still empty');
     $reused = $a->save(['values' => ['dcterms:title' => [$title . ' bis']],
-        'resource' => ['kind' => 'upload', 'token' => $upload['token'] ?? '']]);
-    $check('upload_expired' === ($reused['error'] ?? ''), 'an ingested upload cannot be used twice', json_encode($reused));
+        'resources' => [['key' => 'r1', 'kind' => 'upload', 'token' => $upload['token'] ?? '']]]);
+    $check('upload_expired' === ($reused['error'] ?? '') && 'r1' === ($reused['key'] ?? ''),
+        'an ingested upload cannot be used twice, and the answer names it', json_encode($reused));
 
     $section('Resume');
     [$status, $resumed] = $a->page('?id=' . $id);
     $check(200 === $status && ($resumed['item']['id'] ?? 0) === $id, 'the proposer resumes their draft');
-    $check(($resumed['item']['media']['name'] ?? '') === 'fracciones.zip', 'with its media');
+    $check(($resumed['item']['media'][0]['name'] ?? '') === 'fracciones.zip', 'with its media');
+    $keep = [['key' => 'm', 'kind' => 'media', 'id' => (int) ($resumed['item']['media'][0]['id'] ?? 0)]];
     $values = ['dcterms:title' => [$title]];
     foreach ($templateRequired as $term) {
         $values[$term] ??= ['Departamento de Matemáticas'];
     }
     $updated = $a->save(['id' => $id, 'values' => $values + ['dcterms:creator' => ['Departamento de Matemáticas']],
-        'resource' => ['kind' => 'keep'], 'alignment' => [], 'propose' => false]);
+        'resources' => $keep, 'alignment' => [], 'propose' => false]);
     $check(!empty($updated['ok']) && $id === ($updated['id'] ?? 0), 'the resumed draft is updated, not duplicated', json_encode($updated));
     $asAdmin();
     $item = $api->read('items', $id)->getContent();
@@ -312,7 +315,7 @@ try {
     $check(($byCurator['item']['id'] ?? 0) === $id, 'a curator resumes the proposer’s draft');
 
     $section('Propose (minimum rule)');
-    $proposal = $a->save(['id' => $id, 'values' => $values, 'resource' => ['kind' => 'keep'], 'alignment' => [], 'propose' => true]);
+    $proposal = $a->save(['id' => $id, 'values' => $values, 'resources' => $keep, 'alignment' => [], 'propose' => true]);
     $check('incomplete' === ($proposal['error'] ?? '') && in_array('course', $proposal['missing'] ?? [], true)
         && in_array('licence', $proposal['missing'] ?? [], true), 'without licence, course and subject it is not proposed',
         json_encode($proposal));
@@ -321,21 +324,40 @@ try {
     $pending[] = 'Anchoring and «Guardar y proponer» end to end: need a curriculum readable by non-administrators'
         . ' (development catalogue with EducationalCurriculum; TASK-069 for isolated users).';
 
-    $section('A link to a web page (stored as a value, not downloaded)');
-    $linked = $a->save(['values' => ['dcterms:title' => [$marker . ' Enlace']],
-        'resource' => ['kind' => 'url', 'url' => 'https://www3.gobiernodecanarias.org/medusa/ecoescuela/recursosdigitales/'],
-        'alignment' => []]);
-    $check(!empty($linked['ok']), 'a draft with a link to a web page is saved', json_encode($linked));
+    $section('Several files, in order (owner\'s review of PR #100)');
+    $uno = $a->json('POST', 'upload', ['file' => new \CURLFile($zip, 'application/zip', 'uno.zip')]);
+    $dos = $a->json('POST', 'upload', ['file' => new \CURLFile($zip, 'application/zip', 'dos.zip')]);
+    $many = $a->save(['values' => ['dcterms:title' => [$marker . ' Varios']], 'alignment' => [], 'resources' => [
+        ['key' => 'd', 'kind' => 'upload', 'token' => $dos['token'] ?? ''],
+        ['key' => 'u', 'kind' => 'upload', 'token' => $uno['token'] ?? ''],
+    ]]);
+    $check(!empty($many['ok']), 'a draft with two files is saved', json_encode($many));
+    $asAdmin();
+    $manyItem = !empty($many['id']) ? $api->read('items', (int) $many['id'])->getContent() : null;
+    $sources = $manyItem ? array_map(static fn ($m) => (string) $m->source(), $manyItem->media()) : [];
+    $check(['dos.zip', 'uno.zip'] === $sources, 'its media keep the order of step ①: the first is the main one', json_encode($sources));
+    [, $manyPage] = $a->page('?id=' . (int) ($many['id'] ?? 0));
+    $ids = array_column($manyPage['item']['media'] ?? [], 'id');
+    $reordered = $a->save(['id' => (int) ($many['id'] ?? 0), 'values' => ['dcterms:title' => [$marker . ' Varios']],
+        'alignment' => [], 'resources' => [['key' => 'b', 'kind' => 'media', 'id' => (int) ($ids[1] ?? 0)]]]);
+    $check(!empty($reordered['ok']), 'resuming, one is kept and the other removed', json_encode($reordered));
+    $asAdmin();
+    $after = $manyItem ? $api->read('items', (int) $many['id'])->getContent()->media() : [];
+    $check(1 === count($after) && 'uno.zip' === $after[0]->source(), 'only the kept media remains');
+
+    $section('A link is a media; a web page Omeka refuses is named, and the draft stays');
+    $linked = $a->save(['values' => ['dcterms:title' => [$marker . ' Enlace']], 'alignment' => [], 'resources' => [
+        ['key' => 'l1', 'kind' => 'url', 'url' => 'https://www3.gobiernodecanarias.org/medusa/ecoescuela/recursosdigitales/'],
+    ]]);
+    $check('media' === ($linked['error'] ?? '') && 'l1' === ($linked['failed'][0]['key'] ?? '') && ($linked['id'] ?? 0) > 0,
+        'Omeka\'s url ingester refuses a web page (text/html not allowed): the answer names the link', json_encode($linked));
     $asAdmin();
     $linkItem = !empty($linked['id']) ? $api->read('items', (int) $linked['id'])->getContent() : null;
-    $check(null !== $linkItem && [] === $linkItem->media()
-        && str_starts_with((string) $linkItem->value('schema:url')?->uri(), 'https://www3.gobiernodecanarias.org/'),
-        'the link is a schema:url value and nothing was downloaded');
-    [, $linkPage] = $a->page('?id=' . (int) ($linked['id'] ?? 0));
-    $check(str_starts_with((string) ($linkPage['item']['link'] ?? ''), 'https://'), 'resuming shows the link');
+    $check(null !== $linkItem && [] === $linkItem->media() && null === $linkItem->value('schema:url'),
+        'the draft is kept without that media, and nothing is written to schema:url');
 
     $section('Duplicates (filtered by the API ACL)');
-    $other = $c->save(['values' => ['dcterms:title' => [$title]], 'resource' => null, 'alignment' => []]);
+    $other = $c->save(['values' => ['dcterms:title' => [$title]], 'resources' => [], 'alignment' => []]);
     $check(!empty($other['ok']), 'the curator saves another draft with the same title');
     $seenByCurator = array_column($c->json('GET', 'duplicates?' . http_build_query(['title' => $title, 'id' => $other['id'] ?? 0]))['duplicates'] ?? [], 'id');
     $check(in_array($id, $seenByCurator, true), 'the curator is warned about the proposer’s REA');

@@ -32,9 +32,9 @@ final class ReaWizardSchema
     public const MACHINE_TERMS = ['curation:status', 'curation:note', 'curation:data', 'dcterms:provenance'];
 
     /**
-     * The main resource when it is a link (code review of PR #100): Omeka's `url`
-     * ingester downloads its target and refuses a web page, so a link is a URI
-     * value of the REA, managed by step ①, never a data field.
+     * Never a data field. A link added in step ① is a media of the REA
+     * (LinkMedia, owner's review of PR #100); the wizard neither writes nor
+     * clears this property, which an imported REA may already carry.
      */
     public const LINK_TERM = 'schema:url';
 

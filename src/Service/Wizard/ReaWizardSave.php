@@ -22,9 +22,12 @@ use Omeka\Settings\Settings;
  * order:
  *
  * 1. the item, created or updated through the API: class
- *    `lrmi:LearningResource`, private, in the REA site, with its data values
- *    and its main resource (the file stored in step ① or a URL). A resume
- *    clears only the data terms the wizard manages and appends;
+ *    `lrmi:LearningResource`, private, in the REA site, with its data values.
+ *    A resume clears only the data terms the wizard manages and appends;
+ *    then its media, in the order of step ①: each new file or link created on
+ *    its own (so a refusal names its entry), then one partial update that
+ *    keeps the listed media in that order and removes the rest. The first is
+ *    the main one (owner's review of PR #100);
  * 2. the governance fields (licence, authorship…) with GovernanceService;
  * 3. the anchoring and the axes with RecatalogService::apply only;
  * 4. the REA template, once every required template property has a value
@@ -44,6 +47,9 @@ class ReaWizardSave
     public const STEP_TEMPLATE = 'template';
     public const STEP_PROPOSE = 'propose';
 
+    /** Files and links of one REA in a save (step ①). */
+    public const MAX_MEDIA = 50;
+
     public function __construct(
         private readonly ApiManager $api,
         private readonly CurationWriter $writer,
@@ -53,13 +59,16 @@ class ReaWizardSave
         private readonly WizardUploadStore $uploads,
         private readonly ReaTemplateFields $templateFields,
         private readonly ReaSite $reaSite,
-        private readonly Settings $settings
+        private readonly Settings $settings,
+        /** Omeka's `oembed.whitelist`, to pick a link's ingester (LinkMedia). */
+        private readonly array $oembedPatterns = []
     ) {
     }
 
     /**
-     * @param array<string,mixed> $state `values` (term => strings), `resource`
-     *   (`{kind:upload,token}`, `{kind:url,url}`, `{kind:keep}` or null),
+     * @param array<string,mixed> $state `values` (term => strings), `resources`
+     *   (in order, each with a `key`: `{kind:upload,token}`, `{kind:url,url}` or
+     *   `{kind:media,id}`, a media the REA already has),
      *   `alignment` (term => ids), `propose` (bool)
      * @param array{data:list<array<string,mixed>>} $schema ReaWizardSchema data fields with their `options`
      * @return array<string,mixed>
@@ -79,9 +88,9 @@ class ReaWizardSave
         if ('' === ($values[ReaWizardSchema::TITLE_TERM][0] ?? '')) {
             return ['ok' => false, 'error' => 'title_required'];
         }
-        $resource = $this->resource($state['resource'] ?? null, $userId);
-        if (isset($resource['error'])) {
-            return ['ok' => false, 'error' => $resource['error']];
+        $resources = $this->resources($state['resources'] ?? [], $existing, $userId);
+        if (isset($resources['error'])) {
+            return ['ok' => false, 'error' => $resources['error'], 'key' => $resources['key']];
         }
         $alignment = [];
         foreach (RecatalogService::ALIGNMENT_TERMS as $term) {
@@ -99,8 +108,8 @@ class ReaWizardSave
 
         try {
             $id = null === $existing
-                ? $this->create($values, $fields, $resource)
-                : $this->update($existing, $values, $fields, $resource, $keepTemplate);
+                ? $this->create($values, $fields)
+                : $this->update($existing, $values, $fields, $keepTemplate);
         } catch (ValidationException $e) {
             return ['ok' => false, 'error' => 'invalid', 'messages' => self::messages($e)];
         } catch (PermissionDeniedException $e) {
@@ -108,15 +117,57 @@ class ReaWizardSave
         }
 
         // From here on the REA exists: every answer carries its id, so a retry updates it
-        // instead of creating another one (code review of PR #100).
+        // instead of creating another one (code review of PR #100), and the media it created,
+        // so a retry keeps them instead of adding them again.
+        $media = ['created' => [], 'failed' => []];
+        $answer = $this->afterCreation(
+            $id,
+            $existing,
+            $resources['entries'],
+            $media,
+            $values,
+            $fields,
+            $alignment,
+            $required,
+            $meetsTemplate,
+            $keepTemplate,
+            $contributor,
+            (bool) ($state['propose'] ?? false)
+        );
+        if (!$answer['ok'] && [] !== $media['created']) {
+            $answer['created'] = $media['created'];
+        }
+        return $answer;
+    }
+
+    /**
+     * Steps 1 (media) to 5, once the item exists.
+     *
+     * @param list<array<string,mixed>> $entries
+     * @param array{created:list<array{key:string,id:int}>,failed:list<array<string,mixed>>} $media
+     * @param array<string,list<string>> $values
+     * @param array<string,array<string,mixed>> $fields
+     * @param array<string,list<int>> $alignment
+     * @param list<string> $required
+     * @return array<string,mixed>
+     */
+    private function afterCreation(
+        int $id,
+        ?ItemRepresentation $existing,
+        array $entries,
+        array &$media,
+        array $values,
+        array $fields,
+        array $alignment,
+        array $required,
+        bool $meetsTemplate,
+        bool $keepTemplate,
+        string $contributor,
+        bool $propose
+    ): array {
         $step = self::STEP_MEDIA;
         try {
-            if (null !== $existing && null !== $resource['media']) {
-                $this->replaceMedia($existing, $resource['media']);
-            }
-            if (null !== $resource['token']) {
-                $this->uploads->forget($resource['token']);
-            }
+            $this->writeMedia($id, $existing, $entries, $media);
             $step = self::STEP_GOVERNANCE;
             $governance = $this->governanceRaw($values, $fields);
             if ($governance) {
@@ -141,12 +192,16 @@ class ReaWizardSave
             if ($meetsTemplate && !$keepTemplate && null !== $templateId) {
                 $this->writer->commit($id, [], ['o:resource_template' => ['o:id' => $templateId]]);
             }
-            if (!($state['propose'] ?? false)) {
+            if ([] !== $media['failed']) {
+                return ['ok' => false, 'id' => $id, 'step' => self::STEP_MEDIA, 'error' => 'media',
+                    'failed' => $media['failed']];
+            }
+            if (!$propose) {
                 return ['ok' => true, 'id' => $id, 'proposed' => false];
             }
             $step = self::STEP_PROPOSE;
             $item = $this->api->read('items', $id)->getContent();
-            $hasResource = [] !== $item->media() || null !== $item->value(ReaWizardSchema::LINK_TERM);
+            $hasResource = [] !== (array) ($item->media() ?? []) || null !== $item->value(ReaWizardSchema::LINK_TERM);
             $missing = MinimumRule::missing(
                 ['resource' => $hasResource, 'values' => $values, 'alignment' => $alignment],
                 $required
@@ -191,31 +246,87 @@ class ReaWizardSave
     }
 
     /**
-     * The main resource: the stored upload (media of the module's ingester), a
-     * link (a `schema:url` value: Omeka's `url` ingester downloads its target and
-     * refuses a web page), or nothing to change.
+     * The REA's media as step ① lists them, in order: a stored upload (the
+     * module's ingester), a link (LinkMedia) or a media the REA already has.
+     * A media of another item is ignored; an expired upload or a bad link
+     * stops the save before anything is written, naming its entry.
      *
-     * @return array{media:?array<string,mixed>,token:?string,link:?string,kind:string}|array{error:string}
+     * @return array{entries:list<array<string,mixed>>}|array{error:string,key:string}
      */
-    private function resource(mixed $resource, int $userId): array
+    private function resources(mixed $posted, ?ItemRepresentation $existing, int $userId): array
     {
-        $kind = is_array($resource) ? (string) ($resource['kind'] ?? '') : '';
-        if ('upload' === $kind) {
-            $token = (string) ($resource['token'] ?? '');
-            if (null === $this->uploads->get($userId, $token)) {
-                return ['error' => 'upload_expired'];
-            }
-            return ['media' => ['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token], 'token' => $token,
-                'link' => null, 'kind' => $kind];
+        $owned = [];
+        foreach (null === $existing ? [] : (array) ($existing->media() ?? []) as $media) {
+            $owned[(int) $media->id()] = true;
         }
-        if ('url' === $kind) {
-            $url = trim((string) ($resource['url'] ?? ''));
-            if (!self::isWebLink($url) || null === $this->writer->propertyId(ReaWizardSchema::LINK_TERM)) {
-                return ['error' => 'url_invalid'];
+        $entries = [];
+        foreach (array_slice(is_array($posted) ? $posted : [], 0, self::MAX_MEDIA) as $resource) {
+            if (!is_array($resource)) {
+                continue;
             }
-            return ['media' => null, 'token' => null, 'link' => $url, 'kind' => $kind];
+            $kind = (string) ($resource['kind'] ?? '');
+            $key = mb_substr((string) ($resource['key'] ?? ''), 0, 64);
+            if ('upload' === $kind) {
+                $token = (string) ($resource['token'] ?? '');
+                if (null === $this->uploads->get($userId, $token)) {
+                    return ['error' => 'upload_expired', 'key' => $key];
+                }
+                $entries[] = ['key' => $key, 'token' => $token,
+                    'new' => ['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token]];
+            } elseif ('url' === $kind) {
+                $url = trim((string) ($resource['url'] ?? ''));
+                if (!self::isWebLink($url)) {
+                    return ['error' => 'url_invalid', 'key' => $key];
+                }
+                $entries[] = ['key' => $key, 'token' => null, 'new' => LinkMedia::spec($url, $this->oembedPatterns)];
+            } elseif ('media' === $kind && isset($owned[(int) ($resource['id'] ?? 0)])) {
+                $entries[] = ['key' => $key, 'id' => (int) $resource['id']];
+            }
         }
-        return ['media' => null, 'token' => null, 'link' => null, 'kind' => 'keep'];
+        return ['entries' => $entries];
+    }
+
+    /**
+     * Creates each new media on its own (a refusal is recorded with its entry's
+     * key and Omeka's messages), then, when the list differs from what the REA
+     * has, one partial update with `o:media`: Omeka keeps the listed media in
+     * that order and removes the others.
+     *
+     * @param list<array<string,mixed>> $entries
+     * @param array{created:list<array{key:string,id:int}>,failed:list<array<string,mixed>>} $media
+     */
+    private function writeMedia(int $id, ?ItemRepresentation $existing, array $entries, array &$media): void
+    {
+        $order = [];
+        foreach ($entries as $entry) {
+            if (isset($entry['id'])) {
+                $order[] = (int) $entry['id'];
+                continue;
+            }
+            try {
+                $created = $this->api->create('media', ['o:item' => ['o:id' => $id]] + $entry['new'])->getContent();
+            } catch (ValidationException $e) {
+                $media['failed'][] = ['key' => $entry['key'], 'messages' => self::messages($e)];
+                continue;
+            }
+            $order[] = (int) $created->id();
+            $media['created'][] = ['key' => $entry['key'], 'id' => (int) $created->id()];
+            if (null !== $entry['token']) {
+                $this->uploads->forget($entry['token']);
+            }
+        }
+        $current = null === $existing
+            ? array_column($media['created'], 'id')
+            : array_map(static fn ($m) => (int) $m->id(), (array) ($existing->media() ?? []));
+        if ($order !== $current) {
+            $this->api->update(
+                'items',
+                $id,
+                ['o:media' => array_map(static fn (int $m) => ['o:id' => $m], $order)],
+                [],
+                ['isPartial' => true]
+            );
+        }
     }
 
     /** An http(s) link of at most 2000 characters, IRIs included (accented paths), without spaces. */
@@ -228,9 +339,8 @@ class ReaWizardSave
     /**
      * @param array<string,list<string>> $values
      * @param array<string,array<string,mixed>> $fields
-     * @param array<string,mixed> $resource
      */
-    private function create(array $values, array $fields, array $resource): int
+    private function create(array $values, array $fields): int
     {
         $data = $this->dataValues($values, $fields) + ['o:is_public' => false];
         $classId = $this->learningResourceClassId();
@@ -240,12 +350,6 @@ class ReaWizardSave
         $siteId = $this->reaSite->siteId();
         if (null !== $siteId) {
             $data['o:site'] = [['o:id' => $siteId]];
-        }
-        if (null !== $resource['media']) {
-            $data['o:media'] = [$resource['media']];
-        }
-        if (null !== $resource['link']) {
-            $data[ReaWizardSchema::LINK_TERM] = [$this->linkValue($resource['link'])];
         }
         return (int) $this->api->create('items', $data)->getContent()->id();
     }
@@ -257,13 +361,11 @@ class ReaWizardSave
      *
      * @param array<string,list<string>> $values
      * @param array<string,array<string,mixed>> $fields
-     * @param array<string,mixed> $resource
      */
     private function update(
         ItemRepresentation $existing,
         array $values,
         array $fields,
-        array $resource,
         bool $keepTemplate
     ): int {
         $id = (int) $existing->id();
@@ -280,46 +382,12 @@ class ReaWizardSave
             }
         }
         $data = $this->dataValues($changed, $fields);
-        // The link is the main resource: a new upload or a new link replaces it.
-        $linkId = $this->writer->propertyId(ReaWizardSchema::LINK_TERM);
-        $storedLink = self::stored($existing, ReaWizardSchema::LINK_TERM);
-        if (null !== $linkId && 'keep' !== $resource['kind'] && $storedLink !== array_filter([$resource['link']])) {
-            $clear[] = $linkId;
-            if (null !== $resource['link']) {
-                $data[ReaWizardSchema::LINK_TERM] = [$this->linkValue($resource['link'])];
-            }
-        }
         $data['clear_property_values'] = $clear;
         if (null !== $existing->resourceTemplate() && !$keepTemplate) {
             $data['o:resource_template'] = null;
         }
         $this->api->update('items', $id, $data, [], ['isPartial' => true, 'collectionAction' => 'append']);
-        if (null !== $resource['link']) {
-            // One main resource per REA: a link replaces the files.
-            $this->deleteMedia(array_map(static fn ($m) => (int) $m->id(), $existing->media()));
-        }
         return $id;
-    }
-
-    /**
-     * The new file becomes the only media: every previous one is deleted, in
-     * one batch (TASK-064 lesson: two deletes in a request fail with Access).
-     *
-     * @param array<string,mixed> $media
-     */
-    private function replaceMedia(ItemRepresentation $existing, array $media): void
-    {
-        $previous = array_map(static fn ($m) => (int) $m->id(), $existing->media());
-        $this->api->create('media', ['o:item' => ['o:id' => (int) $existing->id()]] + $media);
-        $this->deleteMedia($previous);
-    }
-
-    /** @param list<int> $ids */
-    private function deleteMedia(array $ids): void
-    {
-        if ($ids) {
-            $this->api->batchDelete('media', $ids);
-        }
     }
 
     /** Whether every required template property already has a stored value. */
@@ -354,13 +422,6 @@ class ReaWizardSave
         }
         $resource = $value->valueResource();
         return null !== $resource ? (string) $resource->id() : trim((string) $value->value());
-    }
-
-    /** @return array<string,mixed> */
-    private function linkValue(string $url): array
-    {
-        return ['type' => 'uri', 'property_id' => (int) $this->writer->propertyId(ReaWizardSchema::LINK_TERM),
-            '@id' => $url];
     }
 
     /**

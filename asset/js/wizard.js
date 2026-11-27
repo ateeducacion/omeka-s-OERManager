@@ -10,7 +10,7 @@
 import {
   emptyState, fromItem, missing, missingItems, firstIncomplete, summary, savePayload,
   storageKey, recoverable, subjectGroups, treeGroups, licenceFor, formatBytes, isWebLink, withFirstValue,
-  typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts,
+  typeGroups, blockOpen, axisList, suggestedType, typeMatches, typeLabelParts, moveResource, withResources, mainFileName,
   TITLE_TERM, LICENCE_TERM, TEACHES_TERM, ASSESSES_TERM,
 } from './core/wizardModel.js';
 
@@ -44,6 +44,8 @@ const ICONS = {
   copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
   close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  up: '<path d="M6 15l6-6 6 6"/>',
+  down: '<path d="M6 9l6 6 6-6"/>',
   bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z"/>',
   returned: '<path d="M9 14l-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/>',
   school: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c0 1.5 3 3 6 3s6-1.5 6-3v-5"/>',
@@ -110,7 +112,7 @@ const licenceOptions = (fieldOf(LICENCE_TERM) || {}).options || [];
 let state = cfg ? fromItem(cfg.item) : emptyState();
 const ui = {
   step: 1, sub: 1, maxStep: 1, busy: false, error: null, uploadError: null, uploading: null,
-  prefilled: false, replacing: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', axisQ: '', userBlocks: {}, typeOpen: false, typeCat: null, typeQ: '',
+  prefilled: false, recover: null, lists: {}, loading: {}, failed: {}, q: '', axisQ: '', userBlocks: {}, typeOpen: false, typeCat: null, typeQ: '',
   duplicates: null, focus: true,
 };
 
@@ -285,6 +287,20 @@ function loadingOrRetry(key) {
 
 // ---- Step ①: the resource ---------------------------------------------------
 
+let resourceSeq = 0;
+
+/** A new entry of step ①'s list, with a key the server's answer names it by. */
+function addResource(entry) {
+  state.resources = [...state.resources, { key: 'n' + Date.now().toString(36) + (++resourceSeq), ...entry }];
+}
+
+/** Several files, one after another (each goes to the private upload store). */
+async function uploadFiles(files) {
+  for (const file of [...(files || [])]) {
+    await uploadFile(file);
+  }
+}
+
 async function uploadFile(file) {
   if (!file) {
     return;
@@ -309,8 +325,7 @@ async function uploadFile(file) {
     ui.uploadError = { name: file.name, message: t(result.message || 'No se pudo subir el fichero. Vuelve a intentarlo.') };
     return render();
   }
-  state.resource = { kind: 'upload', token: result.token, name: result.name, size: result.size, mediaType: result.mediaType };
-  ui.replacing = false;
+  addResource({ kind: 'upload', token: result.token, name: result.name, size: result.size, mediaType: result.mediaType });
   suggest(result.metadata || {});
   changed();
   render();
@@ -337,49 +352,79 @@ function suggest(meta) {
   ui.prefilled = any;
 }
 
+function moveEntry(index, delta) {
+  state.resources = moveResource(state.resources, index, delta);
+  changed();
+  ui.focus = false;
+  render();
+  // Keep the focus on the moved entry's same button, or the other one at the ends.
+  const row = root.querySelectorAll('[data-wz-res]')[index + delta];
+  (row?.querySelector(delta < 0 ? '[data-wz-up]:not(:disabled)' : '[data-wz-down]:not(:disabled)')
+    || row?.querySelector('button:not(:disabled)'))?.focus();
+}
+
+function removeEntry(index) {
+  state.resources = state.resources.filter((_, i) => i !== index);
+  changed();
+  ui.focus = false;
+  render();
+  root.querySelector('[data-wz-file-pick]')?.focus();
+}
+
+/** One file or link of the REA: name, what it is, its error if the catalogue refused it, and its actions. */
+function resourceRow(entry, index, count) {
+  const isLink = entry.kind === 'url' || Boolean(entry.link);
+  const name = entry.kind === 'url' ? entry.url : entry.name;
+  const meta = entry.kind === 'url' ? t('Enlace · se añadirá al guardar')
+    : entry.kind === 'upload' ? [formatBytes(entry.size), t('subido')].filter(Boolean).join(' · ')
+      : isLink ? t('Enlace del REA') : [formatBytes(entry.size), t('guardado en el REA')].filter(Boolean).join(' · ');
+  return h('li', { class: 'oer-wz-res' + (index === 0 ? ' is-main' : '') + (entry.error ? ' is-error' : ''), 'data-wz-res': '' },
+    h('span', { class: 'oer-wz-badge' + (isLink ? ' is-soft' : '') }, icon(isLink ? 'link' : 'file')),
+    h('div', { class: 'oer-wz-file-text' },
+      h('p', { class: 'oer-wz-file-name' }, name, index === 0 && count > 1 ? h('span', { class: 'oer-wz-main-tag' }, t('Principal')) : null),
+      h('p', { class: 'oer-wz-file-meta' }, meta),
+      entry.error ? h('p', { class: 'oer-wz-res-error' }, icon('error'), h('span', {}, entry.error)) : null),
+    h('div', { class: 'oer-wz-res-actions' },
+      count > 1 ? h('button', { type: 'button', class: 'oer-wz-icon-btn', 'data-wz-up': '', disabled: index === 0,
+        'aria-label': t('Subir «%s»', name), title: t('Subir'), onclick: () => moveEntry(index, -1) }, icon('up')) : null,
+      count > 1 ? h('button', { type: 'button', class: 'oer-wz-icon-btn', 'data-wz-down': '', disabled: index === count - 1,
+        'aria-label': t('Bajar «%s»', name), title: t('Bajar'), onclick: () => moveEntry(index, 1) }, icon('down')) : null,
+      h('button', { type: 'button', class: 'oer-wz-link', 'aria-label': t('Quitar «%s»', name), onclick: () => removeEntry(index) }, t('Quitar'))));
+}
+
 function stepResource() {
-  const parts = [heading(t('Tu recurso'), t('Sube el fichero de tu recurso o pega el enlace donde ya está publicado. Solo uno por REA.'))];
+  const list = state.resources;
+  const parts = [heading(t('Tu recurso'), t('Sube los ficheros de tu recurso o pega enlaces. Puedes añadir varios: el primero de la lista es el principal.'))];
   if (ui.uploadError) {
     parts.push(h('div', { role: 'alert' }, notice('error', 'error',
       h('p', { class: 'oer-wz-notice-title' }, t('No podemos usar «%s»', ui.uploadError.name)),
       h('p', {}, ui.uploadError.message))));
   }
-  const resource = state.resource;
-  if (resource && !ui.replacing) {
-    const meta = resource.kind === 'url'
-      ? t('Enlace a otra web')
-      : [resource.kind === 'keep' ? t('Fichero actual del REA') : null, formatBytes(resource.size), resource.kind === 'upload' ? t('subido') : null]
-        .filter(Boolean).join(' · ');
-    parts.push(h('div', { class: 'oer-wz-file' },
-      h('span', { class: 'oer-wz-badge' + (resource.kind === 'url' ? ' is-soft' : '') }, icon(resource.kind === 'url' ? 'link' : 'file')),
-      h('div', { class: 'oer-wz-file-text' },
-        h('p', { class: 'oer-wz-file-name' }, resource.kind === 'url' ? resource.url : resource.name),
-        h('p', { class: 'oer-wz-file-meta' }, meta)),
-      h('button', { type: 'button', class: 'oer-wz-link', onclick: () => { ui.replacing = true; render(); } },
-        resource.kind === 'keep' ? t('Sustituir el recurso') : resource.kind === 'url' ? t('Cambiar el enlace') : t('Cambiar el fichero'))));
-    if (ui.prefilled) {
-      parts.push(h('p', { role: 'status' }, notice('', 'edit', h('span', {}, t('Hemos rellenado algunos datos a partir del fichero. Revísalos en el paso siguiente.')))));
-    }
-    return parts;
+  if (list.length) {
+    parts.push(h('ol', { class: 'oer-wz-reslist', 'aria-label': t('Ficheros y enlaces del REA') },
+      list.map((entry, i) => resourceRow(entry, i, list.length))));
+  }
+  if (ui.prefilled) {
+    parts.push(h('p', { role: 'status' }, notice('', 'edit', h('span', {}, t('Hemos rellenado algunos datos a partir del fichero. Revísalos en el paso siguiente.')))));
   }
   const inputId = nextId('wz-file');
-  const fileInput = h('input', { type: 'file', id: inputId, class: 'oer-wz-visually-hidden', tabindex: '-1',
-    onchange: (e) => uploadFile(e.target.files[0]) });
-  const drop = h('div', { class: 'oer-wz-source oer-wz-drop' },
+  const fileInput = h('input', { type: 'file', id: inputId, class: 'oer-wz-visually-hidden', tabindex: '-1', multiple: true,
+    onchange: (e) => { uploadFiles(e.target.files); e.target.value = ''; } });
+  const drop = h('div', { class: 'oer-wz-source oer-wz-drop' + (list.length ? ' is-compact' : '') },
     h('span', { class: 'oer-wz-badge' }, icon('upload')),
-    h('p', { class: 'oer-wz-source-title' }, t('Sube un fichero')),
-    h('p', { class: 'oer-wz-choice-hint' }, t('Arrástralo hasta aquí o búscalo en tu equipo.')),
+    h('p', { class: 'oer-wz-source-title' }, list.length ? t('Añadir más ficheros') : t('Sube tus ficheros')),
+    h('p', { class: 'oer-wz-choice-hint' }, t('Arrástralos hasta aquí o búscalos en tu equipo. Puedes elegir varios a la vez.')),
     fileInput,
-    h('button', { type: 'button', class: 'oer-wz-btn is-primary', disabled: Boolean(ui.uploading), onclick: () => fileInput.click() }, t('Elegir fichero')),
+    h('button', { type: 'button', class: 'oer-wz-btn is-primary', 'data-wz-file-pick': '', disabled: Boolean(ui.uploading),
+      onclick: () => fileInput.click() }, t('Elegir ficheros')),
     ui.uploading ? h('p', { class: 'oer-wz-busy', role: 'status' }, t('Subiendo «%s»…', ui.uploading)) : null,
-    h('p', { class: 'oer-wz-help' }, t('Hasta %s · eXeLearning (.elpx), .zip, PDF, imagen, audio, vídeo u ofimática', formatBytes(cfg.uploadLimit) || '—')));
+    h('p', { class: 'oer-wz-help' }, t('Hasta %s por fichero · eXeLearning (.elpx), .zip, PDF, imagen, audio, vídeo u ofimática', formatBytes(cfg.uploadLimit) || '—')));
   drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-over'); });
   drop.addEventListener('dragleave', () => drop.classList.remove('is-over'));
-  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('is-over'); uploadFile(e.dataTransfer.files[0]); });
+  drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('is-over'); uploadFiles(e.dataTransfer.files); });
   const urlId = nextId('wz-url');
   const urlHelp = nextId('wz-url-help');
-  const urlInput = h('input', { id: urlId, class: 'oer-wz-input', type: 'url', placeholder: 'https://', 'aria-describedby': urlHelp,
-    value: resource?.kind === 'url' ? resource.url : '' });
+  const urlInput = h('input', { id: urlId, class: 'oer-wz-input', type: 'url', placeholder: 'https://', 'aria-describedby': urlHelp });
   const urlError = h('p', { class: 'oer-wz-help', role: 'alert' });
   const useUrl = () => {
     const value = urlInput.value.trim();
@@ -387,22 +432,21 @@ function stepResource() {
       urlError.textContent = t('Escribe un enlace que empiece por http:// o https://.');
       return;
     }
-    state.resource = { kind: 'url', url: value };
-    ui.replacing = false;
+    addResource({ kind: 'url', url: value });
     ui.prefilled = false;
     changed();
+    ui.focus = false;
     render();
+    root.querySelector('#' + CSS.escape(urlId))?.focus();
   };
-  const link = h('div', { class: 'oer-wz-source' },
+  urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); useUrl(); } });
+  const link = h('div', { class: 'oer-wz-source' + (list.length ? ' is-compact' : '') },
     h('span', { class: 'oer-wz-badge is-soft' }, icon('link')),
     h('label', { for: urlId, class: 'oer-wz-source-title' }, t('O pega un enlace')),
-    h('p', { id: urlHelp, class: 'oer-wz-choice-hint' }, t('Si tu recurso ya está en otra web, copia aquí su dirección.')),
+    h('p', { id: urlHelp, class: 'oer-wz-choice-hint' }, t('Un vídeo de YouTube o Vimeo se enlaza; cualquier otro enlace se descarga al guardar y el catálogo comprueba que se admite.')),
     urlInput, urlError,
-    h('button', { type: 'button', class: 'oer-wz-btn', onclick: useUrl }, t('Usar este enlace')));
+    h('button', { type: 'button', class: 'oer-wz-btn', onclick: useUrl }, t('Añadir enlace')));
   parts.push(h('div', { class: 'oer-wz-sources' }, drop, link));
-  if (ui.replacing && resource) {
-    parts.push(h('p', {}, h('button', { type: 'button', class: 'oer-wz-link', onclick: () => { ui.replacing = false; render(); } }, t('Mantener el actual'))));
-  }
   return parts;
 }
 
@@ -500,7 +544,8 @@ function typePicker(field, id, help) {
           root.querySelector('[data-wz-type-search]')?.focus();
         } }, t('Cambiar'))));
   }
-  const suggestion = suggestedType(state.resource, field.options);
+  const main = state.resources[0] || null;
+  const suggestion = suggestedType(main, field.options);
   const card = (item, group) => {
     const parts = typeLabelParts(item.label);
     const hint = [group ? t(group) : null, parts.hint || null].filter(Boolean).join(' · ');
@@ -542,7 +587,7 @@ function typePicker(field, id, help) {
     help,
     suggestion && suggestion.value !== current
       ? h('div', { class: 'oer-wz-suggest' }, icon('bulb'),
-        h('p', {}, state.resource?.kind === 'url' ? t('Por tu enlace, parece «%s».', typeLabelParts(suggestion.label).title)
+        h('p', {}, (main?.kind === 'url' || main?.link) ? t('Por tu enlace, parece «%s».', typeLabelParts(suggestion.label).title)
           : t('Por tu fichero, parece «%s».', typeLabelParts(suggestion.label).title),
         h('span', { class: 'oer-wz-type-group-name' }, ' ' + t(suggestion.group))),
         h('button', { type: 'button', class: 'oer-wz-btn is-primary', onclick: () => pick(suggestion.value) }, t('Usar este')))
@@ -780,7 +825,7 @@ function stepAnchoring() {
 
 function loadDuplicates() {
   const title = ((state.values[TITLE_TERM] || [])[0] || '').trim();
-  const name = state.resource && state.resource.kind !== 'url' ? state.resource.name || '' : '';
+  const name = mainFileName(state);
   ui.duplicates = null;
   if (!title && !name) {
     return;
@@ -821,15 +866,17 @@ function stepReview() {
       h('ul', {}, ui.duplicates.map((d) => h('li', {}, h('a', { href: d.url, target: '_blank', rel: 'noopener' }, d.title),
         h('span', { class: 'oer-wz-help' }, d.reason === 'name' ? t('mismo nombre de fichero') : t('mismo título'))))))));
   }
-  const resource = state.resource;
-  const resourceText = !resource ? t('Todavía no has añadido ningún fichero ni enlace.')
-    : resource.kind === 'url' ? resource.url : [resource.name, formatBytes(resource.size)].filter(Boolean).join(' · ');
+  const resourceList = state.resources.length
+    ? h('ol', { class: 'oer-wz-review-res' }, state.resources.map((r, i) => h('li', {},
+      r.kind === 'url' ? r.url : [r.name, formatBytes(r.size)].filter(Boolean).join(' · '),
+      i === 0 && state.resources.length > 1 ? h('span', { class: 'oer-wz-main-tag' }, t('Principal')) : null)))
+    : h('p', { class: 'oer-wz-file-name' }, t('Todavía no has añadido ningún fichero ni enlace.'));
   const section = (title, body, step) => h('section', {},
     h('div', { class: 'oer-wz-record-body' }, h('h3', {}, title), ...body),
     h('button', { type: 'button', class: 'oer-wz-link', style: 'align-self: flex-start', onclick: () => go(step, 1) }, t('Cambiar')));
   const picked = [...state.teaches, ...state.assesses];
   parts.push(h('div', { class: 'oer-wz-record' },
-    section(t('Tu recurso'), [h('p', { class: 'oer-wz-file-name' }, resourceText)], 1),
+    section(t('Tu recurso'), [resourceList], 1),
     section(t('Datos'), [h('dl', {}, fields.flatMap((field) => [h('dt', {}, field.label), h('dd', {}, valueText(field.term))]))], 2),
     section(t('Curso y materia'), [h('p', { style: 'font-weight: 600; color: var(--wz-ink)' }, summary(state)),
       picked.length ? h('ul', {}, picked.map((p) => h('li', {}, p.code ? h('span', { class: 'oer-wz-code' }, p.code) : null, h('span', {}, p.title)))) : null], 3)));
@@ -861,20 +908,31 @@ async function save(propose) {
     return;
   }
   ui.busy = false;
+  // The media the save created are the REA's now: a retry keeps them instead of adding them again.
+  const created = new Map((result.created || []).map((c) => [c.key, c.id]));
+  const failed = new Map((result.failed || []).map((f) => [f.key, (f.messages || []).join(' ') || t('El catálogo no lo ha aceptado.')]));
+  if (result.key && (result.error === 'upload_expired' || result.error === 'url_invalid')) {
+    failed.set(result.key, t(result.message || 'No se pudo guardar'));
+  }
+  state.resources = state.resources.map((r) => {
+    if (created.has(r.key)) {
+      const { token, error, ...rest } = r;
+      return { ...rest, kind: 'media', id: created.get(r.key), name: r.kind === 'url' ? r.url : r.name, link: r.kind === 'url' };
+    }
+    return failed.has(r.key) ? { ...r, error: failed.get(r.key) } : r;
+  });
   if (result.id && !state.id) {
     // A later step failed: the REA exists as a draft; the next save updates it.
     storage.clear(startKey);
     state.id = result.id;
-    if (state.resource?.kind !== 'url') {
-      state.resource = state.resource ? { ...state.resource, kind: 'keep' } : null;
-    }
     const url = new URL(window.location.href);
     url.searchParams.set('id', String(result.id));
     window.history.replaceState(null, '', url);
+  }
+  if (result.id) {
     storage.write();
   }
-  if (result.error === 'upload_expired') {
-    state.resource = null;
+  if (failed.size) {
     ui.step = 1;
     ui.sub = 1;
   }
@@ -889,7 +947,7 @@ async function save(propose) {
 function renderSteps() {
   const ol = root.querySelector('[data-wz-steps]');
   const done = (n) => n < 4 && n <= ui.maxStep && ui.step !== n && (
-    n === 1 ? Boolean(state.resource)
+    n === 1 ? state.resources.length > 0
       : n === 2 ? !missing(state, cfg.requiredTerms).some((c) => c === 'licence' || (c.startsWith('field:') && fieldOf(c.slice(6))))
         : !missing(state, []).some((c) => c === 'course' || c === 'subject'));
   ol.replaceChildren(...STEPS.map((label, i) => {
@@ -914,7 +972,7 @@ function banners() {
         h('button', { type: 'button', class: 'oer-wz-btn', onclick: () => { storage.clear(storage.key()); ui.recover = null; render(); } }, t('Empezar de cero')),
         h('button', { type: 'button', class: 'oer-wz-btn is-primary', onclick: () => {
           const local = ui.recover;
-          state = { ...emptyState(), ...local.state, id: state.id, status: state.status, rejection: state.rejection };
+          state = { ...emptyState(), ...withResources(local.state), id: state.id, status: state.status, rejection: state.rejection };
           ui.recover = null;
           ui.maxStep = 4;
           go(Number(local.step) || 1, Number(local.sub) || 1);

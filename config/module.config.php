@@ -629,7 +629,9 @@ return [
                     $container->get(Service\Wizard\WizardUploadStore::class),
                     $container->get(Service\ReaTemplateFields::class),
                     $container->get(Service\ReaSite::class),
-                    $container->get('Omeka\Settings')
+                    $container->get('Omeka\Settings'),
+                    // Omeka's oEmbed providers, to pick a link's ingester (owner's review of PR #100).
+                    array_values((array) ($container->get('Config')['oembed']['whitelist'] ?? []))
                 );
             },
             // Media names are looked up id-only (the media API has no `source`

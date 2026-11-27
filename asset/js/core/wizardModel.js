@@ -3,8 +3,10 @@
  * `node --test` covers it (test/js/wizardModel.test.js).
  *
  * The state is what the teacher has chosen so far:
- * - `resource`: `{kind:'upload', token, name, size}`, `{kind:'url', url}`,
- *   `{kind:'keep', name}` (a resumed REA's media) or null;
+ * - `resources`: the REA's files and links in order, the first one the main
+ *   one (owner's review of PR #100). Each has a `key` and is
+ *   `{kind:'upload', token, name, size, mediaType}`, `{kind:'url', url}` or
+ *   `{kind:'media', id, name, size, mediaType, link}` (a media the REA has);
  * - `values`: term => list of strings (step ②);
  * - `stage`, `courses`, `subject` ({name, ids}: one course subject per
  *   course), `teaches`, `assesses`, `axes` (step ③). The stage is navigation
@@ -48,7 +50,7 @@ const ANCHOR_LABEL = Object.freeze({
 
 export function emptyState() {
   return {
-    id: null, status: null, rejection: '', resource: null, values: {},
+    id: null, status: null, rejection: '', resources: [], values: {},
     stage: null, courses: [], subject: null, teaches: [], assesses: [], axes: [],
     suggested: {},
   };
@@ -69,7 +71,7 @@ function hasTerm(state, term) {
 export function missing(state, requiredTerms) {
   const out = [];
   const anchoring = [];
-  if (!state.resource) {
+  if (!(state.resources || []).length) {
     out.push('resource');
   }
   for (const term of requiredTerms || []) {
@@ -166,18 +168,13 @@ function ids(list) {
 
 /** The body of `save`: never the schema, never the status. */
 export function savePayload(state, propose) {
-  let resource = null;
-  if (state.resource?.kind === 'upload') {
-    resource = { kind: 'upload', token: state.resource.token };
-  } else if (state.resource?.kind === 'url') {
-    resource = { kind: 'url', url: String(state.resource.url || '').trim() };
-  } else if (state.resource?.kind === 'keep') {
-    resource = { kind: 'keep' };
-  }
+  const resources = (state.resources || []).map((r) => (r.kind === 'upload' ? { key: r.key, kind: 'upload', token: r.token }
+    : r.kind === 'url' ? { key: r.key, kind: 'url', url: String(r.url || '').trim() }
+      : { key: r.key, kind: 'media', id: r.id }));
   return {
     id: state.id,
     values: state.values,
-    resource,
+    resources,
     alignment: {
       [COURSE_TERM]: ids(state.courses),
       [SUBJECT_TERM]: state.subject ? [...new Set(state.subject.ids.map(Number))] : [],
@@ -187,6 +184,37 @@ export function savePayload(state, propose) {
     },
     propose: Boolean(propose),
   };
+}
+
+/** The list with entry `index` moved by `delta` (-1 up, 1 down); a new list, never out of bounds. */
+export function moveResource(list, index, delta) {
+  const to = index + delta;
+  if (to < 0 || to >= list.length) {
+    return list.slice();
+  }
+  const out = list.slice();
+  [out[index], out[to]] = [out[to], out[index]];
+  return out;
+}
+
+/**
+ * A state kept in the browser by the wizard before several media (one
+ * `resource`): a new upload or link becomes the list; a kept media is left
+ * out, since the server sends the REA's media again by id.
+ */
+export function withResources(state) {
+  if (Array.isArray(state.resources)) {
+    return state;
+  }
+  const { resource, ...rest } = state;
+  const keep = resource && (resource.kind === 'upload' || resource.kind === 'url');
+  return { ...rest, resources: keep ? [{ key: 'r0', ...resource }] : [] };
+}
+
+/** The first file's name (not a link), for the duplicate warning. */
+export function mainFileName(state) {
+  const file = (state.resources || []).find((r) => r.kind === 'upload' || (r.kind === 'media' && !r.link));
+  return file ? String(file.name || '') : '';
 }
 
 /** localStorage key per user and REA (or «new»). */
@@ -309,11 +337,8 @@ export function fromItem(item) {
   state.rejection = item.rejection || '';
   // PHP sends an empty map as []: string keys set on an Array are lost by JSON.stringify.
   state.values = item.values && !Array.isArray(item.values) ? item.values : {};
-  if (item.media) {
-    state.resource = { kind: 'keep', ...item.media };
-  } else if (item.link) {
-    state.resource = { kind: 'url', url: item.link };
-  }
+  state.resources = (Array.isArray(item.media) ? item.media : [])
+    .map((m) => ({ key: 'm' + m.id, kind: 'media', ...m }));
   state.stage = item.stage ? { id: item.stage, title: '' } : null;
   state.courses = (align[COURSE_TERM] || []).map((c) => ({ id: c.id, title: c.title }));
   const subjects = align[SUBJECT_TERM] || [];
@@ -382,7 +407,7 @@ export function suggestedType(resource, options) {
   const name = String(resource.name || '').toLowerCase();
   const media = String(resource.mediaType || '').toLowerCase();
   let pattern = null;
-  if (resource.kind === 'url') {
+  if (resource.kind === 'url' || resource.link) {
     pattern = /sitios? web/;
   } else if (name.endsWith('.elpx')) {
     return null;

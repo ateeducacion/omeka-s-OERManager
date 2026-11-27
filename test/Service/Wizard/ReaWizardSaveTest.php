@@ -46,6 +46,8 @@ final class ReaWizardSaveTest extends TestCase
     private array $commits = [];
     private array $required = ['dcterms:title'];
     private ?ItemRepresentation $created = null;
+    /** @var list<string> media sources whose creation fails */
+    private array $failMedia = [];
 
     protected function setUp(): void
     {
@@ -57,6 +59,17 @@ final class ReaWizardSaveTest extends TestCase
         });
         $this->api->method('create')->willReturnCallback(function (string $resource, array $data) {
             $this->creates[] = [$resource, $data];
+            if ('media' === $resource) {
+                $source = (string) ($data['ingest_url'] ?? $data['o:source'] ?? $data['wizard_token'] ?? '');
+                if (in_array($source, $this->failMedia, true)) {
+                    $errors = new ErrorStore();
+                    $errors->addError('ingest_url', 'Invalid media type "text/html".');
+                    $exception = new ValidationException('invalid');
+                    $exception->setErrorStore($errors);
+                    throw $exception;
+                }
+                return $this->response($this->media(200 + count($this->creates)));
+            }
             return $this->response($this->created ?? $this->item(100, 'x'));
         });
         $this->api->method('update')->willReturnCallback(function (...$args) {
@@ -128,10 +141,17 @@ final class ReaWizardSaveTest extends TestCase
             'values' => ['dcterms:title' => ['Fracciones'], 'dcterms:description' => ['Compras y recetas'],
                 'lrmi:learningResourceType' => ['Vídeo'], 'dcterms:references' => ['https://example.org/x'],
                 'dcterms:license' => ['https://creativecommons.org/licenses/by-sa/4.0/'], 'dcterms:creator' => ['Ana']],
-            'resource' => ['kind' => 'upload', 'token' => $this->token()],
+            'resources' => [['key' => 'r1', 'kind' => 'upload', 'token' => $this->token()]],
             'alignment' => ['lrmi:educationalLevel' => [11], 'schema:about' => [21], 'lrmi:teaches' => [31]],
             'propose' => false,
         ];
+    }
+
+    private function media(int $id): MediaRepresentation
+    {
+        $media = $this->createMock(MediaRepresentation::class);
+        $media->method('id')->willReturn($id);
+        return $media;
     }
 
     private function classRep(int $id): object
@@ -150,7 +170,7 @@ final class ReaWizardSaveTest extends TestCase
     public function testADraftIsCreatedPrivateInTheReaSiteWithItsDataAndMedia(): void
     {
         $state = $this->state();
-        $token = $state['resource']['token'];
+        $token = $state['resources'][0]['token'];
         $this->governance->expects($this->once())->method('apply')
             ->with(100, ['dcterms:license' => ['https://creativecommons.org/licenses/by-sa/4.0/'], 'dcterms:creator' => ['Ana']], 'Ana P', null, false, null, false)
             ->willReturn(['updated' => true]);
@@ -168,7 +188,10 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame(['o:id' => 9], $data['o:resource_class']);
         $this->assertSame([['o:id' => 3]], $data['o:site']);
         $this->assertArrayNotHasKey('o:resource_template', $data, 'the template is set once the REA meets it');
-        $this->assertSame([['o:ingester' => 'oermanager_wizard', 'wizard_token' => $token]], $data['o:media']);
+        $this->assertArrayNotHasKey('o:media', $data, 'each media is created on its own, so one failure names itself');
+        $this->assertSame(['media', ['o:item' => ['o:id' => 100], 'o:ingester' => 'oermanager_wizard', 'wizard_token' => $token]],
+            $this->creates[1]);
+        $this->assertSame([], $this->updates, 'a new REA\'s media keep the order they were created in');
         $this->assertSame([['type' => 'literal', 'property_id' => 1, '@value' => 'Fracciones']], $data['dcterms:title']);
         $this->assertSame([['type' => 'customvocab:7', 'property_id' => 50, '@value' => 'Vídeo']], $data['lrmi:learningResourceType']);
         $this->assertSame([['type' => 'uri', 'property_id' => 61, '@id' => 'https://example.org/x']], $data['dcterms:references']);
@@ -183,14 +206,14 @@ final class ReaWizardSaveTest extends TestCase
     {
         $this->required = ['dcterms:title', 'dcterms:creator'];
         $result = $this->save()->save(
-            ['values' => ['dcterms:title' => ['Solo título']], 'resource' => null, 'alignment' => [], 'propose' => false],
+            ['values' => ['dcterms:title' => ['Solo título']], 'resources' => [], 'alignment' => [], 'propose' => false],
             self::schema(),
             null,
             7,
             'Ana P'
         );
         $this->assertTrue($result['ok']);
-        $this->assertArrayNotHasKey('o:media', $this->creates[0][1]);
+        $this->assertCount(1, $this->creates, 'no media');
         $this->assertSame([], $this->commits, 'no template while a required field is empty');
         $this->assertSame(
             ['ok' => false, 'error' => 'title_required'],
@@ -200,26 +223,49 @@ final class ReaWizardSaveTest extends TestCase
 
     public function testAnExpiredUploadWritesNothing(): void
     {
-        $state = $this->state(['resource' => ['kind' => 'upload', 'token' => str_repeat('a', 32)]]);
-        $this->assertSame(['ok' => false, 'error' => 'upload_expired'], $this->save()->save($state, self::schema(), null, 7, 'Ana P'));
+        $state = $this->state(['resources' => [['key' => 'r9', 'kind' => 'upload', 'token' => str_repeat('a', 32)]]]);
+        $this->assertSame(['ok' => false, 'error' => 'upload_expired', 'key' => 'r9'], $this->save()->save($state, self::schema(), null, 7, 'Ana P'));
         $this->assertSame([], $this->creates);
     }
 
-    /** Code review of PR #100: Omeka's `url` ingester downloads and refuses web pages, so a link is a value. */
-    public function testALinkIsStoredAsAUriValueNotDownloaded(): void
+    /** Owner's review of PR #100: a link is a media, with the ingester that fits it; never a schema:url value. */
+    public function testALinkBecomesAMediaWithTheIngesterThatFitsIt(): void
     {
         $this->governance->method('apply')->willReturn(['updated' => true]);
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
-        $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'https://ejemplo.es/recursos/matemáticas/']]), self::schema(), null, 7, 'Ana P');
-        $data = $this->creates[0][1];
-        $this->assertArrayNotHasKey('o:media', $data);
-        $this->assertSame([['type' => 'uri', 'property_id' => 60, '@id' => 'https://ejemplo.es/recursos/matemáticas/']], $data['schema:url']);
+        $this->save()->save($this->state(['resources' => [
+            ['key' => 'l1', 'kind' => 'url', 'url' => 'https://ejemplo.es/recursos/guía.pdf'],
+            ['key' => 'l2', 'kind' => 'url', 'url' => 'https://youtu.be/abc123'],
+        ]]), self::schema(), null, 7, 'Ana P');
+        $this->assertArrayNotHasKey('schema:url', $this->creates[0][1]);
+        $this->assertSame(['o:item' => ['o:id' => 100], 'o:ingester' => 'url', 'ingest_url' => 'https://ejemplo.es/recursos/guía.pdf'],
+            $this->creates[1][1]);
+        $this->assertSame(['o:item' => ['o:id' => 100], 'o:ingester' => 'youtube', 'o:source' => 'https://youtu.be/abc123'],
+            $this->creates[2][1]);
         foreach (['javascript:alert(1)', 'https://', 'https://x y', 'ftp://example.org/a'] as $bad) {
             $this->assertSame(
-                ['ok' => false, 'error' => 'url_invalid'],
-                $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => $bad]]), self::schema(), null, 7, 'Ana P'),
+                ['ok' => false, 'error' => 'url_invalid', 'key' => 'l1'],
+                $this->save()->save($this->state(['resources' => [['key' => 'l1', 'kind' => 'url', 'url' => $bad]]]), self::schema(), null, 7, 'Ana P'),
                 $bad
             );
+        }
+    }
+
+    public function testAMediaOmekaRefusesLeavesADraftWithTheOthersAndNamesIt(): void
+    {
+        $this->governance->method('apply')->willReturn(['updated' => true]);
+        $this->recatalog->method('apply')->willReturn(['updated' => true]);
+        $this->failMedia = ['https://ejemplo.es/pagina'];
+        $state = $this->state(['propose' => true]);
+        $state['resources'][] = ['key' => 'l1', 'kind' => 'url', 'url' => 'https://ejemplo.es/pagina'];
+        $result = $this->save()->save($state, self::schema(), null, 7, 'Ana P');
+        $this->assertSame([
+            'ok' => false, 'id' => 100, 'step' => 'media', 'error' => 'media',
+            'failed' => [['key' => 'l1', 'messages' => ['Invalid media type "text/html".']]],
+            'created' => [['key' => 'r1', 'id' => 202]],
+        ], $result);
+        foreach ($this->commits as [, , $data]) {
+            $this->assertArrayNotHasKey('curation:status', $data, 'not proposed while a media is missing');
         }
     }
 
@@ -245,7 +291,7 @@ final class ReaWizardSaveTest extends TestCase
         $result = $this->save()->save($this->state(['propose' => true]), self::schema(), null, 7, 'Ana P');
         $this->assertSame(
             ['ok' => false, 'id' => 100, 'step' => 'anchoring', 'error' => 'anchoring',
-                'message' => 'Destinos inválidos para lrmi:teaches: 31'],
+                'message' => 'Destinos inválidos para lrmi:teaches: 31', 'created' => [['key' => 'r1', 'id' => 202]]],
             $result
         );
         foreach ($this->commits as [, , $data]) {
@@ -259,7 +305,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->recatalog->expects($this->never())->method('apply');
         $result = $this->save()->save($this->state(), self::schema(), null, 7, 'Ana P');
         $this->assertSame(['ok' => false, 'id' => 100, 'step' => 'governance', 'error' => 'governance',
-            'errors' => ['dcterms:license' => 'not-uri']], $result);
+            'errors' => ['dcterms:license' => 'not-uri'], 'created' => [['key' => 'r1', 'id' => 202]]], $result);
     }
 
     public function testProposingGoesThroughTheWorkflowOnlyWhenNothingIsMissing(): void
@@ -279,24 +325,25 @@ final class ReaWizardSaveTest extends TestCase
         $state = $this->state(['propose' => true]);
         $state['alignment'] = ['lrmi:educationalLevel' => [11]];
         $result = $this->save()->save($state, self::schema(), null, 7, 'Ana P');
-        $this->assertSame(['ok' => false, 'id' => 100, 'error' => 'incomplete', 'missing' => ['subject']], $result);
+        $this->assertSame(['ok' => false, 'id' => 100, 'error' => 'incomplete', 'missing' => ['subject'],
+            'created' => [['key' => 'r1', 'id' => 204]]], $result);
         foreach ($this->commits as [, , $data]) {
             $this->assertArrayNotHasKey('curation:status', $data);
         }
     }
 
-    public function testAResumeClearsOnlyTheManagedDataTermsAndReplacesTheMainMedia(): void
+    public function testAResumeClearsOnlyTheManagedDataTermsAndSetsTheMediaInTheirOrder(): void
     {
         $this->governance->method('apply')->willReturn(['updated' => true]);
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
-        $old = $this->createMock(MediaRepresentation::class);
-        $old->method('id')->willReturn(55);
         $existing = $this->item(100, 'Fracciones');
-        $existing->method('media')->willReturn([$old]);
+        $existing->method('media')->willReturn([$this->media(55), $this->media(56)]);
         $existing->method('resourceTemplate')->willReturn(null);
-        $this->api->expects($this->once())->method('batchDelete')->with('media', [55]);
+        $this->api->expects($this->never())->method('batchDelete');
 
+        // 56 first, then a new upload; 55 is removed.
         $state = $this->state();
+        $state['resources'] = [['key' => 'm56', 'kind' => 'media', 'id' => 56], $state['resources'][0]];
         $result = $this->save()->save($state, self::schema(), $existing, 7, 'Ana P');
 
         $this->assertTrue($result['ok']);
@@ -305,19 +352,30 @@ final class ReaWizardSaveTest extends TestCase
         $this->assertSame([1, 4, 50, 61], $data['clear_property_values'], 'only changed data terms; never provenance');
         $this->assertSame(['isPartial' => true, 'collectionAction' => 'append'], $options);
         $this->assertArrayNotHasKey('o:is_public', $data);
-        $this->assertSame('media', $this->creates[0][0]);
-        $this->assertSame(['o:item' => ['o:id' => 100], 'o:ingester' => 'oermanager_wizard',
-            'wizard_token' => $state['resource']['token']], $this->creates[0][1]);
+        $this->assertArrayNotHasKey('o:media', $data);
+        $this->assertSame(['media', ['o:item' => ['o:id' => 100], 'o:ingester' => 'oermanager_wizard',
+            'wizard_token' => $state['resources'][1]['token']]], $this->creates[0]);
+        // Omeka keeps the listed media in this order and removes the rest.
+        $this->assertSame(['items', 100, ['o:media' => [['o:id' => 56], ['o:id' => 201]]], [], ['isPartial' => true]],
+            $this->updates[1]);
     }
 
-    public function testAResumeThatKeepsTheMediaTouchesNoMedia(): void
+    public function testAResumeThatKeepsTheMediaInTheirOrderTouchesNoMedia(): void
     {
         $this->governance->method('apply')->willReturn(['updated' => true]);
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
         $existing = $this->item(100, 'Fracciones');
-        $this->api->expects($this->never())->method('batchDelete');
-        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $existing->method('media')->willReturn([$this->media(55), $this->media(56)]);
+        $keep = [['key' => 'a', 'kind' => 'media', 'id' => 55], ['key' => 'b', 'kind' => 'media', 'id' => 56],
+            ['key' => 'c', 'kind' => 'media', 'id' => 999]];
+        $this->save()->save($this->state(['resources' => $keep]), self::schema(), $existing, 7, 'Ana P');
         $this->assertSame([], $this->creates);
+        $this->assertCount(1, $this->updates, 'only the data update: a media of another item is ignored');
+
+        $this->updates = [];
+        $swap = [['key' => 'b', 'kind' => 'media', 'id' => 56], ['key' => 'a', 'kind' => 'media', 'id' => 55]];
+        $this->save()->save($this->state(['resources' => $swap]), self::schema(), $existing, 7, 'Ana P');
+        $this->assertSame(['o:media' => [['o:id' => 56], ['o:id' => 55]]], $this->updates[1][2]);
     }
 
     public function testAResumeThatNoLongerMeetsTheTemplateDropsIt(): void
@@ -327,7 +385,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
         $existing = $this->item(100, 'Fracciones');
         $existing->method('resourceTemplate')->willReturn(new \stdClass());
-        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $this->save()->save($this->state(['resources' => []]), self::schema(), $existing, 7, 'Ana P');
         $this->assertArrayHasKey('o:resource_template', $this->updates[0][2]);
         $this->assertNull($this->updates[0][2]['o:resource_template']);
     }
@@ -387,7 +445,7 @@ final class ReaWizardSaveTest extends TestCase
             'dcterms:title' => [$this->value('Fracciones')],
             'schema:isPartOf' => [$this->value('', $this->item(41371, 'Impulsa'), 'customvocab:9')],
         ]);
-        $state = $this->state(['resource' => ['kind' => 'keep']]);
+        $state = $this->state(['resources' => []]);
         $state['values']['schema:isPartOf'] = ['41371'];
         $this->save()->save($state, $schema, $existing, 7, 'Ana P');
         $this->assertArrayNotHasKey('schema:isPartOf', $this->updates[0][2], 'an unchanged project is not rewritten');
@@ -402,32 +460,23 @@ final class ReaWizardSaveTest extends TestCase
             'dcterms:title' => [$this->value('Fracciones')],
             'dcterms:description' => [$this->value('Compras y recetas')],
         ]);
-        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $this->save()->save($this->state(['resources' => []]), self::schema(), $existing, 7, 'Ana P');
         $this->assertSame([50, 61], $this->updates[0][2]['clear_property_values']);
         $this->assertArrayNotHasKey('dcterms:title', $this->updates[0][2]);
     }
 
-    public function testAResumeToALinkReplacesTheFilesAndAnUploadClearsTheLink(): void
+    public function testTheWizardNeitherWritesNorClearsSchemaUrl(): void
     {
         $this->governance->method('apply')->willReturn(['updated' => true]);
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
-        $old = $this->createMock(MediaRepresentation::class);
-        $old->method('id')->willReturn(55);
-        $existing = $this->item(100, 'Fracciones');
-        $existing->method('media')->willReturn([$old]);
-        $this->api->expects($this->once())->method('batchDelete')->with('media', [55]);
-        $this->save()->save($this->state(['resource' => ['kind' => 'url', 'url' => 'https://example.org/r']]), self::schema(), $existing, 7, 'Ana P');
-        $this->assertContains(60, $this->updates[0][2]['clear_property_values']);
-        $this->assertSame('https://example.org/r', $this->updates[0][2]['schema:url'][0]['@id']);
-
-        $this->updates = [];
         $linked = $this->item(101, 'Fracciones', ['schema:url' => [$this->value('', null, 'uri', 'https://example.org/r')]]);
-        $this->save()->save($this->state(), self::schema(), $linked, 7, 'Ana P');
-        $this->assertContains(60, $this->updates[0][2]['clear_property_values']);
+        $this->save()->save($this->state(['resources' => [['key' => 'l', 'kind' => 'url', 'url' => 'https://example.org/r']]]),
+            self::schema(), $linked, 7, 'Ana P');
+        $this->assertNotContains(60, $this->updates[0][2]['clear_property_values']);
         $this->assertArrayNotHasKey('schema:url', $this->updates[0][2]);
+        $this->assertSame('url', $this->creates[0][1]['o:ingester']);
     }
 
-    /** Code review of PR #100: the template is kept only if the stored REA already meets it. */
     public function testAResumeDropsTheTemplateUntilTheStoredReaMeetsItAndSetsItAtTheEnd(): void
     {
         $this->required = ['dcterms:title', 'dcterms:license'];
@@ -435,7 +484,7 @@ final class ReaWizardSaveTest extends TestCase
         $this->recatalog->method('apply')->willReturn(['updated' => true]);
         $existing = $this->item(100, 'Fracciones', ['dcterms:title' => [$this->value('Fracciones')]]);
         $existing->method('resourceTemplate')->willReturn(new \stdClass());
-        $this->save()->save($this->state(['resource' => ['kind' => 'keep']]), self::schema(), $existing, 7, 'Ana P');
+        $this->save()->save($this->state(['resources' => []]), self::schema(), $existing, 7, 'Ana P');
         $this->assertNull($this->updates[0][2]['o:resource_template']);
         $this->assertSame([[100, [], ['o:resource_template' => ['o:id' => 12]]]], $this->commits);
     }
@@ -446,7 +495,8 @@ final class ReaWizardSaveTest extends TestCase
         $exception = new ValidationException('refused');
         $this->governance->method('apply')->willThrowException($exception);
         $this->assertSame(
-            ['ok' => false, 'id' => 100, 'step' => 'governance', 'error' => 'invalid', 'messages' => []],
+            ['ok' => false, 'id' => 100, 'step' => 'governance', 'error' => 'invalid', 'messages' => [],
+                'created' => [['key' => 'r1', 'id' => 202]]],
             $this->save()->save($this->state(), self::schema(), null, 7, 'Ana P')
         );
     }
@@ -460,7 +510,8 @@ final class ReaWizardSaveTest extends TestCase
         $this->api->method('create')->willReturn($this->response($this->item(100, 'x')));
         $this->api->method('read')->willThrowException(new \LogicException('boom'));
         $this->assertSame(
-            ['ok' => false, 'id' => 100, 'step' => 'propose', 'error' => 'unexpected', 'exception' => 'LogicException'],
+            ['ok' => false, 'id' => 100, 'step' => 'propose', 'error' => 'unexpected', 'exception' => 'LogicException',
+                'created' => [['key' => 'r1', 'id' => 100]]],
             $this->save()->save($this->state(['propose' => true]), self::schema(), null, 7, 'Ana P')
         );
     }

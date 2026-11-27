@@ -63,6 +63,8 @@ class ReaWizardController extends AbstractActionController
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
         'url_invalid' => 'El enlace no es válido: revisa que esté completo y empiece por http:// o https://.', // @translate
         'invalid' => 'El catálogo no ha aceptado el REA.', // @translate
+        // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
+        'media' => 'El REA se ha guardado como borrador, pero el catálogo no ha aceptado algún fichero o enlace. Lo verás marcado en el paso «Tu recurso».', // @translate
         'denied' => 'No tienes permiso para guardar este REA.', // @translate
         // phpcs:ignore Generic.Files.LineLength.TooLong -- one msgid for the catalogue
         'governance' => 'El REA se ha guardado como borrador, pero la licencia o la autoría no son válidas.', // @translate
@@ -390,7 +392,6 @@ class ReaWizardController extends AbstractActionController
                 }
             }
         }
-        $media = $item->media()[0] ?? null;
         $status = $this->workflow->statusOf($item);
         $notes = WorkflowStatus::REJECTED === $status
             ? array_map(
@@ -407,25 +408,19 @@ class ReaWizardController extends AbstractActionController
             // An empty map must reach the browser as `{}`: as `[]` its string keys would be lost.
             'values' => $values ?: new \stdClass(),
             'alignment' => $alignment ?: new \stdClass(),
-            'link' => self::link($item),
             'stage' => $stage,
-            'media' => null === $media ? null : [
-                'name' => (string) ($media->source() ?: $media->filename()),
-                'size' => (int) $media->size(),
-                'mediaType' => (string) $media->mediaType(),
-            ],
+            // Owner's review of PR #100: every media, in order (the first is the main one).
+            'media' => array_map(static function ($media): array {
+                $link = in_array((string) $media->ingester(), ['url', 'youtube', 'oembed'], true);
+                return [
+                    'id' => (int) $media->id(),
+                    'name' => (string) ($media->source() ?: $media->filename()),
+                    'size' => (int) $media->size(),
+                    'mediaType' => (string) $media->mediaType(),
+                    'link' => $link,
+                ];
+            }, array_values((array) ($item->media() ?? []))),
         ];
-    }
-
-    /** The main resource when it is a link (ReaWizardSchema::LINK_TERM), or null. */
-    private static function link(ItemRepresentation $item): ?string
-    {
-        $value = $item->value(ReaWizardSchema::LINK_TERM);
-        if (null === $value) {
-            return null;
-        }
-        $uri = (string) $value->uri();
-        return '' !== $uri ? $uri : (string) $value->value();
     }
 
     private function guard(): ?JsonModel
