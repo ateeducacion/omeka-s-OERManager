@@ -359,7 +359,9 @@ export function fromItem(item) {
 /** An http(s) link as ReaWizardSave::isWebLink() accepts it (IRIs included). */
 export function isWebLink(url) {
   const text = String(url || '').trim();
-  return text.length <= 2000 && /^https?:\/\/[^\s/?#]+\S*$/iu.test(text) && !/[\u0000-\u001f\u007f<>"]/u.test(text);
+  // Unambiguous authority, as the server requires: no credentials, backslash or percent-encoded host.
+  return text.length <= 2000 && /^https?:\/\/[^\s/?#@\\%]+(?:[/?#][^\s\\]*)?$/iu.test(text)
+    && !/[\u0000-\u001f\u007f<>"]/u.test(text);
 }
 
 /** The field shows one value: editing it replaces the first and keeps the others. */

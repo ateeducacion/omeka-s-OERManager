@@ -359,3 +359,15 @@ test('suggestedType reads a link kept as a media like a link', () => {
   assert.equal(suggestedType({ kind: 'media', name: 'https://ejemplo.es', link: true }, TYPES)?.label, 'Sitios web recomendados');
   assert.equal(suggestedType({ kind: 'media', name: 'foto.jpg', mediaType: 'image/jpeg' }, TYPES)?.label, 'Fotografías y galerías');
 });
+
+// Security review (parser differential): an ambiguous authority could name one host to the
+// check and another to Omeka's HTTP client, so it is refused on both sides.
+test('a link whose host could be read two ways is refused', () => {
+  for (const bad of ['http://ejemplo.es@127.0.0.1/', 'http://user:pw@ejemplo.es/', 'http://ejemplo.es\\@127.0.0.1/',
+    'http://127.0.0.1\\.ejemplo.es/', 'http://%31%32%37.0.0.1/', 'https://ejemplo.es:8443\\x']) {
+    assert.equal(isWebLink(bad), false, bad);
+  }
+  // An @ after the host (a path, a query) is fine.
+  assert.equal(isWebLink('https://ejemplo.es/perfil/@ana?mail=a@b.es'), true);
+  assert.equal(isWebLink('https://[2001:4860::8888]/x'), true);
+});

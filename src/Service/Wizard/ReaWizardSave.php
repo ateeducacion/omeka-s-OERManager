@@ -336,10 +336,15 @@ class ReaWizardSave
         }
     }
 
-    /** An http(s) link of at most 2000 characters, IRIs included (accented paths), without spaces. */
+    /**
+     * An http(s) link of at most 2000 characters, IRIs included (accented paths), without spaces.
+     * Its authority is unambiguous (security review, parser differential): no credentials (`@`),
+     * no backslash anywhere and no percent-encoding in the host, so PHP's `parse_url` (the SSRF
+     * check) and Omeka's HTTP client read the same host.
+     */
     public static function isWebLink(string $url): bool
     {
-        return mb_strlen($url) <= 2000 && 1 === preg_match('#^https?://[^\s/?\#]+[^\s]*$#iu', $url)
+        return mb_strlen($url) <= 2000 && 1 === preg_match('#^https?://[^\s/?\#@\\\\%]+(?:[/?\#][^\s\\\\]*)?$#iu', $url)
             && 1 !== preg_match('/[\x00-\x1F\x7F<>"]/u', $url);
     }
 

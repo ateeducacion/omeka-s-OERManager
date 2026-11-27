@@ -71,4 +71,17 @@ class LinkMediaTest extends TestCase
             $this->assertSame($public, LinkMedia::isPublicHost($url, $dns), $url);
         }
     }
+
+    /** Security review (parser differential): only an unambiguous authority is a web link. */
+    public function testALinkWhoseHostCouldBeReadTwoWaysIsNotAWebLink(): void
+    {
+        foreach ([
+            'http://ejemplo.es@127.0.0.1/', 'http://user:pw@ejemplo.es/', 'http://ejemplo.es\\@127.0.0.1/',
+            'http://127.0.0.1\\.ejemplo.es/', 'http://%31%32%37.0.0.1/', 'https://ejemplo.es:8443\\x',
+        ] as $bad) {
+            $this->assertFalse(\OERManager\Service\Wizard\ReaWizardSave::isWebLink($bad), $bad);
+        }
+        $this->assertTrue(\OERManager\Service\Wizard\ReaWizardSave::isWebLink('https://ejemplo.es/perfil/@ana?mail=a@b.es'));
+        $this->assertTrue(\OERManager\Service\Wizard\ReaWizardSave::isWebLink('https://[2001:4860::8888]/x'));
+    }
 }
